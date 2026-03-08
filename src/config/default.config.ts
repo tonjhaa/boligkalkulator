@@ -1,0 +1,199 @@
+import type { AppConfig } from '@/types'
+
+/**
+ * Standard appkonfigurasjon for norske boliglaan — 2026-verdier.
+ *
+ * Kildegrunnlag:
+ * - Boliglaanesforskriften (FOR-2024-12-18-3398), gjeldende fra 01.01.2025
+ * - SIFO-referansebudsjettet 2026 (SIFO, OSLOMET)
+ * - Kartverkets tinglysingsgebyrer 2026 (gjeldende fra 01.01.2026)
+ * - Finansdepartementet: dokumentavgift 2.5% (uendret)
+ * - Skatteetaten: Prop. 1 LS (2025–2026) — Statsbudsjettet 2026
+ * - NAV: Grunnbeloep G = 124 028 kr (01.05.2026)
+ */
+export const defaultConfig: AppConfig = {
+  version: '2.0.0',
+
+  // ----------------------------------------------------------
+  // SIFO-REFERANSEBUDSJETTET 2026
+  // Kilde: SIFO/OsloMet — referansebudsjettet for forbruksutgifter
+  // Dekker: mat, klær, hygiene, fritid, medier og kommunikasjon.
+  // Inkluderer IKKE: boutgifter, transport eller barnehage.
+  // ----------------------------------------------------------
+  sifo: {
+    /** Voksen 18+ ar — SIFO 2026 */
+    adultMonthly: 9_850,
+    /** Spedbarn 0–3 ar — SIFO 2026 */
+    infantMonthly: 5_280,
+    /** Barn 4–6 ar — SIFO 2026 */
+    child4to6Monthly: 6_030,
+    /** Barn 7–10 ar — SIFO 2026 */
+    child7to10Monthly: 7_490,
+    /** Barn 11–13 ar — SIFO 2026 */
+    child11to13Monthly: 8_440,
+    /** Barn 14–17 ar — SIFO 2026 */
+    child14to17Monthly: 9_800,
+  },
+
+  // ----------------------------------------------------------
+  // GEBYRER OG AVGIFTER
+  // ----------------------------------------------------------
+  fees: {
+    /**
+     * Dokumentavgift: 2.5% av kjopesummen for selveierboliger.
+     * Fritatt: borettslag/andeler, aksjeboliger, og nybygg fra
+     * utbygger (forstegangsomsatt innen 5 ar).
+     * Kilde: Finansdepartementet (uendret 2026)
+     */
+    stampDutyPercent: 2.5,
+
+    /**
+     * Tinglysingsgebyr for pantedokument (laan i fast eiendom).
+     * Kilde: Kartverket 2026 — NOK 500 per pantedokument.
+     */
+    mortgageRegistrationFee: 500,
+
+    /**
+     * Tinglysingsgebyr for skjote (hjemmelsovergang).
+     * Kilde: Kartverket 2026 — NOK 500 (ned fra 585 i 2025).
+     */
+    propertyRegistrationFee: 500,
+
+    /**
+     * Etableringsgebyr laan — varierer mellom banker.
+     * Standard estimat NOK 2 000.
+     */
+    loanEstablishmentFee: 2_000,
+
+    /**
+     * Termingebyr per maned — varierer mellom banker.
+     * Standard estimat NOK 65.
+     */
+    termFee: 65,
+  },
+
+  // ----------------------------------------------------------
+  // UTLAANSREGLER (Boliglaanesforskriften 2025, viderefort 2026)
+  // ----------------------------------------------------------
+  lendingRules: {
+    /**
+     * Minimum egenkapital: 15% av kjopssum inkl. fellesgjeld.
+     * (10% for forstehjemslaanere i Oslo — haandteres som override)
+     * Kilde: FOR-2024-12-18-3398 § 7
+     */
+    minEquityPercent: 15,
+
+    /**
+     * Maksimal gjeldsgrad: samlet gjeld <= 5x samlet arsinntekt (brutto).
+     * Kilde: FOR-2024-12-18-3398 § 8
+     */
+    maxDebtRatio: 5.0,
+
+    /**
+     * Stresspaaslagg: 3 prosentpoeng over avtalerenten.
+     * Kilde: FOR-2024-12-18-3398 § 9
+     */
+    stressTestAddition: 3.0,
+
+    /**
+     * Minimum stressrente: stressrenten settes aldri lavere enn 7%.
+     * Kilde: FOR-2024-12-18-3398 § 9
+     */
+    minStressTestRate: 7.0,
+
+    /**
+     * Maksimal belaaningsgrad (LTV): 85% for ordinaere laan.
+     * (Rammelaan: 60%, BSU-garantilaan: inntil 100%)
+     * Kilde: FOR-2024-12-18-3398 § 7
+     */
+    maxLtvRatio: 85,
+  },
+
+  // ----------------------------------------------------------
+  // STANDARD LAANVERDIER
+  // ----------------------------------------------------------
+  loanDefaults: {
+    /** Nominell rente — oppdateres jevnlig */
+    defaultInterestRate: 5.5,
+    /** Laanetid 25 aar er vanligst i Norge */
+    defaultLoanTermYears: 25,
+    /** Annuitetslaan er standard hos de fleste banker */
+    defaultLoanType: 'annuitet',
+  },
+
+  // ----------------------------------------------------------
+  // SKATTEBEREGNING — Statsbudsjettet 2026
+  // Kilde: Prop. 1 LS (2025–2026), Skatteetaten
+  // ----------------------------------------------------------
+  tax: {
+    /**
+     * Skatt paa alminnelig inntekt: 22%
+     * (inkl. kommune- og fylkesskatt, uendret fra 2025)
+     * Kilde: Skatteetaten 2026
+     */
+    incomeTaxRate: 22,
+
+    /**
+     * Trygdeavgift lonnsinntekt: 7.8%
+     * (7.7% for pensjonsinntekt — ikke implementert her)
+     * Kilde: Statsbudsjettet 2026
+     */
+    nationalInsuranceRate: 7.8,
+
+    /**
+     * Minstefradragssats: 46% av lonnsinntekt
+     * Kilde: Skatteloven § 6-30, Statsbudsjettet 2026
+     */
+    minstefradragRate: 0.46,
+
+    /**
+     * Minstefradrag minimum: 33 100 kr
+     * Kilde: Statsbudsjettet 2026
+     */
+    minstefradragMin: 33_100,
+
+    /**
+     * Minstefradrag maksimum: 108 550 kr
+     * Kilde: Statsbudsjettet 2026
+     */
+    minstefradragMax: 108_550,
+
+    /**
+     * Personfradrag: 110 400 kr
+     * Kilde: Statsbudsjettet 2026
+     */
+    personfradrag: 110_400,
+
+    /**
+     * Trinnskatt 2026-satser (paa personinntekt / bruttolenn)
+     * Kilde: Prop. 1 LS (2025–2026) — Statsbudsjettet 2026
+     *
+     * Trinn 1: 1.7%  over NOK 232 500
+     * Trinn 2: 4.0%  over NOK 324 000
+     * Trinn 3: 13.7% over NOK 748 000
+     * Trinn 4: 16.7% over NOK 1 000 000
+     * Trinn 5: 17.7% over NOK 1 500 000
+     */
+    bracketTax: [
+      { threshold: 232_500,   rate: 1.7  },
+      { threshold: 324_000,   rate: 4.0  },
+      { threshold: 748_000,   rate: 13.7 },
+      { threshold: 1_000_000, rate: 16.7 },
+      { threshold: 1_500_000, rate: 17.7 },
+    ],
+  },
+
+  // ----------------------------------------------------------
+  // UI-INNSTILLINGER
+  // ----------------------------------------------------------
+  ui: {
+    /** Mork modus som standard */
+    defaultTheme: 'dark',
+    currencySymbol: 'kr',
+    locale: 'nb-NO',
+    percentDecimals: 1,
+    amountDecimals: 0,
+  },
+}
+
+export default defaultConfig
