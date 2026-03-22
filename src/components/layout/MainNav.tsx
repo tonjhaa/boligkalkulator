@@ -3,10 +3,10 @@ import { useAppStore, type AppView } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS: { view: AppView; label: string; Icon: React.FC<{ className?: string }> }[] = [
-  { view: 'calculator', label: 'Kalkulator', Icon: Calculator },
-  { view: 'economy',    label: 'Min Økonomi', Icon: Wallet },
-  { view: 'comparison', label: 'Sammenligning', Icon: BarChart3 },
-  { view: 'settings',   label: 'Innstillinger', Icon: Settings },
+  { view: 'economy',    label: 'Dashboard',       Icon: Wallet },
+  { view: 'calculator', label: 'Boligkalkulator', Icon: Calculator },
+  { view: 'comparison', label: 'Sammenligning',   Icon: BarChart3 },
+  { view: 'settings',   label: 'Innstillinger',   Icon: Settings },
 ]
 
 export function MainNav() {

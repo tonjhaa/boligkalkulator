@@ -51,7 +51,7 @@ export const useAppStore = create<AppState>()(
       distributionPlans: {},
       theme: defaultConfig.ui.defaultTheme,
       sidebarOpen: true,
-      currentView: 'calculator',
+      currentView: 'economy',
 
       setTheme: (theme) => set({ theme }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),

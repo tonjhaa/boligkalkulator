@@ -81,7 +81,7 @@ export const defaultConfig: AppConfig = {
      * (10% for forstehjemslaanere i Oslo — haandteres som override)
      * Kilde: FOR-2024-12-18-3398 § 7
      */
-    minEquityPercent: 15,
+    minEquityPercent: 10,
 
     /**
      * Maksimal gjeldsgrad: samlet gjeld <= 5x samlet arsinntekt (brutto).
@@ -106,7 +106,7 @@ export const defaultConfig: AppConfig = {
      * (Rammelaan: 60%, BSU-garantilaan: inntil 100%)
      * Kilde: FOR-2024-12-18-3398 § 7
      */
-    maxLtvRatio: 85,
+    maxLtvRatio: 90,
   },
 
   // ----------------------------------------------------------

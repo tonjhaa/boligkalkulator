@@ -25,12 +25,9 @@ export function Header() {
 
       <div className="flex items-center gap-2 flex-1">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-          <span className="text-xs font-bold text-primary-foreground">BK</span>
+          <span className="text-xs font-bold text-primary-foreground">ØD</span>
         </div>
-        <span className="font-semibold text-foreground">Boligkalkulator</span>
-        <span className="text-xs text-muted-foreground hidden sm:block ml-1">
-          — norsk boliglånsanalyse 2025
-        </span>
+        <span className="font-semibold text-foreground">ØkonomiDashboard</span>
       </div>
 
       <Button variant="ghost" size="icon" onClick={toggleTheme}>
