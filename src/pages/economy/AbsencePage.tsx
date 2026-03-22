@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Info, Plus, Trash2, Upload } from 'lucide-react'
 import { parseAbsenceExcel } from '@/features/absence/absenceImporter'
+import { HelpTooltip } from '@/components/ui/help-tooltip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,10 +67,16 @@ export function AbsencePage() {
             className="hidden"
             onChange={handleImport}
           />
-          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
-            <Upload className="h-4 w-4 mr-1" />
-            {importing ? 'Importerer…' : 'Importer SAP'}
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+              <Upload className="h-4 w-4 mr-1" />
+              {importing ? 'Importerer…' : 'Importer SAP'}
+            </Button>
+            <HelpTooltip
+              side="bottom"
+              content="Last opp en .xlsx-fil eksportert fra SAP. Filen må inneholde kolonnene: «Tekst frav.type» (f.eks. 0120 Sykemeldt egenmld), «Startdato» og «Frav.dager». Kolonnerekefølge og ekstra kolonner spiller ingen rolle. 0120 = egenmelding, 0110 = sykemelding."
+            />
+          </div>
           <Button size="sm" onClick={() => setShowAddForm(true)}>
             <Plus className="h-4 w-4 mr-1" />
             Registrer
