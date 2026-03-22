@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Info, Plus, Trash2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Info, Plus, Trash2, Upload } from 'lucide-react'
+import { parseAbsenceExcel } from '@/features/absence/absenceImporter'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +25,27 @@ const MONTH_NAMES = [
 export function AbsencePage() {
   const { absenceRecords, addAbsenceRecord, removeAbsenceRecord } = useEconomyStore()
   const [showAddForm, setShowAddForm] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    setImportMsg(null)
+    try {
+      const { records, antallRader, ukjenteTyper } = await parseAbsenceExcel(file)
+      records.forEach((r) => addAbsenceRecord(r))
+      const ukjentTekst = ukjenteTyper.length > 0 ? ` (ukjente typer ignorert: ${ukjenteTyper.join(', ')})` : ''
+      setImportMsg({ type: 'ok', text: `Importerte ${records.length} måneder fra ${antallRader} rader.${ukjentTekst}` })
+    } catch (err) {
+      setImportMsg({ type: 'error', text: err instanceof Error ? err.message : 'Ukjent feil' })
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   const now = new Date()
   const daysUsed = getDaysUsedLast12Months(absenceRecords, now)
@@ -36,11 +58,30 @@ export function AbsencePage() {
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Egenmelding og fravær</h2>
-        <Button size="sm" onClick={() => setShowAddForm(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Registrer fravær
-        </Button>
+        <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={handleImport}
+          />
+          <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            <Upload className="h-4 w-4 mr-1" />
+            {importing ? 'Importerer…' : 'Importer SAP'}
+          </Button>
+          <Button size="sm" onClick={() => setShowAddForm(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Registrer
+          </Button>
+        </div>
       </div>
+
+      {importMsg && (
+        <div className={`text-xs rounded-md px-3 py-2 ${importMsg.type === 'ok' ? 'bg-green-500/10 text-green-600' : 'bg-destructive/10 text-destructive'}`}>
+          {importMsg.text}
+        </div>
+      )}
 
       {/* Kvote-indikator */}
       <Card>
