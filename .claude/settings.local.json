@@ -5,7 +5,8 @@
       "Bash(npx vite:*)",
       "Bash(npm install:*)",
       "Bash(npm test:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git add:*)"
     ]
   }
 }

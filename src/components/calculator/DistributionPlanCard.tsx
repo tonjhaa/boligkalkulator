@@ -1,7 +1,6 @@
 import type { DistributionPlan, DistributionRow } from '@/types'
 import { formatCurrency, formatPercent } from '@/lib/utils'
 import { Users, Info } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface Props {
   plan: DistributionPlan
@@ -15,7 +14,7 @@ function SplitBar({ row }: { row: DistributionRow }) {
       <div
         className="bg-primary h-full transition-all"
         style={{ width: `${pPct}%` }}
-        title={`${row.primaryLabel ?? 'Søker 1'}: ${pPct.toFixed(1)}%`}
+        title={`Søker 1: ${pPct.toFixed(1)}%`}
       />
       <div
         className="bg-blue-400/60 h-full"

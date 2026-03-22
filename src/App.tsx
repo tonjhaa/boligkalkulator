@@ -1,9 +1,11 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { MainNav } from '@/components/layout/MainNav'
 import { CalculatorPage } from '@/pages/CalculatorPage'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store/useAppStore'
+import { useAuthStore } from '@/store/useAuthStore'
+import { LoginPage } from '@/pages/LoginPage'
 
 // Lazy-load sider som ikke er kritisk for første innlasting
 const ScenarioComparison = lazy(() =>
@@ -14,6 +16,11 @@ const ScenarioComparison = lazy(() =>
 const SettingsPanel = lazy(() =>
   import('@/components/settings/SettingsPanel').then((m) => ({
     default: m.SettingsPanel,
+  }))
+)
+const EconomyPage = lazy(() =>
+  import('@/pages/economy/EconomyPage').then((m) => ({
+    default: m.EconomyPage,
   }))
 )
 
@@ -43,12 +50,35 @@ function AppContent() {
             <SettingsPanel />
           </Suspense>
         )}
+        {currentView === 'economy' && (
+          <Suspense fallback={<PageFallback />}>
+            <EconomyPage />
+          </Suspense>
+        )}
       </div>
     </div>
   )
 }
 
 function App() {
+  const { user, initialized, initialize } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
+        Laster…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <LoginPage />
+  }
+
   return (
     <TooltipProvider delayDuration={300}>
       <AppLayout>

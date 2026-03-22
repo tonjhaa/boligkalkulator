@@ -5,6 +5,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Button } from '@/components/ui/button'
+import { extractLoanInputFromEconomy, getProfileBridgeSummary } from '@/application/profileBridge'
 import type { ScenarioInput, ApplicantInput } from '@/types'
 
 interface Props {
@@ -65,6 +67,7 @@ export function HouseholdForm({ scenario }: Props) {
   const update = useAppStore((s) => s.updateScenario)
   const { household } = scenario
   const [hasCoApplicant, setHasCoApplicant] = useState(Boolean(household.coApplicant))
+  const [bridgeSummary, setBridgeSummary] = useState<string[] | null>(null)
 
   function setHousehold(patch: Partial<typeof household>) {
     update(scenario.id, { household: { ...household, ...patch } })
@@ -84,8 +87,57 @@ export function HouseholdForm({ scenario }: Props) {
     }
   }
 
+  function handleUseProfile() {
+    const partial = extractLoanInputFromEconomy()
+    if (!partial.household) {
+      setBridgeSummary(['Ingen lønnsprofil registrert i Min Økonomi.'])
+      return
+    }
+    update(scenario.id, {
+      household: {
+        ...household,
+        primaryApplicant: {
+          ...household.primaryApplicant,
+          ...partial.household.primaryApplicant,
+        },
+      },
+      loanParameters: partial.loanParameters
+        ? { ...scenario.loanParameters, ...partial.loanParameters }
+        : scenario.loanParameters,
+    })
+    setBridgeSummary(getProfileBridgeSummary())
+  }
+
   return (
     <div className="space-y-5">
+      {/* Bruk min profil-knapp */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">
+            Hent tall fra Min Økonomi automatisk
+          </p>
+        </div>
+        <Button variant="outline" size="sm" className="text-xs" onClick={handleUseProfile}>
+          Bruk min profil
+        </Button>
+      </div>
+
+      {bridgeSummary && (
+        <div className="rounded-md bg-muted/50 p-2 space-y-0.5">
+          {bridgeSummary.map((line, i) => (
+            <p key={i} className="text-xs text-muted-foreground">{line}</p>
+          ))}
+          <button
+            className="text-xs text-muted-foreground underline mt-1"
+            onClick={() => setBridgeSummary(null)}
+          >
+            Lukk
+          </button>
+        </div>
+      )}
+
+      <Separator />
+
       <ApplicantFields
         applicant={household.primaryApplicant}
         label="Søker 1"

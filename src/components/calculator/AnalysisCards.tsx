@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TrendingUp, Building2, Wallet, Target, PiggyBank, ShieldCheck, ShieldX } from 'lucide-react'
+import { TrendingUp, Building2, Target, PiggyBank, ShieldCheck, ShieldX } from 'lucide-react'
 import type { LoanAnalysis } from '@/types'
 import { formatCurrency, formatPercent, formatNumber } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'

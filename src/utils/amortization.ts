@@ -75,7 +75,7 @@ function buildRows(
   termYears: number,
   loanType: 'annuitet' | 'serie',
   opts: SimulatorOptions = {}
-): { rows: AmortizationRow[]; simMeta: ReturnType<typeof buildPlanObject>['yearlyTotals'] extends (infer T)[] ? object : never } {
+): { rows: AmortizationRow[]; simMeta: object } {
   const n = termYears * 12
   const { rateChange, extraPayment } = opts
 

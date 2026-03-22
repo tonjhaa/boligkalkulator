@@ -1,0 +1,472 @@
+import type { ATFEntry, ATFPeriode, ATFResult, ATFBreakdown, ATFLønnskode, ATFDatoRad, KnownATFRate } from '@/types/economy'
+import {
+  ATF_HELGE_TILLEGG_PER_TIME,
+  ATF_TIMER_PER_DAG,
+  ATF_TIMER_HELG,
+  ATF_TIDSKOMPENSASJON_PER_DAG,
+} from '@/config/economy.config'
+
+// ------------------------------------------------------------
+// SATSBEREGNING
+// ------------------------------------------------------------
+
+/** Beregner timelønn A-tab fra årslønn */
+export function beregnTimesatsATab(aarslonn: number): number {
+  return aarslonn / 1850
+}
+
+/** Beregner OT 50%-sats */
+export function beregnOT50Sats(aarslonn: number): number {
+  return beregnTimesatsATab(aarslonn) * 1.5
+}
+
+// ------------------------------------------------------------
+// PERIODE-BEREGNING
+// ------------------------------------------------------------
+
+function beregnPeriode(
+  periode: ATFPeriode,
+  aarslonn: number,
+  _kronetillegg: number
+): ATFBreakdown {
+  const timesats = beregnTimesatsATab(aarslonn)
+  const kode = periode.kode
+
+  switch (kode) {
+    case 'ØV_MAN_FRE': {
+      const dager = periode.antallDager ?? 0
+      const sats = timesats * ATF_TIMER_PER_DAG
+      return {
+        kode,
+        antallDager: dager,
+        sats,
+        belop: sats * dager,
+        beskrivelse: `${dager} dag(er) hverdag (${ATF_TIMER_PER_DAG}t × ${fmt(timesats)}/t)`,
+      }
+    }
+
+    case 'ØV_LØR_SØN': {
+      const dager = periode.antallDager ?? 0
+      const satsPerTime = timesats + ATF_HELGE_TILLEGG_PER_TIME
+      const sats = satsPerTime * ATF_TIMER_HELG
+      return {
+        kode,
+        antallDager: dager,
+        sats,
+        belop: sats * dager,
+        beskrivelse: `${dager} dag(er) helg (${ATF_TIMER_HELG}t × (${fmt(timesats)} + ${ATF_HELGE_TILLEGG_PER_TIME} kr helgetillegg))`,
+      }
+    }
+
+    case 'ØV_OT_50_MAN_FRE': {
+      const timer = periode.antallTimer ?? 0
+      const sats = beregnOT50Sats(aarslonn)
+      return {
+        kode,
+        antallTimer: timer,
+        sats,
+        belop: sats * timer,
+        beskrivelse: `${timer} timer OT 50% (${fmt(timesats)} × 1.5)`,
+      }
+    }
+
+    case 'ØV_TIME_MAN_FRE': {
+      const timer = periode.antallTimer ?? 0
+      const sats = timesats
+      return {
+        kode,
+        antallTimer: timer,
+        sats,
+        belop: sats * timer,
+        beskrivelse: `${timer} timer ordinær timesats (${fmt(timesats)}/t)`,
+      }
+    }
+
+    case 'VAKT': {
+      const timer = periode.antallTimer ?? 0
+      const sats = timesats
+      return {
+        kode,
+        antallTimer: timer,
+        sats,
+        belop: sats * timer,
+        beskrivelse: `${timer} timer vakt`,
+      }
+    }
+
+    // FA1, FA2, PK, FØPP: dagssats = full dagsnorm
+    case 'FA1':
+    case 'FA2':
+    case 'PK':
+    case 'FØPP': {
+      const dager = periode.antallDager ?? 0
+      const sats = timesats * ATF_TIMER_PER_DAG
+      return {
+        kode,
+        antallDager: dager,
+        sats,
+        belop: sats * dager,
+        beskrivelse: `${dager} dag(er) ${kode}`,
+      }
+    }
+
+    default: {
+      const exhaustive: never = kode
+      return {
+        kode: exhaustive,
+        sats: 0,
+        belop: 0,
+        beskrivelse: 'Ukjent kode',
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// HOVED-KALKULATOR
+// ------------------------------------------------------------
+
+/**
+ * Beregner ATF-utbetaling for én øvelse.
+ * @param entry ATF-oppføringen
+ * @param annualSalary Årslønn (grunnlønn × 12 + faste tillegg)
+ * @param kronetillegg Eventuelle kronetillegg (valgfritt)
+ */
+export function calculateATF(
+  entry: ATFEntry,
+  annualSalary: number,
+  kronetillegg = 0
+): ATFResult {
+  const timesatsATab = beregnTimesatsATab(annualSalary)
+
+  const breakdown: ATFBreakdown[] = entry.perioder.map((p) =>
+    beregnPeriode(p, annualSalary, kronetillegg)
+  )
+
+  const totalEconomy = breakdown.reduce((s, b) => s + b.belop, 0)
+
+  // Tidskompensasjon = summen av dager × 7.5t
+  const tidskompensasjonTimer = entry.perioder.reduce((s, p) => {
+    if (p.antallDager) return s + p.antallDager * ATF_TIDSKOMPENSASJON_PER_DAG
+    return s
+  }, 0)
+
+  return { totalEconomy, breakdown, tidskompensasjonTimer, timesatsATab }
+}
+
+/**
+ * Summerer ATF-utbetalinger for ett år.
+ */
+export function sumATFByYear(entries: ATFEntry[], year: number): number {
+  return entries.filter((e) => e.year === year).reduce((s, e) => s + e.beregnetBeløp, 0)
+}
+
+// ------------------------------------------------------------
+// HJELPERE
+// ------------------------------------------------------------
+
+function fmt(n: number): string {
+  return n.toFixed(2).replace('.', ',')
+}
+
+/** Returnerer gjeldende timesats basert på årslønn */
+export function getTimesatsInfo(annualSalary: number) {
+  const aTab = beregnTimesatsATab(annualSalary)
+  return {
+    aTab,
+    ot50: aTab * 1.5,
+    helgDagssats: (aTab + ATF_HELGE_TILLEGG_PER_TIME) * ATF_TIMER_HELG,
+    hverdagDagssats: aTab * ATF_TIMER_PER_DAG,
+  }
+}
+
+export const ATF_LØNNSKODE_LABELS: Record<ATFLønnskode, string> = {
+  ØV_MAN_FRE: 'Øvelse hverdag (dagssats)',
+  ØV_LØR_SØN: 'Øvelse helg (dagssats + helgetillegg)',
+  ØV_OT_50_MAN_FRE: 'Overtid 50% hverdag',
+  ØV_TIME_MAN_FRE: 'Ordinære timer hverdag',
+  VAKT: 'Vakt',
+  FA1: 'FA1',
+  FA2: 'FA2',
+  PK: 'PK',
+  FØPP: 'FØPP',
+}
+
+// ------------------------------------------------------------
+// NORSK HELLIGDAG-KALKULATOR
+// ------------------------------------------------------------
+
+function getEasterDate(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4), k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month - 1, day)
+}
+
+export function isNorwegianHoliday(date: Date): boolean {
+  const y = date.getFullYear()
+  const m = date.getMonth() + 1
+  const d = date.getDate()
+  const mmdd = `${m}-${d}`
+  if (['1-1', '5-1', '5-17', '12-25', '12-26'].includes(mmdd)) return true
+  const easter = getEasterDate(y)
+  for (const offset of [-3, -2, 0, 1, 39, 49, 50]) {
+    const h = new Date(easter)
+    h.setDate(h.getDate() + offset)
+    if (h.getMonth() === date.getMonth() && h.getDate() === date.getDate()) return true
+  }
+  return false
+}
+
+export function getDayType(date: Date): 'hverdag' | 'helg' | 'helligdag' {
+  if (isNorwegianHoliday(date)) return 'helligdag'
+  const dow = date.getDay()
+  return (dow === 0 || dow === 6) ? 'helg' : 'hverdag'
+}
+
+// ------------------------------------------------------------
+// SKALERTE SATSER (base fra ATF-kalkulator 1/5-2023, ltr 72)
+// ------------------------------------------------------------
+
+export const ATF_BASE_ANNUAL = 720100
+
+export const ATF_BASE_RATES = {
+  ovingHverdag: 6348.16,
+  ovingHelg: 9832.67,
+  ovingHelligdag: 13046.66,
+  ovingPrTimeHverdag: 396.76,
+  ovingPrTimeHelg: 409.69,
+  ovingPrTimeHelligdag: 543.61,
+  ovingInntil7t50Hverdag: 486.55,
+  ovingInntil7t100Hverdag: 681.18,
+  ovingInntil7tHelg: 746.18,
+} as const
+
+export type ATFRates = { [K in keyof typeof ATF_BASE_RATES]: number }
+
+/** Mapping fra ATFRates-nøkkel til artskode på lønnsslippen */
+const KEY_TO_ARTSKODE: Record<keyof typeof ATF_BASE_RATES, string> = {
+  ovingHverdag: '2230',
+  ovingHelg: '2232',
+  ovingHelligdag: '2233',
+  ovingPrTimeHverdag: '2236',
+  ovingPrTimeHelg: '2237',
+  ovingPrTimeHelligdag: '2238',
+  ovingInntil7t50Hverdag: '2242',
+  ovingInntil7tHelg: '2243',
+  ovingInntil7t100Hverdag: '2244',
+}
+
+/**
+ * Beregner ATF-satser.
+ * Prioritet: 1) kjente satser fra importert slipp (skalert til nåværende årslønn)
+ *            2) fallback til base-tabell fra 1/5-2023 (skalert)
+ *
+ * @param annualSalary  Grunnlønn × 12
+ * @param fixedAdditions  Faste tillegg per år (brukes kun i fallback-skaleringen)
+ * @param knownATFRates  profile.knownATFRates — satser hentet fra importerte slipper
+ */
+export function calculateATFRates(
+  annualSalary: number,
+  fixedAdditions = 0,
+  knownATFRates?: Record<string, KnownATFRate>,
+): ATFRates {
+  return Object.fromEntries(
+    Object.entries(ATF_BASE_RATES).map(([key, baseRate]) => {
+      const artskode = KEY_TO_ARTSKODE[key as keyof typeof ATF_BASE_RATES]
+      const known = knownATFRates?.[artskode]
+
+      let sats: number
+      if (known && known.fraAarslonn > 0) {
+        // Skaler fra kjent sats til nåværende grunnlønn
+        const scale = annualSalary / known.fraAarslonn
+        sats = Math.round(known.sats * scale * 100) / 100
+      } else {
+        // Fallback: base-tabell fra 1/5-2023
+        const scale = (annualSalary + fixedAdditions) / ATF_BASE_ANNUAL
+        sats = Math.round(baseRate * scale * 100) / 100
+      }
+      return [key, sats]
+    })
+  ) as ATFRates
+}
+
+/**
+ * Returnerer en lesbar kilde-label for ATF-satsene.
+ * Vises i UI under sats-kortet.
+ */
+export function getATFRatesSourceLabel(knownATFRates?: Record<string, KnownATFRate>): string {
+  if (!knownATFRates || Object.keys(knownATFRates).length === 0) {
+    return '⚠️ Estimerte satser — importer en slipp med øvelse for nøyaktige satser'
+  }
+
+  // Finn nyeste registrerte sats
+  let newest: KnownATFRate | null = null
+  for (const rate of Object.values(knownATFRates)) {
+    if (!newest || rate.dato > newest.dato) newest = rate
+  }
+  if (!newest) return '⚠️ Estimerte satser'
+
+  const [y, m] = newest.dato.split('-')
+  const MONTH_NAMES = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des']
+  const monthName = MONTH_NAMES[(parseInt(m) - 1)] ?? m
+  return `Satser basert på slipp ${monthName} ${y} (årslønn ${Math.round(newest.fraAarslonn).toLocaleString('no-NO')} kr)`
+}
+
+// ------------------------------------------------------------
+// DATOBASERT ATF-BEREGNING
+// ------------------------------------------------------------
+
+// Normal working hours in minutes from midnight
+const ARBEIDSSTART_MIN = 7 * 60 + 30   // 07:30
+const ARBEIDSSLUTT_MIN = 15 * 60 + 30  // 15:30
+
+function startOfDay(d: Date): Date {
+  const r = new Date(d); r.setHours(0, 0, 0, 0); return r
+}
+
+// Use local date components to avoid UTC offset issues (Norway UTC+1/+2)
+function dateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function minsInDay(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+function r1(n: number): number { return Math.round(n * 10) / 10 }
+function r2(n: number): number { return Math.round(n * 100) / 100 }
+
+export function beregnATFFromDates(
+  fra: Date,
+  til: Date,
+  annualSalary: number,
+  fixedAdditions = 0,
+  type: 'døgn' | 'time' = 'døgn',
+  knownATFRates?: Record<string, KnownATFRate>,
+): ATFDatoRad[] {
+  const rows: ATFDatoRad[] = []
+  const rates = calculateATFRates(annualSalary, fixedAdditions, knownATFRates)
+  const fraDay = startOfDay(fra)
+  const tilDay = startOfDay(til)
+  const fraMin = minsInDay(fra)
+  const tilMin = minsInDay(til)
+
+  // --- Øving pr time (simple hourly mode) ---
+  if (type === 'time') {
+    const cur = new Date(fraDay)
+    while (cur.getTime() <= tilDay.getTime()) {
+      const isFirst = cur.getTime() === fraDay.getTime()
+      const isLast = cur.getTime() === tilDay.getTime()
+      const dayType = getDayType(cur)
+      let hours: number
+      if (isFirst && isLast) hours = (tilMin - fraMin) / 60
+      else if (isFirst) hours = Math.min((24 * 60 - fraMin) / 60, 7)
+      else if (isLast) hours = Math.min(tilMin / 60, 7)
+      else hours = 7
+      hours = Math.min(hours, 7)
+      if (hours > 0.01) {
+        const [artskode, beskrivelse, sats] =
+          dayType === 'helligdag'
+            ? ['2238', 'Øvelse pr t helligdag', rates.ovingPrTimeHelligdag]
+            : dayType === 'helg'
+            ? ['2243', 'Øvelse pr t (inntil 7t) Lø-Sø', rates.ovingInntil7tHelg]
+            : ['2242', 'Øvelse inntil 7t 50% Ma-Fr', rates.ovingInntil7t50Hverdag]
+        rows.push({ dato: dateStr(cur), dagType: dayType, artskode, beskrivelse, antall: r1(hours), enhet: 'timer', sats, belop: r2(sats * hours) })
+      }
+      cur.setDate(cur.getDate() + 1)
+    }
+    return rows
+  }
+
+  // --- Øving døgn ---
+
+  // Same day (short exercise): just a few hours after work
+  if (fraDay.getTime() === tilDay.getTime()) {
+    const dayType = getDayType(fraDay)
+    const startMin = dayType === 'hverdag' ? Math.max(fraMin, ARBEIDSSLUTT_MIN) : fraMin
+    const hours = (tilMin - startMin) / 60
+    if (hours > 0.01) {
+      const [artskode, beskrivelse, sats] =
+        dayType === 'helligdag'
+          ? ['2238', 'Øvelse pr t helligdag', rates.ovingPrTimeHelligdag]
+          : dayType === 'helg'
+          ? ['2237', 'Øvelse pr t Lø-Sø', rates.ovingPrTimeHelg]
+          : ['2236', 'Øvelse pr t Ma-Fr', rates.ovingPrTimeHverdag]
+      rows.push({ dato: dateStr(fraDay), dagType: dayType, artskode, beskrivelse, antall: r1(hours), enhet: 'timer', sats, belop: r2(sats * hours) })
+    }
+    return rows
+  }
+
+  // Start day
+  const startDayType = getDayType(fraDay)
+  const startMin = startDayType === 'hverdag' ? Math.max(fraMin, ARBEIDSSLUTT_MIN) : fraMin
+  const startHours = (24 * 60 - startMin) / 60
+
+  if (startDayType === 'hverdag') {
+    const first7 = Math.min(startHours, 7)
+    const rest = startHours - first7
+    if (first7 > 0.01)
+      rows.push({ dato: dateStr(fraDay), dagType: 'hverdag', artskode: '2242', beskrivelse: 'Øvelse inntil 7t 50% Ma-Fr', antall: r1(first7), enhet: 'timer', sats: rates.ovingInntil7t50Hverdag, belop: r2(rates.ovingInntil7t50Hverdag * first7) })
+    if (rest > 0.01)
+      rows.push({ dato: dateStr(fraDay), dagType: 'hverdag', artskode: '2236', beskrivelse: 'Øvelse pr t Ma-Fr', antall: r1(rest), enhet: 'timer', sats: rates.ovingPrTimeHverdag, belop: r2(rates.ovingPrTimeHverdag * rest) })
+  } else if (startDayType === 'helg') {
+    const first7 = Math.min(startHours, 7)
+    const rest = startHours - first7
+    if (first7 > 0.01)
+      rows.push({ dato: dateStr(fraDay), dagType: 'helg', artskode: '2243', beskrivelse: 'Øvelse pr t (inntil 7t) Lø-Sø', antall: r1(first7), enhet: 'timer', sats: rates.ovingInntil7tHelg, belop: r2(rates.ovingInntil7tHelg * first7) })
+    if (rest > 0.01)
+      rows.push({ dato: dateStr(fraDay), dagType: 'helg', artskode: '2237', beskrivelse: 'Øvelse pr t Lø-Sø', antall: r1(rest), enhet: 'timer', sats: rates.ovingPrTimeHelg, belop: r2(rates.ovingPrTimeHelg * rest) })
+  } else {
+    rows.push({ dato: dateStr(fraDay), dagType: 'helligdag', artskode: '2238', beskrivelse: 'Øvelse pr t helligdag', antall: r1(startHours), enhet: 'timer', sats: rates.ovingPrTimeHelligdag, belop: r2(rates.ovingPrTimeHelligdag * startHours) })
+  }
+
+  // Middle days (full døgn)
+  const cur = new Date(fraDay)
+  cur.setDate(cur.getDate() + 1)
+  while (cur.getTime() < tilDay.getTime()) {
+    const dayType = getDayType(cur)
+    const [artskode, beskrivelse, sats] =
+      dayType === 'helligdag'
+        ? ['2233', 'Øvelse døgn helligdag', rates.ovingHelligdag]
+        : dayType === 'helg'
+        ? ['2232', 'Øvelse døgn Lø-Sø', rates.ovingHelg]
+        : ['2230', 'Øvelse døgn Ma-Fr', rates.ovingHverdag]
+    rows.push({ dato: dateStr(cur), dagType: dayType, artskode, beskrivelse, antall: 1, enhet: 'døgn', sats, belop: r2(sats) })
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  // End day: timer fra 00:00 til min(tilTid, 07:30)
+  // Timer etter arbeidsstart (07:30) regnes som normal arbeidstid og teller ikke.
+  const endHours = Math.min(tilMin, ARBEIDSSTART_MIN) / 60
+  if (endHours > 0.01) {
+    const endDayType = getDayType(tilDay)
+    const [artskode, beskrivelse, sats] =
+      endDayType === 'helligdag'
+        ? ['2238', 'Øvelse pr t helligdag', rates.ovingPrTimeHelligdag]
+        : endDayType === 'helg'
+        ? ['2237', 'Øvelse pr t Lø-Sø', rates.ovingPrTimeHelg]
+        : ['2236', 'Øvelse pr t Ma-Fr', rates.ovingPrTimeHverdag]
+    rows.push({ dato: dateStr(tilDay), dagType: endDayType, artskode, beskrivelse, antall: r1(endHours), enhet: 'timer', sats, belop: r2(sats * endHours) })
+  }
+
+  return rows
+}
+
+export function sumATFDatoRader(rows: ATFDatoRad[]): number {
+  return Math.round(rows.reduce((s, r) => s + r.belop, 0) * 100) / 100
+}
+
+// Tidskompensasjon: full days × 7.5h
+export function beregnTidskompensasjonFromRows(rows: ATFDatoRad[]): number {
+  return rows.filter(r => r.enhet === 'døgn').length * ATF_TIDSKOMPENSASJON_PER_DAG
+}

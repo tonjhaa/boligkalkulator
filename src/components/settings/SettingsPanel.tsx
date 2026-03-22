@@ -1,11 +1,15 @@
-import { RotateCcw } from 'lucide-react'
+import { useState } from 'react'
+import { RotateCcw, Download, Upload, Trash2, Smartphone } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
+import { useEconomyStore } from '@/application/useEconomyStore'
 import { defaultConfig } from '@/config/default.config'
 import { NumberInput } from '@/components/ui/number-input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { AppConfig } from '@/types'
+
+const LAST_EXPORT_KEY = 'min-okonomi-last-export'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -32,6 +36,321 @@ function Field({
       <Label className="text-xs">{label}</Label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// SIKKERHETSKOPI — Google Drive backup
+// ------------------------------------------------------------
+
+function BackupReminderBanner({ onExport }: { onExport: () => void }) {
+  const raw = localStorage.getItem(LAST_EXPORT_KEY)
+  if (!raw) return null
+  const lastExport = new Date(raw)
+  const daysSince = Math.floor((Date.now() - lastExport.getTime()) / (1000 * 60 * 60 * 24))
+  if (daysSince < 7) return null
+  if (daysSince < 30) return null
+
+  const formatted = lastExport.toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  return (
+    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center justify-between gap-4">
+      <span className="text-xs text-amber-700 dark:text-amber-400">
+        💾 Siste sikkerhetskopi: {formatted} ({daysSince} dager siden)
+      </span>
+      <Button variant="outline" size="sm" onClick={onExport} className="shrink-0 text-xs">
+        Last ned nå
+      </Button>
+    </div>
+  )
+}
+
+function GoogleDriveBackupSection() {
+  const store = useEconomyStore()
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importSuccess, setImportSuccess] = useState(false)
+  const [pendingData, setPendingData] = useState<string | null>(null)
+  const [pendingMeta, setPendingMeta] = useState<{ exportedAt: string } | null>(null)
+
+  function handleExport() {
+    const state = store
+    // Bygg backup-objekt uten slipPdfBase64
+    const data = {
+      storeVersion: state.storeVersion,
+      profile: state.profile,
+      budgetTemplate: state.budgetTemplate,
+      monthHistory: state.monthHistory.map((m) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { slipPdfBase64: _pdf, ...rest } = m as typeof m & { slipPdfBase64?: unknown }
+        return rest
+      }),
+      atfEntries: state.atfEntries,
+      savingsAccounts: state.savingsAccounts,
+      savingsGoals: state.savingsGoals,
+      debts: state.debts,
+      absenceRecords: state.absenceRecords,
+      taxSettlements: state.taxSettlements,
+      subscriptions: state.subscriptions,
+      insurances: state.insurances,
+      policyRateHistory: state.policyRateHistory,
+    }
+
+    const backup = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      data,
+    }
+
+    const json = JSON.stringify(backup, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `min-okonomi-backup-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    localStorage.setItem(LAST_EXPORT_KEY, new Date().toISOString())
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result
+      if (typeof text !== 'string') return
+      try {
+        const parsed = JSON.parse(text)
+        if (!parsed.version || !parsed.exportedAt || !parsed.data) {
+          setImportError('Ugyldig fil. Dette ser ikke ut som en Min Økonomi-sikkerhetskopi.')
+          return
+        }
+        setPendingData(text)
+        setPendingMeta({ exportedAt: parsed.exportedAt })
+        setImportError(null)
+      } catch {
+        setImportError('Kunne ikke lese filen. Kontroller at det er en gyldig JSON-fil.')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  function handleConfirmImport() {
+    if (!pendingData) return
+    try {
+      const parsed = JSON.parse(pendingData)
+      store.importData(JSON.stringify(parsed.data))
+      setImportSuccess(true)
+      setPendingData(null)
+      setPendingMeta(null)
+      setTimeout(() => window.location.reload(), 1500)
+    } catch {
+      setImportError('Import feilet. Filen kan være skadet.')
+    }
+  }
+
+  const exportDateFormatted = pendingMeta
+    ? new Date(pendingMeta.exportedAt).toLocaleDateString('nb-NO', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      })
+    : null
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
+        Sikkerhetskopi
+      </h3>
+
+      <BackupReminderBanner onExport={handleExport} />
+
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+              Last ned sikkerhetskopi
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Lagre filen i Google Drive for tilgang fra alle enheter.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            ⚠️ PDF-slipper lagres ikke i sikkerhetskopien og må lastes opp på nytt på ny enhet.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild>
+              <span>
+                <Upload className="h-3.5 w-3.5 mr-1.5" />
+                Gjenopprett fra fil
+              </span>
+            </Button>
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+          </Label>
+        </div>
+      </div>
+
+      {importError && (
+        <p className="text-xs text-red-400">{importError}</p>
+      )}
+
+      {importSuccess && (
+        <p className="text-xs text-green-500">✅ Data gjenopprettet — laster inn på nytt...</p>
+      )}
+
+      {pendingData && pendingMeta && (
+        <div className="rounded-md border border-border bg-muted/40 p-4 space-y-3">
+          <p className="text-sm font-medium">Gjenopprett sikkerhetskopi?</p>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>Lagret: {exportDateFormatted}</p>
+            <p className="text-destructive">Dette overskriver all data.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => { setPendingData(null); setPendingMeta(null) }}>
+              Avbryt
+            </Button>
+            <Button variant="default" size="sm" onClick={handleConfirmImport}>
+              Gjenopprett
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-md border border-border bg-muted/20 p-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Smartphone className="h-4 w-4 text-muted-foreground" />
+          Bruke appen på en annen enhet?
+        </div>
+        <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+          <li>Last ned sikkerhetskopi på denne enheten</li>
+          <li>Last opp filen til Google Drive</li>
+          <li>Åpne appen på ny enhet</li>
+          <li>Gå til Innstillinger → Gjenopprett fra fil</li>
+          <li>Last ned filen fra Google Drive og velg den</li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// MIN ØKONOMI — Datastyring
+// ------------------------------------------------------------
+
+function EconomyDataSection() {
+  const { exportData, importData, resetAll } = useEconomyStore()
+  const [confirmReset, setConfirmReset] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const storageKey = 'min-okonomi-v1'
+  const storedData = localStorage.getItem(storageKey)
+  const storageKB = storedData ? Math.round(storedData.length / 1024 * 10) / 10 : 0
+
+  function handleExport() {
+    const json = exportData()
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `min-okonomi-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result
+      if (typeof text !== 'string') return
+      try {
+        importData(text)
+        setImportError(null)
+        e.target.value = ''
+      } catch {
+        setImportError('Ugyldig fil. Sørg for at du laster opp en gyldig Min Økonomi JSON-fil.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  function handleReset() {
+    if (!confirmReset) {
+      setConfirmReset(true)
+      return
+    }
+    resetAll()
+    setConfirmReset(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
+        Min Økonomi — Data
+      </h3>
+
+      <div className="text-xs text-muted-foreground">
+        Lagret i localStorage: <span className="font-mono">{storageKB} KB</span> under nøkkel{' '}
+        <code className="bg-muted px-1 rounded">{storageKey}</code>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={handleExport}>
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          Eksporter JSON
+        </Button>
+
+        <Label className="cursor-pointer">
+          <Button variant="outline" size="sm" asChild>
+            <span>
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Importer JSON
+            </span>
+          </Button>
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={handleImport}
+          />
+        </Label>
+
+        {confirmReset ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-400">Er du sikker? Alt slettes!</span>
+            <Button variant="destructive" size="sm" onClick={handleReset}>
+              Bekreft nullstilling
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>
+              Avbryt
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-400 hover:text-red-500 hover:border-red-400"
+            onClick={handleReset}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Nullstill all data
+          </Button>
+        )}
+      </div>
+
+      {importError && (
+        <p className="text-xs text-red-400">{importError}</p>
+      )}
     </div>
   )
 }
@@ -281,6 +600,14 @@ export function SettingsPanel() {
           Du har endret standardinnstillingene. Klikk «Tilbakestill» for å gå tilbake til norske standardverdier.
         </div>
       )}
+
+      <Separator />
+
+      <GoogleDriveBackupSection />
+
+      <Separator />
+
+      <EconomyDataSection />
     </div>
   )
 }

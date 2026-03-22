@@ -132,7 +132,6 @@ export function ScenarioComparison() {
   const pmtStress    = ready.map((a) => a.affordability.monthlyPaymentStress)
   const disposable   = ready.map((a) => a.affordability.disposableAmount)
   const maxPurchase  = ready.map((a) => a.maxPurchase.maxPurchasePrice)
-  const totalInterest = ready.map((a) => a.property.loanAmount) // placeholder, from amortization
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
