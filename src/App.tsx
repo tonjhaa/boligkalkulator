@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { MainNav } from '@/components/layout/MainNav'
 import { CalculatorPage } from '@/pages/CalculatorPage'
@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { LoginPage } from '@/pages/LoginPage'
+import { loadFromSupabase, startAutoSync } from '@/lib/syncEconomyData'
 
 // Lazy-load sider som ikke er kritisk for første innlasting
 const ScenarioComparison = lazy(() =>
@@ -62,15 +63,26 @@ function AppContent() {
 
 function App() {
   const { user, initialized, initialize } = useAuthStore()
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     initialize()
   }, [initialize])
 
-  if (!initialized) {
+  useEffect(() => {
+    if (!user) return
+
+    setSyncing(true)
+    loadFromSupabase().finally(() => setSyncing(false))
+
+    const stopSync = startAutoSync()
+    return stopSync
+  }, [user])
+
+  if (!initialized || syncing) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
-        Laster…
+        {syncing ? 'Laster data…' : 'Laster…'}
       </div>
     )
   }
