@@ -3,7 +3,7 @@ import { useEconomyStore } from '@/application/useEconomyStore'
 
 /**
  * Henter økonomidata fra Supabase og laster inn i storen.
- * PDF-blobs lagres ikke i Supabase (for store) — bare strukturdata.
+ * Hvis ingen data finnes i Supabase, lastes lokale data opp.
  */
 export async function loadFromSupabase(): Promise<boolean> {
   const { data, error } = await supabase
@@ -11,7 +11,14 @@ export async function loadFromSupabase(): Promise<boolean> {
     .select('economy_data')
     .single()
 
-  if (error || !data?.economy_data) return false
+  if (error || !data?.economy_data) {
+    // Ingen data i Supabase — last opp lokale data hvis de finnes
+    const state = useEconomyStore.getState()
+    if (state.profile || state.monthHistory.length > 0) {
+      await saveToSupabase()
+    }
+    return false
+  }
 
   useEconomyStore.getState().importData(JSON.stringify(data.economy_data))
   return true
