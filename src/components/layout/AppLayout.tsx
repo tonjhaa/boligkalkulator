@@ -12,6 +12,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const theme = useAppStore((s) => s.theme)
   const sidebarOpen = useAppStore((s) => s.sidebarOpen)
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen)
+  const currentView = useAppStore((s) => s.currentView)
+  const showSidebar = currentView === 'calculator'
 
   useEffect(() => {
     const root = document.documentElement
@@ -37,23 +39,25 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Header />
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar-overlay for mobil */}
-        {sidebarOpen && (
+        {showSidebar && sidebarOpen && (
           <div
             className="fixed inset-0 z-20 bg-black/50 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
 
-        {/* Sidebar */}
-        <div
-          className={cn(
-            'fixed lg:relative z-30 lg:z-auto h-full transition-transform duration-200',
-            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-            !sidebarOpen && 'lg:hidden'
-          )}
-        >
-          <Sidebar />
-        </div>
+        {/* Sidebar – kun synlig i Boligkalkulator-visningen */}
+        {showSidebar && (
+          <div
+            className={cn(
+              'fixed lg:relative z-30 lg:z-auto h-full transition-transform duration-200',
+              sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+              !sidebarOpen && 'lg:hidden'
+            )}
+          >
+            <Sidebar />
+          </div>
+        )}
 
         {/* Hovedinnhold */}
         <main className="flex-1 overflow-hidden">

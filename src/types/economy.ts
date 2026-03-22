@@ -287,6 +287,28 @@ export interface AbsenceRecord {
 
 export type AbsenceStatus = 'ok' | 'warning' | 'critical' | 'over'
 
+/** Individuell fraværshendelse med faktiske datoer (for eligibilitetssjekk) */
+export interface AbsenceEvent {
+  id: string
+  startDate: string             // "YYYY-MM-DD"
+  endDate: string               // "YYYY-MM-DD"
+  type: 'egenmelding' | 'sykmelding'
+  grade: number                 // 1–100, 100 = helt fravær
+  source: 'manual' | 'imported'
+  notat?: string
+}
+
+/** Resultat fra eligibilitetssjekken */
+export interface AbsenceEligibility {
+  canUse: boolean
+  earliest: string | null       // ISO-dato eller null
+  explain: string
+  kpiEgen12m: number            // egenmeldingsdager siste 12 mnd
+  kpiEgen16d: number            // egenmeldingsdager siste 16 kalenderdager
+  lastPeriodSickDays: number    // sykedager i siste sammenhengende periode
+  employerLeft: number          // dager igjen i arbeidsgiverperioden (av 16)
+}
+
 // ------------------------------------------------------------
 // SKATTEOPPGJØR
 // ------------------------------------------------------------

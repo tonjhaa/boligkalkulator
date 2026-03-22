@@ -9,6 +9,7 @@ import type {
   SavingsGoal,
   DebtAccount,
   AbsenceRecord,
+  AbsenceEvent,
   TaxSettlementRecord,
   SubscriptionEntry,
   InsuranceEntry,
@@ -47,6 +48,8 @@ interface EconomyState {
 
   // Fravær
   absenceRecords: AbsenceRecord[]
+  absenceEvents: AbsenceEvent[]
+  absenceHireDate: string | null    // "YYYY-MM-DD", for 2-månederskrav
 
   // Skatteoppgjør
   taxSettlements: TaxSettlementRecord[]
@@ -90,6 +93,10 @@ interface EconomyState {
   addAbsenceRecord: (record: AbsenceRecord) => void
   updateAbsenceRecord: (period: string, updates: Partial<AbsenceRecord>) => void
   removeAbsenceRecord: (period: string) => void
+
+  addAbsenceEvent: (event: AbsenceEvent) => void
+  removeAbsenceEvent: (id: string) => void
+  setAbsenceHireDate: (date: string | null) => void
 
   addTaxSettlement: (record: TaxSettlementRecord) => void
   updateTaxSettlement: (year: number, updates: Partial<TaxSettlementRecord>) => void
@@ -137,6 +144,8 @@ export const useEconomyStore = create<EconomyState>()(
       savingsGoals: [],
       debts: [],
       absenceRecords: [],
+      absenceEvents: [],
+      absenceHireDate: null,
       taxSettlements: [],
       subscriptions: [],
       insurances: [],
@@ -346,6 +355,14 @@ export const useEconomyStore = create<EconomyState>()(
       removeAbsenceRecord: (period) =>
         set((s) => ({ absenceRecords: s.absenceRecords.filter((r) => r.period !== period) })),
 
+      addAbsenceEvent: (event) =>
+        set((s) => ({
+          absenceEvents: [...s.absenceEvents.filter((e) => e.id !== event.id), event],
+        })),
+      removeAbsenceEvent: (id) =>
+        set((s) => ({ absenceEvents: s.absenceEvents.filter((e) => e.id !== id) })),
+      setAbsenceHireDate: (date) => set({ absenceHireDate: date }),
+
       // --- Skatteoppgjør ---
       addTaxSettlement: (record) =>
         set((s) => {
@@ -424,6 +441,8 @@ export const useEconomyStore = create<EconomyState>()(
             savingsGoals: data.savingsGoals ?? [],
             debts: data.debts ?? [],
             absenceRecords: data.absenceRecords ?? [],
+            absenceEvents: data.absenceEvents ?? [],
+            absenceHireDate: data.absenceHireDate ?? null,
             taxSettlements: data.taxSettlements ?? [],
             subscriptions: data.subscriptions ?? [],
             insurances: data.insurances ?? [],
@@ -444,6 +463,8 @@ export const useEconomyStore = create<EconomyState>()(
           savingsGoals: [],
           debts: [],
           absenceRecords: [],
+          absenceEvents: [],
+          absenceHireDate: null,
           taxSettlements: [],
           subscriptions: [],
           insurances: [],
@@ -463,6 +484,8 @@ export const useEconomyStore = create<EconomyState>()(
         savingsGoals: state.savingsGoals,
         debts: state.debts,
         absenceRecords: state.absenceRecords,
+        absenceEvents: state.absenceEvents,
+        absenceHireDate: state.absenceHireDate,
         taxSettlements: state.taxSettlements,
         subscriptions: state.subscriptions,
         insurances: state.insurances,

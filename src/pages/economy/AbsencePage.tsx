@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Info, Plus, Trash2, Upload } from 'lucide-react'
+import { Info, Plus, Trash2, Upload, CheckCircle2, XCircle } from 'lucide-react'
 import { parseAbsenceExcel } from '@/features/absence/absenceImporter'
 import { HelpTooltip } from '@/components/ui/help-tooltip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,14 +8,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import {
+  getDaysUsedFromEvents,
+  getAbsenceStatusFromEvents,
   getDaysUsedLast12Months,
   getAbsenceStatus,
   getStatusColor,
   getStatusLabel,
+  getRemainingQuotaFromEvents,
   getRemainingQuota,
+  evaluateEligibility,
 } from '@/domain/economy/absenceCalculator'
 import { EGENMELDING_KVOTE } from '@/config/economy.config'
-import type { AbsenceRecord } from '@/types/economy'
+import type { AbsenceEvent } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
 const MONTH_NAMES = [
@@ -23,11 +27,29 @@ const MONTH_NAMES = [
   'Juli', 'August', 'September', 'Oktober', 'November', 'Desember',
 ]
 
+function toLocalDateISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formatNO(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
+
 export function AbsencePage() {
-  const { absenceRecords, addAbsenceRecord, removeAbsenceRecord } = useEconomyStore()
+  const {
+    absenceRecords, addAbsenceRecord, removeAbsenceRecord,
+    absenceEvents, addAbsenceEvent, removeAbsenceEvent,
+    absenceHireDate, setAbsenceHireDate,
+  } = useEconomyStore()
+
   const [showAddForm, setShowAddForm] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
+  const [checkDateStr, setCheckDateStr] = useState(toLocalDateISO(new Date()))
+  const [hireDateStr, setHireDateStr] = useState(absenceHireDate ?? '')
+  const [isSickNow, setIsSickNow] = useState(false)
+  const [hasAAP, setHasAAP] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -36,10 +58,11 @@ export function AbsencePage() {
     setImporting(true)
     setImportMsg(null)
     try {
-      const { records, antallRader, ukjenteTyper } = await parseAbsenceExcel(file)
+      const { records, events, antallRader, ukjenteTyper } = await parseAbsenceExcel(file)
       records.forEach((r) => addAbsenceRecord(r))
+      events.forEach((ev) => addAbsenceEvent(ev))
       const ukjentTekst = ukjenteTyper.length > 0 ? ` (ukjente typer ignorert: ${ukjenteTyper.join(', ')})` : ''
-      setImportMsg({ type: 'ok', text: `Importerte ${records.length} måneder fra ${antallRader} rader.${ukjentTekst}` })
+      setImportMsg({ type: 'ok', text: `Importerte ${events.length} hendelser fra ${antallRader} rader.${ukjentTekst}` })
     } catch (err) {
       setImportMsg({ type: 'error', text: err instanceof Error ? err.message : 'Ukjent feil' })
     } finally {
@@ -48,25 +71,31 @@ export function AbsencePage() {
     }
   }
 
-  const now = new Date()
-  const daysUsed = getDaysUsedLast12Months(absenceRecords, now)
-  const status = getAbsenceStatus(absenceRecords, now)
-  const remaining = getRemainingQuota(absenceRecords, now)
+  function handleHireDateBlur() {
+    setAbsenceHireDate(hireDateStr || null)
+  }
 
-  const sorted = [...absenceRecords].sort((a, b) => b.period.localeCompare(a.period))
+  const now = new Date()
+  const useEvents = absenceEvents.length > 0
+  const daysUsed = useEvents ? getDaysUsedFromEvents(absenceEvents, now) : getDaysUsedLast12Months(absenceRecords, now)
+  const status = useEvents ? getAbsenceStatusFromEvents(absenceEvents, now) : getAbsenceStatus(absenceRecords, now)
+  const remaining = useEvents ? getRemainingQuotaFromEvents(absenceEvents, now) : getRemainingQuota(absenceRecords, now)
+
+  // Eligibility check
+  const checkDate = checkDateStr ? new Date(checkDateStr + 'T00:00:00Z') : new Date()
+  const hireDate = hireDateStr ? new Date(hireDateStr + 'T00:00:00Z') : null
+  const eligibility = useEvents ? evaluateEligibility(absenceEvents, checkDate, hireDate, isSickNow, hasAAP) : null
+
+  // Sort events descending
+  const sortedEvents = [...absenceEvents].sort((a, b) => b.startDate.localeCompare(a.startDate))
 
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Egenmelding og fravær</h2>
         <div className="flex gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx"
-            className="hidden"
-            onChange={handleImport}
-          />
+          <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} />
           <div className="flex items-center gap-1">
             <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importing}>
               <Upload className="h-4 w-4 mr-1" />
@@ -99,55 +128,153 @@ export function AbsencePage() {
               {daysUsed} / {EGENMELDING_KVOTE} dager
             </span>
           </div>
-
-          {/* Progress bar */}
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
-              className={cn(
-                'h-full rounded-full transition-all',
-                status === 'ok' ? 'bg-green-500' :
-                status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
+              className={cn('h-full rounded-full transition-all',
+                status === 'ok' ? 'bg-green-500' : status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
               )}
               style={{ width: `${Math.min(100, (daysUsed / EGENMELDING_KVOTE) * 100)}%` }}
             />
           </div>
-
           <div className="flex justify-between text-xs text-muted-foreground">
             <span className={getStatusColor(status)}>{getStatusLabel(status)}</span>
             <span>{remaining} dager igjen</span>
           </div>
-
-          {/* Forklaring */}
           <div className="flex gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
             <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             <div>
               <p className="font-medium text-foreground/80 mb-0.5">Forsvarets særavtale</p>
-              <p>24 egenmeldingsdager per 12 måneder (ikke 12 som AML).</p>
-              <p className="mt-0.5">Sykemelding teller IKKE mot egenmeldingskvoten.</p>
+              <p>24 egenmeldingsdager per 12 måneder. Sykemelding teller IKKE mot kvoten.</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Legg til skjema */}
+      {/* Eligibilitetssjekk */}
+      {useEvents && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Kan jeg bruke egenmelding?</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Dato å sjekke</Label>
+                <Input type="date" value={checkDateStr} onChange={(e) => setCheckDateStr(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Tilsettingsdato</Label>
+                <Input
+                  type="date"
+                  value={hireDateStr}
+                  onChange={(e) => setHireDateStr(e.target.value)}
+                  onBlur={handleHireDateBlur}
+                  placeholder="YYYY-MM-DD"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Toggle active={isSickNow} onToggle={setIsSickNow} label="Sykemeldt nå" />
+              <Toggle active={hasAAP} onToggle={setHasAAP} label="AAP / ufør" />
+            </div>
+
+            {eligibility && (
+              <>
+                {/* JA / NEI banner */}
+                <div className={cn('flex items-center gap-3 rounded-md px-4 py-3',
+                  eligibility.canUse ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
+                )}>
+                  {eligibility.canUse
+                    ? <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                    : <XCircle className="h-5 w-5 text-red-500 shrink-0" />
+                  }
+                  <div>
+                    <p className={cn('font-semibold text-sm', eligibility.canUse ? 'text-green-500' : 'text-red-500')}>
+                      {eligibility.canUse ? 'JA – egenmelding kan brukes' : 'NEI – egenmelding kan ikke brukes'}
+                    </p>
+                    {!eligibility.canUse && eligibility.earliest && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Tidligste dato: <span className="font-medium text-foreground">{formatNO(eligibility.earliest)}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground leading-relaxed">{eligibility.explain}</p>
+
+                {/* KPI-er */}
+                <div className="grid grid-cols-2 gap-2">
+                  <KpiBox label="Egenmelding siste 12 mnd" value={`${eligibility.kpiEgen12m} / ${EGENMELDING_KVOTE}`} />
+                  <KpiBox label="Egenmelding siste 16 dager" value={String(eligibility.kpiEgen16d)} warn={eligibility.kpiEgen16d >= 8} />
+                  <KpiBox label="Sykedager i siste periode" value={String(eligibility.lastPeriodSickDays)} warn={eligibility.lastPeriodSickDays >= 16} />
+                  <KpiBox label="Arbeidsgiverperiode igjen" value={`${eligibility.employerLeft} / 16`} warn={eligibility.employerLeft === 0} />
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Registrer skjema */}
       {showAddForm && (
-        <AddAbsenceForm
-          onSave={(r) => { addAbsenceRecord(r); setShowAddForm(false) }}
+        <AddAbsenceEventForm
+          onSave={(ev) => { addAbsenceEvent(ev); setShowAddForm(false) }}
           onCancel={() => setShowAddForm(false)}
         />
       )}
 
-      {/* Logg */}
-      {sorted.length === 0 && !showAddForm ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">Ingen fravær registrert.</p>
-          </CardContent>
-        </Card>
-      ) : (
+      {/* Hendelseslogg */}
+      {sortedEvents.length > 0 ? (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Fraværslogg</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border">
+                    <th className="text-left px-3 py-2 font-medium text-xs">Fra</th>
+                    <th className="text-left px-3 py-2 font-medium text-xs">Til</th>
+                    <th className="text-left px-3 py-2 font-medium text-xs">Type</th>
+                    <th className="text-right px-3 py-2 font-medium text-xs"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedEvents.map((ev) => (
+                    <tr key={ev.id} className="border-b border-border last:border-0">
+                      <td className="px-3 py-2 text-xs font-mono">{formatNO(ev.startDate)}</td>
+                      <td className="px-3 py-2 text-xs font-mono">{formatNO(ev.endDate)}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className={cn('px-1.5 py-0.5 rounded text-xs font-medium',
+                          ev.type === 'egenmelding'
+                            ? 'bg-yellow-500/15 text-yellow-400'
+                            : 'bg-muted text-muted-foreground'
+                        )}>
+                          {ev.type === 'egenmelding' ? 'Egenmelding' : 'Sykemelding'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          variant="ghost" size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
+                          onClick={() => removeAbsenceEvent(ev.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : absenceRecords.length > 0 ? (
+        // Fallback: vis gamle månedsposter dersom ingen events ennå
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Fraværslogg (månedsoversikt)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="rounded-md border border-border overflow-hidden">
@@ -161,33 +288,19 @@ export function AbsencePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r) => {
+                  {[...absenceRecords].sort((a, b) => b.period.localeCompare(a.period)).map((r) => {
                     const d = new Date(r.period)
-                    const monthLabel = `${MONTH_NAMES[d.getMonth() + 1]} ${d.getFullYear()}`
                     return (
                       <tr key={r.period} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2 text-xs">{monthLabel}</td>
+                        <td className="px-3 py-2 text-xs">{MONTH_NAMES[d.getMonth() + 1]} {d.getFullYear()}</td>
                         <td className="px-3 py-2 text-right font-mono text-xs">
-                          {r.selfCertDays > 0 ? (
-                            <span className="text-yellow-400">{r.selfCertDays} dager</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          {r.selfCertDays > 0 ? <span className="text-yellow-400">{r.selfCertDays} dager</span> : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-3 py-2 text-right font-mono text-xs">
-                          {r.sickLeaveDays > 0 ? (
-                            <span className="text-muted-foreground">{r.sickLeaveDays} dager</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
+                          {r.sickLeaveDays > 0 ? <span className="text-muted-foreground">{r.sickLeaveDays} dager</span> : <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
-                            onClick={() => removeAbsenceRecord(r.period)}
-                          >
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400" onClick={() => removeAbsenceRecord(r.period)}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </td>
@@ -199,29 +312,60 @@ export function AbsencePage() {
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : !showAddForm ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <p className="text-sm text-muted-foreground">Ingen fravær registrert.</p>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   )
 }
 
-// ------------------------------------------------------------
-// SKJEMA
-// ------------------------------------------------------------
-
-function AddAbsenceForm({
-  onSave,
-  onCancel,
-}: {
-  onSave: (r: AbsenceRecord) => void
-  onCancel: () => void
-}) {
-  const now = new Date()
-  const [period, setPeriod] = useState(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+function Toggle({ active, onToggle, label }: { active: boolean; onToggle: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      onClick={() => onToggle(!active)}
+      className={cn(
+        'flex-1 py-1.5 text-xs rounded border transition-colors',
+        active
+          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
+          : 'bg-muted text-muted-foreground border-border hover:text-foreground'
+      )}
+    >
+      {label}
+    </button>
   )
-  const [selfCertDays, setSelfCertDays] = useState(0)
-  const [sickLeaveDays, setSickLeaveDays] = useState(0)
+}
+
+function KpiBox({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div className="bg-muted/40 rounded-md px-3 py-2">
+      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+      <p className={cn('text-sm font-semibold', warn ? 'text-red-400' : 'text-foreground')}>{value}</p>
+    </div>
+  )
+}
+
+// -------------------------------------------------------
+// SKJEMA for å legge til en fraværshendelse
+// -------------------------------------------------------
+
+function AddAbsenceEventForm({ onSave, onCancel }: { onSave: (ev: AbsenceEvent) => void; onCancel: () => void }) {
+  const now = new Date()
+  const todayISO = toLocalDateISO(now)
+  const [startDate, setStartDate] = useState(todayISO)
+  const [endDate, setEndDate] = useState(todayISO)
+  const [type, setType] = useState<'egenmelding' | 'sykmelding'>('egenmelding')
   const [notat, setNotat] = useState('')
+
+  function handleSave() {
+    if (!startDate || !endDate) return
+    if (endDate < startDate) return
+    const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    onSave({ id, startDate, endDate, type, grade: 100, source: 'manual', notat: notat.trim() || undefined })
+  }
 
   return (
     <Card>
@@ -230,28 +374,31 @@ function AddAbsenceForm({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Startdato</Label>
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Sluttdato</Label>
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
           <div className="col-span-2 space-y-1">
-            <Label className="text-xs">Måned (velg første dag)</Label>
-            <Input type="date" value={period} onChange={(e) => setPeriod(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Egenmeldingsdager</Label>
-            <Input
-              type="number"
-              min={0}
-              max={24}
-              value={selfCertDays}
-              onChange={(e) => setSelfCertDays(parseInt(e.target.value) || 0)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Sykemeldingsdager</Label>
-            <Input
-              type="number"
-              min={0}
-              value={sickLeaveDays}
-              onChange={(e) => setSickLeaveDays(parseInt(e.target.value) || 0)}
-            />
+            <Label className="text-xs">Fraværstype</Label>
+            <div className="flex gap-2">
+              {(['egenmelding', 'sykmelding'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setType(t)}
+                  className={cn('flex-1 py-1.5 text-xs rounded border transition-colors',
+                    type === t
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted text-muted-foreground border-border hover:text-foreground'
+                  )}
+                >
+                  {t === 'egenmelding' ? 'Egenmelding' : 'Sykemelding'}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="col-span-2 space-y-1">
             <Label className="text-xs">Notat (valgfritt)</Label>
@@ -260,17 +407,7 @@ function AddAbsenceForm({
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
-          <Button
-            size="sm"
-            onClick={() =>
-              onSave({
-                period,
-                selfCertDays,
-                sickLeaveDays,
-                notat: notat.trim() || undefined,
-              })
-            }
-          >
+          <Button size="sm" onClick={handleSave} disabled={!startDate || !endDate || endDate < startDate}>
             Lagre
           </Button>
         </div>

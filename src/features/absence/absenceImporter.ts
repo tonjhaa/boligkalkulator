@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { AbsenceRecord } from '@/types/economy'
+import type { AbsenceRecord, AbsenceEvent } from '@/types/economy'
 
 // SAP-artskoder fra Forsvaret
 const EGENMELDING_KODER = ['0120']
@@ -31,6 +31,7 @@ function parseKode(tekst: string): string {
 
 export interface AbsenceImportResult {
   records: AbsenceRecord[]
+  events: AbsenceEvent[]
   antallRader: number
   ukjenteTyper: string[]
 }
@@ -80,9 +81,10 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
           throw new Error(`Filen mangler kolonner: ${missing.join(', ')}`)
         }
 
-        // Aggreger per måned
+        // Aggreger per måned + bygg individuelle hendelser
         const monthMap = new Map<string, { selfCert: number; sickLeave: number }>()
         const ukjenteTyper = new Set<string>()
+        const events: AbsenceEvent[] = []
         let antallRader = 0
 
         for (const row of rows.slice(1)) {
@@ -102,10 +104,16 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
           }
           const entry = monthMap.get(period)!
 
+          const endDate = new Date(startDate)
+          endDate.setUTCDate(endDate.getUTCDate() + fravDager - 1)
+          const toISODate = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+
           if (EGENMELDING_KODER.includes(kode)) {
             entry.selfCert += fravDager
+            events.push({ id: `sap-${startSerial}-${kode}`, startDate: toISODate(startDate), endDate: toISODate(endDate), type: 'egenmelding', grade: 100, source: 'imported' })
           } else if (SYKEMELDING_KODER.includes(kode)) {
             entry.sickLeave += fravDager
+            events.push({ id: `sap-${startSerial}-${kode}`, startDate: toISODate(startDate), endDate: toISODate(endDate), type: 'sykmelding', grade: 100, source: 'imported' })
           } else {
             ukjenteTyper.add(`${kode} ${tekst.split(' ').slice(1).join(' ')}`)
           }
@@ -119,7 +127,7 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
           })
         )
 
-        resolve({ records, antallRader, ukjenteTyper: [...ukjenteTyper] })
+        resolve({ records, events, antallRader, ukjenteTyper: [...ukjenteTyper] })
       } catch (err) {
         reject(err)
       }

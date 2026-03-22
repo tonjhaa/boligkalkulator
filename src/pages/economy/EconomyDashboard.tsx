@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { calculateGoalProgress } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
-import { getDaysUsedLast12Months, getAbsenceStatus, getStatusColor } from '@/domain/economy/absenceCalculator'
+import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import {
   forecastAllJunes,
@@ -49,6 +49,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     debts,
     atfEntries,
     absenceRecords,
+    absenceEvents,
     taxSettlements,
     budgetTemplate,
     profile,
@@ -84,8 +85,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const atfSum = sumATFByYear(atfEntries, currentYear)
   const yearATF = atfEntries.filter((e) => e.year === currentYear)
 
-  const absenceDays = getDaysUsedLast12Months(absenceRecords)
-  const absenceStatus = getAbsenceStatus(absenceRecords)
+  const absenceDays = absenceEvents.length > 0 ? getDaysUsedFromEvents(absenceEvents) : getDaysUsedLast12Months(absenceRecords)
+  const absenceStatus = absenceEvents.length > 0 ? getAbsenceStatusFromEvents(absenceEvents) : getAbsenceStatus(absenceRecords)
 
   const taxAnalysis = analyzeTaxSettlements(taxSettlements, profile?.extraTaxWithholding ?? 0)
 
