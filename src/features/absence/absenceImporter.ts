@@ -55,13 +55,29 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 }) as unknown[][]
 
         // Finn header-rad (rad 0)
-        const header = rows[0] as string[]
-        const expectedCols = ['Tekst frav.type', 'Startdato', 'Sluttdato', 'Frav.dager']
-        const missingCols = expectedCols.filter(
-          (col) => !header.some((h) => String(h).includes(col.split(' ')[0]))
-        )
-        if (missingCols.length > 0) {
-          throw new Error(`Filen mangler kolonner: ${missingCols.join(', ')}`)
+        const header = (rows[0] as unknown[]).map((h) => String(h ?? '').trim())
+
+        // Finn kolonneindekser dynamisk etter navn
+        const colIdx = (candidates: string[]): number => {
+          for (const name of candidates) {
+            const idx = header.findIndex((h) => h.toLowerCase().includes(name.toLowerCase()))
+            if (idx !== -1) return idx
+          }
+          return -1
+        }
+
+        const idxType  = colIdx(['Tekst frav', 'frav.type', 'fraværstype', 'absence type'])
+        const idxStart = colIdx(['Startdato', 'start date', 'fra dato'])
+        const idxDager = colIdx(['Frav.dager', 'fraværsdager', 'absence days', 'dager'])
+
+        const missing = [
+          idxType  === -1 && 'Tekst frav.type',
+          idxStart === -1 && 'Startdato',
+          idxDager === -1 && 'Frav.dager',
+        ].filter(Boolean)
+
+        if (missing.length > 0) {
+          throw new Error(`Filen mangler kolonner: ${missing.join(', ')}`)
         }
 
         // Aggreger per måned
@@ -70,9 +86,9 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
         let antallRader = 0
 
         for (const row of rows.slice(1)) {
-          const tekst = String(row[0] ?? '').trim()
-          const startSerial = row[1] as number
-          const fravDager = Number(row[4] ?? 0)
+          const tekst = String(row[idxType] ?? '').trim()
+          const startSerial = row[idxStart] as number
+          const fravDager = Number(row[idxDager] ?? 0)
 
           if (!tekst || !startSerial || fravDager <= 0) continue
           antallRader++
