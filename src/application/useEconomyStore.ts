@@ -233,6 +233,11 @@ export const useEconomyStore = create<EconomyState>()(
             updatedProfile = { ...updatedProfile, lastKnownTableTaxPercent: Math.round(pct * 100) / 100 }
           }
 
+          // Lagre tabellnummer fra slippen
+          if (updatedProfile && slip.tabellnummer) {
+            updatedProfile = { ...updatedProfile, tabellnummer: slip.tabellnummer }
+          }
+
           // Merge ATF-satser fra slippen inn i profilen (behold siste kjente per artskode)
           if (slip.atfRater && updatedProfile) {
             const slipDato = `${slip.periode.year}-${String(slip.periode.month).padStart(2, '0')}`

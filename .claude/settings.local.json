@@ -6,7 +6,11 @@
       "Bash(npm install:*)",
       "Bash(npm test:*)",
       "Bash(npm run:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/tonjhaa/trekktabeller-2026/main/trekktabeller_2026_del_1.json\" | head -30)"
     ]
   }
 }

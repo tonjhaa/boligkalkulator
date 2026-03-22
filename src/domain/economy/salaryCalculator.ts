@@ -136,9 +136,19 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
   const maanedslonn = Math.abs(getPost('1S01')?.lastAmount ?? getPost('1001')?.lastAmount ?? 0)
 
   // /440 separat: satsAmount = grunnlag (f.eks. 61 278), lastAmount = tabelltrekk (f.eks. -18 478)
+  // Tabellnummer (f.eks. 8010) er et 4-sifret tall mellom grunnlag og trekk på /440-linjen
   const post440 = getPost('/440')
   const tabelltrekkGrunnlag = post440 ? Math.abs(post440.satsAmount) : 0
   const tabelltrekkBelop = post440 ? Math.abs(post440.lastAmount) : 0
+
+  let tabellnummer: number | undefined
+  if (post440) {
+    const line440 = lines.find((l) => l.match(/^\/440\s+/))
+    if (line440) {
+      const tabellMatch = line440.match(/\b([4-9]\d{3})\b/)
+      if (tabellMatch) tabellnummer = parseInt(tabellMatch[1], 10)
+    }
+  }
 
   // Sum /440 + /441: april-slipp o.l. kan ha begge (tabelltrekk + %-trekk)
   const skattetrekk = tabelltrekkBelop + Math.abs(getPost('/441')?.lastAmount ?? 0)
@@ -305,6 +315,7 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
     atfRater,
     tabelltrekkGrunnlag,
     tabelltrekkBelop,
+    tabellnummer,
   }
 }
 

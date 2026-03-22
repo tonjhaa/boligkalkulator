@@ -74,6 +74,8 @@ export interface ParsetLonnsslipp {
   tabelltrekkGrunnlag: number
   /** /440-trekk beløp (positivt tall, f.eks. 18 478 kr) */
   tabelltrekkBelop: number
+  /** Trekktabellnummer fra /440-linjen (f.eks. 8010) */
+  tabellnummer?: number
 }
 
 /** Siste kjente ATF-sats fra importert slipp, for én artskode */
@@ -105,6 +107,8 @@ export interface EmploymentProfile {
    * Brukes til ATF-skatteestimering: ATF-brutto × denne prosenten.
    */
   lastKnownTableTaxPercent?: number
+  /** Trekktabellnummer fra siste importerte slipp (f.eks. 8010) */
+  tabellnummer?: number
 }
 
 // ------------------------------------------------------------

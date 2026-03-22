@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, FileText, ExternalLink } from 'lucide-react'
+import { AlertTriangle, FileText, ExternalLink, Table2 } from 'lucide-react'
+import { slaaOppTrekk } from '@/utils/trekktabellLookup'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,6 +35,70 @@ function getLocalStorageKB(): number {
   } catch {
     return 0
   }
+}
+
+function TrekktabellKort({
+  tabellnummer,
+  grunnlag,
+  faktiskTrekk,
+}: {
+  tabellnummer: number
+  grunnlag: number
+  faktiskTrekk: number
+}) {
+  const [estimert, setEstimert] = useState<number | null>(null)
+  const [laster, setLaster] = useState(true)
+  const [feil, setFeil] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLaster(true)
+    setFeil(null)
+    slaaOppTrekk(tabellnummer, grunnlag, 1)
+      .then((trekk) => {
+        setEstimert(trekk)
+        setLaster(false)
+      })
+      .catch(() => {
+        setFeil('Kunne ikke hente trekktabell')
+        setLaster(false)
+      })
+  }, [tabellnummer, grunnlag])
+
+  const differanse = estimert !== null ? faktiskTrekk - estimert : null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Table2 className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Trekktabell {tabellnummer}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {laster ? (
+          <p className="text-sm text-muted-foreground">Henter trekktabell…</p>
+        ) : feil ? (
+          <p className="text-sm text-destructive">{feil}</p>
+        ) : (
+          <div className="space-y-2 text-sm">
+            <InfoRow label="Grunnlag (grunnlønn)" value={fmtNOK(grunnlag)} />
+            <InfoRow label="Estimert trekk (tabell)" value={estimert !== null ? fmtNOK(estimert) : '—'} />
+            <InfoRow label="Faktisk trekk (siste slipp)" value={fmtNOK(faktiskTrekk)} />
+            {differanse !== null && Math.abs(differanse) > 10 && (
+              <div className={`text-xs mt-1 ${differanse > 0 ? 'text-orange-500' : 'text-green-600'}`}>
+                {differanse > 0
+                  ? `Trekkes ${fmtNOK(differanse)} mer enn tabellen tilsier`
+                  : `Trekkes ${fmtNOK(Math.abs(differanse))} mindre enn tabellen tilsier`}
+              </div>
+            )}
+            {differanse !== null && Math.abs(differanse) <= 10 && (
+              <div className="text-xs text-green-600">Stemmer med trekktabellen</div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 export function SalaryPage() {
@@ -108,6 +173,9 @@ export function SalaryPage() {
               <InfoRow label="Lønnstrinn" value={String(profile.salaryGrade)} />
               <InfoRow label="Grunnlønn/mnd" value={fmtNOK(profile.baseMonthly)} />
               <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
+              {profile.tabellnummer && (
+                <InfoRow label="Trekktabell" value={String(profile.tabellnummer)} />
+              )}
               {profile.extraTaxWithholding > 0 && (
                 <InfoRow label="Ekstra trekk/mnd" value={fmtNOK(profile.extraTaxWithholding)} />
               )}
@@ -120,6 +188,15 @@ export function SalaryPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Trekktabell-estimat */}
+      {profile?.tabellnummer && (
+        <TrekktabellKort
+          tabellnummer={profile.tabellnummer}
+          grunnlag={profile.baseMonthly}
+          faktiskTrekk={profile.lastKnownTaxWithholding}
+        />
+      )}
 
       {/* Last opp slipp */}
       <Card>
