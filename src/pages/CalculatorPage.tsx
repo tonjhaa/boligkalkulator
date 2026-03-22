@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { useNewScenario } from '@/hooks/useNewScenario'
 import { useAllCalculations } from '@/hooks/useCalculator'
@@ -6,8 +6,44 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { ScenarioFormPanel } from '@/components/calculator/ScenarioFormPanel'
 import { ResultsPanel } from '@/components/calculator/ResultsPanel'
 import { Button } from '@/components/ui/button'
-import { Plus, Calculator, FileInput, BarChart2 } from 'lucide-react'
+import { Plus, Calculator, FileInput, BarChart2, BarChart3, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+const ScenarioComparison = lazy(() =>
+  import('@/components/scenarios/ScenarioComparison').then((m) => ({ default: m.ScenarioComparison }))
+)
+const SettingsPanel = lazy(() =>
+  import('@/components/settings/SettingsPanel').then((m) => ({ default: m.SettingsPanel }))
+)
+
+type CalcTab = 'kalkulator' | 'sammenligning' | 'innstillinger'
+
+function CalcSubNav({ tab, setTab }: { tab: CalcTab; setTab: (t: CalcTab) => void }) {
+  const items: { id: CalcTab; label: string; Icon: React.FC<{ className?: string }> }[] = [
+    { id: 'kalkulator',    label: 'Kalkulator',    Icon: Calculator },
+    { id: 'sammenligning', label: 'Sammenligning', Icon: BarChart3 },
+    { id: 'innstillinger', label: 'Innstillinger', Icon: Settings },
+  ]
+  return (
+    <div className="flex border-b border-border shrink-0 bg-card px-2">
+      {items.map(({ id, label, Icon }) => (
+        <button
+          key={id}
+          onClick={() => setTab(id)}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors',
+            tab === id
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function EmptyState() {
   const { createScenario } = useNewScenario()
@@ -99,6 +135,7 @@ export function CalculatorPage() {
   const setActive = useAppStore((s) => s.setActiveScenario)
   const { createScenario } = useNewScenario()
   const isMobile = useIsMobile()
+  const [tab, setTab] = useState<CalcTab>('kalkulator')
 
   useAllCalculations()
 
@@ -108,30 +145,48 @@ export function CalculatorPage() {
     if (!activeId && scenarios.length > 0) setActive(scenarios[0].id)
   }, [activeId, scenarios, setActive])
 
-  if (scenarios.length === 0) return <EmptyState />
-
-  if (!activeScenario) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <Button onClick={createScenario} variant="outline" className="gap-2">
-          <Plus className="h-4 w-4" />
-          Velg eller opprett et scenario
-        </Button>
-      </div>
-    )
-  }
-
-  if (isMobile) {
-    return <MobileLayout scenarioId={activeScenario.id} />
-  }
-
   return (
-    <div className="flex h-full overflow-hidden">
-      <div className="w-[380px] shrink-0 border-r border-border overflow-hidden flex flex-col">
-        <ScenarioFormPanel scenario={activeScenario} />
-      </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      <CalcSubNav tab={tab} setTab={setTab} />
+
       <div className="flex-1 overflow-hidden">
-        <ResultsPanel scenarioId={activeScenario.id} />
+        {tab === 'sammenligning' && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Laster…</div>}>
+            <ScenarioComparison />
+          </Suspense>
+        )}
+
+        {tab === 'innstillinger' && (
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Laster…</div>}>
+            <SettingsPanel />
+          </Suspense>
+        )}
+
+        {tab === 'kalkulator' && (
+          <>
+            {scenarios.length === 0 ? (
+              <EmptyState />
+            ) : !activeScenario ? (
+              <div className="flex items-center justify-center h-full">
+                <Button onClick={createScenario} variant="outline" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Velg eller opprett et scenario
+                </Button>
+              </div>
+            ) : isMobile ? (
+              <MobileLayout scenarioId={activeScenario.id} />
+            ) : (
+              <div className="flex h-full overflow-hidden">
+                <div className="w-[380px] shrink-0 border-r border-border overflow-hidden flex flex-col">
+                  <ScenarioFormPanel scenario={activeScenario} />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ResultsPanel scenarioId={activeScenario.id} />
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

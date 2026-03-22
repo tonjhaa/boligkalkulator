@@ -8,17 +8,6 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { LoginPage } from '@/pages/LoginPage'
 import { loadFromSupabase, startAutoSync } from '@/lib/syncEconomyData'
 
-// Lazy-load sider som ikke er kritisk for første innlasting
-const ScenarioComparison = lazy(() =>
-  import('@/components/scenarios/ScenarioComparison').then((m) => ({
-    default: m.ScenarioComparison,
-  }))
-)
-const SettingsPanel = lazy(() =>
-  import('@/components/settings/SettingsPanel').then((m) => ({
-    default: m.SettingsPanel,
-  }))
-)
 const EconomyPage = lazy(() =>
   import('@/pages/economy/EconomyPage').then((m) => ({
     default: m.EconomyPage,
@@ -41,16 +30,6 @@ function AppContent() {
       <MainNav />
       <div className="flex-1 overflow-hidden">
         {currentView === 'calculator' && <CalculatorPage />}
-        {currentView === 'comparison' && (
-          <Suspense fallback={<PageFallback />}>
-            <ScenarioComparison />
-          </Suspense>
-        )}
-        {currentView === 'settings' && (
-          <Suspense fallback={<PageFallback />}>
-            <SettingsPanel />
-          </Suspense>
-        )}
         {currentView === 'economy' && (
           <Suspense fallback={<PageFallback />}>
             <EconomyPage />

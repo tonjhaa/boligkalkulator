@@ -1,12 +1,10 @@
-import { Calculator, BarChart3, Settings, Wallet } from 'lucide-react'
+import { Calculator, Wallet } from 'lucide-react'
 import { useAppStore, type AppView } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS: { view: AppView; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { view: 'economy',    label: 'Dashboard',       Icon: Wallet },
   { view: 'calculator', label: 'Boligkalkulator', Icon: Calculator },
-  { view: 'comparison', label: 'Sammenligning',   Icon: BarChart3 },
-  { view: 'settings',   label: 'Innstillinger',   Icon: Settings },
 ]
 
 export function MainNav() {
