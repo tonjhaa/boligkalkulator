@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
-import { calculateHolidayPay } from '@/domain/economy/salaryCalculator'
+
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import type { EmploymentProfile, MonthRecord, TaxSettlementRecord } from '@/types/economy'
 
@@ -81,7 +81,7 @@ function TrekktabellKort({
           <p className="text-sm text-destructive">{feil}</p>
         ) : (
           <div className="space-y-2 text-sm">
-            <InfoRow label="Grunnlag (grunnlønn)" value={fmtNOK(grunnlag)} />
+            <InfoRow label="Grunnlag (lønn + tillegg)" value={fmtNOK(grunnlag)} />
             <InfoRow label="Estimert trekk (tabell)" value={estimert !== null ? fmtNOK(estimert) : '—'} />
             <InfoRow label="Faktisk trekk (siste slipp)" value={fmtNOK(faktiskTrekk)} />
             {differanse !== null && Math.abs(differanse) > 10 && (
@@ -129,10 +129,6 @@ export function SalaryPage() {
     .filter((m) => m.source === 'imported_slip')
     .sort((a, b) => b.year - a.year || b.month - a.month)
 
-  const holidayPay = profile
-    ? calculateHolidayPay(profile.baseMonthly * 12, profile.baseMonthly * 12)
-    : null
-
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <h2 className="font-semibold">Lønn og skatt</h2>
@@ -170,7 +166,6 @@ export function SalaryPage() {
           ) : profile ? (
             <div className="space-y-2 text-sm">
               <InfoRow label="Arbeidsgiver" value={profile.employer === 'forsvaret' ? 'Forsvaret' : 'Annen'} />
-              <InfoRow label="Lønnstrinn" value={String(profile.salaryGrade)} />
               <InfoRow label="Grunnlønn/mnd" value={fmtNOK(profile.baseMonthly)} />
               <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
               {profile.tabellnummer && (
@@ -193,7 +188,7 @@ export function SalaryPage() {
       {profile?.tabellnummer && (
         <TrekktabellKort
           tabellnummer={profile.tabellnummer}
-          grunnlag={profile.baseMonthly}
+          grunnlag={profile.baseMonthly + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)}
           faktiskTrekk={profile.lastKnownTaxWithholding}
         />
       )}
@@ -207,23 +202,6 @@ export function SalaryPage() {
           <PayslipImporter />
         </CardContent>
       </Card>
-
-      {/* Feriepenge-kalkulator */}
-      {holidayPay && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Feriepenger (juni-estimat)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <InfoRow label="Feriepenger (12% av årsgrunnlag)" value={fmtNOK(holidayPay.holidayPay)} />
-            <InfoRow label="Ferietrekk (25 virkedager)" value={`-${fmtNOK(holidayPay.holidayLeaveDeduction)}`} />
-            <div className="flex justify-between font-medium border-t border-border pt-2">
-              <span>Estimert netto juni</span>
-              <span className="font-mono text-green-500">{fmtNOK(holidayPay.netJune)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Skatteoppgjør-historikk */}
       <Card>
@@ -341,7 +319,7 @@ export function SalaryPage() {
               </div>
             )}
             <div className="space-y-1">
-                  {importedSlips.slice(0, 24).map((m) => {
+                  {importedSlips.map((m) => {
                     // Bruk slipData.nettoUtbetalt som kilde til sannhet (fikser stale records)
                     const netto = m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt
                     const brutto = m.slipData?.bruttoSum ?? 0
@@ -411,7 +389,6 @@ function ProfileForm({
 }) {
   const [form, setForm] = useState<EmploymentProfile>({
     employer: 'forsvaret',
-    salaryGrade: 0,
     baseMonthly: 0,
     fixedAdditions: [],
     lastKnownTaxWithholding: 0,
@@ -434,10 +411,6 @@ function ProfileForm({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Lønnstrinn</Label>
-          <Input type="number" {...field('salaryGrade')} />
-        </div>
         <div className="space-y-1">
           <Label className="text-xs">Grunnlønn/mnd</Label>
           <Input type="number" {...field('baseMonthly')} />

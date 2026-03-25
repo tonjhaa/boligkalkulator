@@ -247,8 +247,9 @@ function GoogleDriveBackupSection() {
 // ------------------------------------------------------------
 
 function EconomyDataSection() {
-  const { exportData, importData, resetAll } = useEconomyStore()
+  const { exportData, importData, resetAll, clearAllSlips } = useEconomyStore()
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmClearSlips, setConfirmClearSlips] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
 
   const storageKey = 'min-okonomi-v1'
@@ -324,6 +325,28 @@ function EconomyDataSection() {
             onChange={handleImport}
           />
         </Label>
+
+        {confirmClearSlips ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-400">Alle importerte slipper slettes!</span>
+            <Button variant="destructive" size="sm" onClick={() => { clearAllSlips(); setConfirmClearSlips(false) }}>
+              Bekreft
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmClearSlips(false)}>
+              Avbryt
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-400 hover:text-red-500 hover:border-red-400"
+            onClick={() => setConfirmClearSlips(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Slett alle slipper
+          </Button>
+        )}
 
         {confirmReset ? (
           <div className="flex items-center gap-2">

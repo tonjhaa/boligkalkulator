@@ -111,12 +111,22 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
 
   // ---- ATF-satser: ekstraher sats-kolonnen for øvelse-artskoder ----
   // Ta MAKSIMUM sats per artskode (des-slipper kan ha gammel+ny sats etter lønnsoppgjør)
+  //
+  // TIMER-artskoder (2236/2237/2238/2242/2243/2244):
+  //   Format: "KODE beskr. SATS ANTALL_t BELØP" → satsAmount = amounts[0] = sats ✓
+  // DÖGN-artskoder (2230/2232/2233):
+  //   Format: "KODE beskr. ANTALL,00 SATS BELØP" → satsAmount = amounts[0] = antall ✗
+  //   Riktig sats beregnes som: beløp / antall = lastAmount / satsAmount
   const ATF_ARTSKODER = new Set(['2230', '2232', '2233', '2236', '2237', '2238', '2242', '2243', '2244'])
+  const ATF_DÖGN = new Set(['2230', '2232', '2233'])
   const atfRaterMap = new Map<string, number>()
   for (const l of artskodeLinjer) {
-    if (!ATF_ARTSKODER.has(l.kode) || l.satsAmount <= 0) continue
+    if (!ATF_ARTSKODER.has(l.kode) || l.satsAmount <= 0 || l.lastAmount === 0) continue
+    const sats = ATF_DÖGN.has(l.kode)
+      ? l.lastAmount / l.satsAmount   // beløp / antall = sats per døgn
+      : l.satsAmount                  // timer: satsAmount er allerede satsen
     const prev = atfRaterMap.get(l.kode) ?? 0
-    if (l.satsAmount > prev) atfRaterMap.set(l.kode, l.satsAmount)
+    if (sats > prev) atfRaterMap.set(l.kode, sats)
   }
   const atfRater: Record<string, number> | undefined =
     atfRaterMap.size > 0 ? Object.fromEntries(atfRaterMap) : undefined
@@ -415,4 +425,84 @@ export function forecastMonths(
 
 export function artskodeLabel(kode: string): string {
   return ARTSKODE_NAVN[kode] ?? kode
+}
+
+// ------------------------------------------------------------
+// LØNNSUTVIKLING — trendestimering og fremskriving
+// ------------------------------------------------------------
+
+export interface SalaryTrend {
+  /** Estimert årlig lønnsøkning som desimal, f.eks. 0.042 = 4.2%. null = for lite data. */
+  annualGrowthRate: number | null
+  /** Antall datapunkter (importerte slipper med lønn) */
+  dataPoints: number
+  /** Grunnlaget: siste importerte månedssats */
+  latestMonthly: number
+  /** Siste slipps år/måned */
+  latestPeriod: { year: number; month: number } | null
+}
+
+/**
+ * Estimerer årlig lønnsøkning fra historiske lønnsslipper.
+ * Krever minst 3 måneder mellom første og siste slipp.
+ * Returnerer null som vekst hvis datagrunnlaget er for tynt.
+ */
+export function estimateSalaryTrend(monthHistory: MonthRecord[]): SalaryTrend {
+  const points = monthHistory
+    .filter((m) => (m.slipData?.maanedslonn ?? 0) > 0)
+    .map((m) => ({ year: m.year, month: m.month, salary: m.slipData!.maanedslonn }))
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+
+  if (points.length === 0) {
+    return { annualGrowthRate: null, dataPoints: 0, latestMonthly: 0, latestPeriod: null }
+  }
+
+  const latest = points[points.length - 1]
+
+  if (points.length < 2) {
+    return { annualGrowthRate: null, dataPoints: 1, latestMonthly: latest.salary, latestPeriod: { year: latest.year, month: latest.month } }
+  }
+
+  const oldest = points[0]
+  const monthsDiff = (latest.year - oldest.year) * 12 + (latest.month - oldest.month)
+
+  if (monthsDiff < 3 || oldest.salary <= 0) {
+    return { annualGrowthRate: null, dataPoints: points.length, latestMonthly: latest.salary, latestPeriod: { year: latest.year, month: latest.month } }
+  }
+
+  const raw = Math.pow(latest.salary / oldest.salary, 12 / monthsDiff) - 1
+  const annualGrowthRate = Math.max(0, Math.min(0.20, raw))
+
+  return { annualGrowthRate, dataPoints: points.length, latestMonthly: latest.salary, latestPeriod: { year: latest.year, month: latest.month } }
+}
+
+/**
+ * Fremskriver månedssats fra siste kjente punkt til en fremtidig periode.
+ *
+ * Modell: statlig lønnsoppgjør gjelder fra 1. mai hvert år (trappetrinn).
+ * Lønn er flat jan–apr, hopper i mai, flat mai–des — ikke jevn månedsvekst.
+ *
+ * «mai-år» = det siste mai-tidspunktet som er passert eller er i gjeldende måned.
+ * Antall hopp = antall mai-til-mai intervaller mellom siste kjente slipp og målmåned.
+ */
+export function projectMonthlySalary(
+  trend: SalaryTrend,
+  targetYear: number,
+  targetMonth: number,
+): number {
+  if (!trend.latestPeriod || trend.latestMonthly <= 0) return 0
+
+  // «mai-år» for siste kjente slipp: hvis slippen er mai–des reflekterer den allerede årets oppgjør
+  const latestMayYear = trend.latestPeriod.month >= 5
+    ? trend.latestPeriod.year
+    : trend.latestPeriod.year - 1
+
+  // «mai-år» for målmåneden
+  const targetMayYear = targetMonth >= 5 ? targetYear : targetYear - 1
+
+  const steps = Math.max(0, targetMayYear - latestMayYear)
+  if (steps === 0) return trend.latestMonthly
+
+  const rate = trend.annualGrowthRate ?? 0
+  return Math.round(trend.latestMonthly * Math.pow(1 + rate, steps))
 }

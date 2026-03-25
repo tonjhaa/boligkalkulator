@@ -10,6 +10,7 @@ import {
   Clipboard,
   FileText,
   RefreshCw,
+  Palmtree,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +41,9 @@ const TaxSettlementPage = lazy(() =>
 const SubscriptionsPage = lazy(() =>
   import('./SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage }))
 )
+const FeriepengePage = lazy(() =>
+  import('./FeriepengePage').then((m) => ({ default: m.FeriepengePage }))
+)
 
 type EconomySubPage =
   | 'dashboard'
@@ -51,6 +55,7 @@ type EconomySubPage =
   | 'absence'
   | 'tax'
   | 'subscriptions'
+  | 'feriepenger'
 
 interface NavItem {
   page: EconomySubPage
@@ -63,6 +68,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'budget', label: 'Budsjett', Icon: Clipboard },
   { page: 'salary', label: 'Lønn', Icon: Receipt },
   { page: 'atf', label: 'ATF', Icon: Shield },
+  { page: 'feriepenger', label: 'Feriepenger', Icon: Palmtree },
   { page: 'savings', label: 'Sparing', Icon: PiggyBank },
   { page: 'debt', label: 'Gjeld', Icon: CreditCard },
   { page: 'absence', label: 'Fravær', Icon: FileText },
@@ -147,6 +153,7 @@ export function EconomyPage() {
           {currentPage === 'absence' && <AbsencePage />}
           {currentPage === 'tax' && <TaxSettlementPage />}
           {currentPage === 'subscriptions' && <SubscriptionsPage />}
+          {currentPage === 'feriepenger' && <FeriepengePage />}
         </Suspense>
         </PageErrorBoundary>
       </div>

@@ -17,10 +17,12 @@ import type {
   ParsetLonnsslipp,
   BalanceHistoryEntry,
   WithdrawalEntry,
+  SavingsContribution,
   RateHistoryEntry,
   DebtRateHistory,
   BudgetLine,
   KnownATFRate,
+  TemporaryPayEntry,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -61,6 +63,9 @@ interface EconomyState {
   // Styringsrente-historikk
   policyRateHistory: PolicyRateEntry[]
 
+  // Midlertidig lønn (fungering)
+  temporaryPayEntries: TemporaryPayEntry[]
+
   // Actions
   setProfile: (profile: EmploymentProfile) => void
 
@@ -75,9 +80,13 @@ interface EconomyState {
   removeATFEntry: (id: string) => void
 
   addSavingsAccount: (account: SavingsAccount) => void
+  importSavingsStatement: (parsed: import('@/domain/economy/bankTransactionParser').ParsedBankStatement) => void
   updateSavingsAccount: (id: string, updates: Partial<SavingsAccount>) => void
   updateSavingsBalance: (accountId: string, entry: BalanceHistoryEntry) => void
   addWithdrawal: (accountId: string, withdrawal: WithdrawalEntry) => void
+  removeWithdrawal: (accountId: string, withdrawalId: string) => void
+  addContribution: (accountId: string, contribution: SavingsContribution) => void
+  removeContribution: (accountId: string, contributionId: string) => void
   updateSavingsRate: (accountId: string, entry: RateHistoryEntry) => void
   removeSavingsAccount: (id: string) => void
 
@@ -110,13 +119,23 @@ interface EconomyState {
   updateInsurance: (id: string, updates: Partial<InsuranceEntry>) => void
   removeInsurance: (id: string) => void
 
+  addTemporaryPay: (entry: TemporaryPayEntry) => void
+  updateTemporaryPay: (id: string, updates: Partial<TemporaryPayEntry>) => void
+  removeTemporaryPay: (id: string) => void
+
   updateBudgetTemplate: (template: Partial<BudgetTemplate>) => void
   addBudgetLine: (line: BudgetLine) => void
   removeBudgetLine: (id: string) => void
 
+  budgetOverrides: Record<string, number>  // key: "${year}:${month}:${rowId}"
+  setBudgetOverride: (year: number, month: number, rowId: string, value: number) => void
+  clearBudgetOverride: (year: number, month: number, rowId: string) => void
+
   exportData: () => string
   importData: (json: string) => void
+  clearAllSlips: () => void
   resetAll: () => void
+  restoreProfileFromSlips: () => void
 }
 
 // ------------------------------------------------------------
@@ -138,6 +157,7 @@ export const useEconomyStore = create<EconomyState>()(
       storeVersion: 1,
       profile: null,
       budgetTemplate: DEFAULT_TEMPLATE,
+      budgetOverrides: {},
       monthHistory: [],
       atfEntries: [],
       savingsAccounts: [],
@@ -150,6 +170,7 @@ export const useEconomyStore = create<EconomyState>()(
       subscriptions: [],
       insurances: [],
       policyRateHistory: POLICY_RATE_HISTORY,
+      temporaryPayEntries: [],
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),
@@ -185,7 +206,16 @@ export const useEconomyStore = create<EconomyState>()(
         })),
 
       importSlip: (slip, pdfBase64) => {
-        const { profile } = get()
+        const { profile, monthHistory } = get()
+
+        // Sjekk om denne slippen er nyere enn alle eksisterende slipper med lønn.
+        // Bare den nyeste slippen skal sette grunnlønn/trekk i profilen.
+        const latestExisting = monthHistory
+          .filter((m) => (m.slipData?.maanedslonn ?? 0) > 0)
+          .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)[0]
+        const isLatestSlip = !latestExisting ||
+          slip.periode.year > latestExisting.year ||
+          (slip.periode.year === latestExisting.year && slip.periode.month >= latestExisting.month)
 
         // Slippen genererer IKKE BudgetLines for utgifter.
         // Faste utgifter styres av brukerens budsjettmal.
@@ -224,37 +254,61 @@ export const useEconomyStore = create<EconomyState>()(
             }
           }
 
-          // Oppdater profil med siste kjente tall fra slippen
-          let updatedProfile: EmploymentProfile | null = profile
-            ? {
-                ...profile,
-                baseMonthly: slip.maanedslonn || profile.baseMonthly,
-                lastKnownTaxWithholding: slip.skattetrekk || profile.lastKnownTaxWithholding,
-                extraTaxWithholding: slip.ekstraTrekk > 0 ? slip.ekstraTrekk : profile.extraTaxWithholding,
-                housingDeduction: slip.husleietrekk > 0 ? slip.husleietrekk : profile.housingDeduction,
-                unionFee: slip.fagforeningskontingent > 0 ? slip.fagforeningskontingent : profile.unionFee,
-              }
-            : null
+          // Oppdater profil med siste kjente tall fra slippen.
+          // Hvis ingen profil eksisterer ennå, opprett én automatisk fra slippen.
+          const baseProfile: EmploymentProfile = profile ?? {
+            employer: 'forsvaret',
+            baseMonthly: 0,
+            fixedAdditions: [],
+            lastKnownTaxWithholding: 0,
+            extraTaxWithholding: 0,
+            housingDeduction: 0,
+            pensionPercent: 2,
+            unionFee: 0,
+            atfEnabled: false,
+          }
+          let updatedProfile: EmploymentProfile = {
+            ...baseProfile,
+            // Lønn og trekk settes kun fra den nyeste slippen
+            ...(isLatestSlip ? {
+              baseMonthly: slip.maanedslonn || baseProfile.baseMonthly,
+              lastKnownTaxWithholding: slip.skattetrekk || baseProfile.lastKnownTaxWithholding,
+              extraTaxWithholding: slip.ekstraTrekk > 0 ? slip.ekstraTrekk : baseProfile.extraTaxWithholding,
+              housingDeduction: slip.husleietrekk > 0 ? slip.husleietrekk : baseProfile.housingDeduction,
+              unionFee: slip.fagforeningskontingent > 0 ? slip.fagforeningskontingent : baseProfile.unionFee,
+              // Faste tillegg: merge med eksisterende — slipper mangler noen ganger tillegg
+              // som ikke var aktive den måneden (f.eks. 1501 kun på visse slipper).
+              // Ny slipp oppdaterer beløp der den har koden, eksisterende beholdes ellers.
+              fixedAdditions: (() => {
+                const fromSlip = slip.fasteTillegg
+                  .filter((t) => t.artskode !== '3209')
+                  .map((t) => ({ kode: t.artskode, label: t.navn, amount: t.belop }))
+                const fromSlipKoder = new Set(fromSlip.map((t) => t.kode))
+                const kept = (baseProfile.fixedAdditions ?? []).filter((t) => !fromSlipKoder.has(t.kode))
+                return [...kept, ...fromSlip]
+              })(),
+            } : {}),
+            // SPK-pensjon er alltid 2% — bruker ikke ratio-estimat (base inkluderer 1162/10P2 i tillegg til 1S01)
+          }
 
           // Beregn og lagre effektiv /440-trekkprosent
-          if (updatedProfile && slip.tabelltrekkGrunnlag > 0 && slip.tabelltrekkBelop > 0) {
+          if (slip.tabelltrekkGrunnlag > 0 && slip.tabelltrekkBelop > 0) {
             const pct = (slip.tabelltrekkBelop / slip.tabelltrekkGrunnlag) * 100
             updatedProfile = { ...updatedProfile, lastKnownTableTaxPercent: Math.round(pct * 100) / 100 }
           }
 
           // Lagre tabellnummer fra slippen
-          if (updatedProfile && slip.tabellnummer) {
+          if (slip.tabellnummer) {
             updatedProfile = { ...updatedProfile, tabellnummer: slip.tabellnummer }
           }
 
           // Merge ATF-satser fra slippen inn i profilen (behold siste kjente per artskode)
-          if (slip.atfRater && updatedProfile) {
+          if (slip.atfRater) {
             const slipDato = `${slip.periode.year}-${String(slip.periode.month).padStart(2, '0')}`
             const fraAarslonn = slip.maanedslonn * 12
             const mergedRates: Record<string, KnownATFRate> = { ...updatedProfile.knownATFRates }
             for (const [artskode, sats] of Object.entries(slip.atfRater)) {
               const existing = mergedRates[artskode]
-              // Oppdater kun hvis slippen er nyere enn eller like gammel som eksisterende
               if (!existing || slipDato >= existing.dato) {
                 mergedRates[artskode] = { sats, fraAarslonn, dato: slipDato }
               }
@@ -264,7 +318,7 @@ export const useEconomyStore = create<EconomyState>()(
 
           return {
             monthHistory: updated,
-            ...(updatedProfile ? { profile: updatedProfile } : {}),
+            profile: updatedProfile,
           }
         })
       },
@@ -280,6 +334,57 @@ export const useEconomyStore = create<EconomyState>()(
       // --- Sparekonto ---
       addSavingsAccount: (account) =>
         set((s) => ({ savingsAccounts: [...s.savingsAccounts, account] })),
+
+      importSavingsStatement: (parsed) =>
+        set((s) => {
+          const printDate = new Date(parsed.printDate)
+          const balEntry: BalanceHistoryEntry = {
+            year: printDate.getFullYear(),
+            month: printDate.getMonth() + 1,
+            balance: parsed.closingBalance,
+            isManual: false,
+          }
+          // Finn eksisterende konto med same kontonummer
+          const existing = parsed.accountNumber
+            ? s.savingsAccounts.find((a) => a.accountNumber === parsed.accountNumber)
+            : undefined
+          if (existing) {
+            // Oppdater saldo og estimert månedssparing
+            const history = existing.balanceHistory.filter(
+              (b) => !(b.year === balEntry.year && b.month === balEntry.month)
+            )
+            const updated: SavingsAccount = {
+              ...existing,
+              balanceHistory: [...history, balEntry].sort(
+                (a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month
+              ),
+              monthlyContribution: parsed.estimatedMonthlyContribution || existing.monthlyContribution,
+            }
+            return { savingsAccounts: s.savingsAccounts.map((a) => a.id === existing.id ? updated : a) }
+          }
+          // Ny konto
+          const typeMap: Record<string, SavingsAccount['type']> = {
+            BSU: 'BSU', sparekonto: 'sparekonto', annet: 'annet',
+          }
+          const newAccount: SavingsAccount = {
+            id: crypto.randomUUID(),
+            type: typeMap[parsed.accountType] ?? 'sparekonto',
+            label: parsed.accountLabel,
+            accountNumber: parsed.accountNumber,
+            openingBalance: parsed.closingBalance,
+            openingDate: parsed.printDate,
+            monthlyContribution: parsed.estimatedMonthlyContribution,
+            interestCreditFrequency: parsed.accountType === 'BSU' ? 'yearly' : 'monthly',
+            rateHistory: parsed.estimatedAnnualInterestRate != null
+              ? [{ fromDate: parsed.printDate, rate: parsed.estimatedAnnualInterestRate }]
+              : [],
+            balanceHistory: [balEntry],
+            withdrawals: [],
+            contributions: [],
+            ...(parsed.accountType === 'BSU' ? { maxYearlyContribution: 27500, maxTotalBalance: 300000 } : {}),
+          }
+          return { savingsAccounts: [...s.savingsAccounts, newAccount] }
+        }),
       updateSavingsAccount: (id, updates) =>
         set((s) => ({
           savingsAccounts: s.savingsAccounts.map((a) =>
@@ -300,7 +405,31 @@ export const useEconomyStore = create<EconomyState>()(
         set((s) => ({
           savingsAccounts: s.savingsAccounts.map((a) =>
             a.id === accountId
-              ? { ...a, withdrawals: [...a.withdrawals, withdrawal] }
+              ? { ...a, withdrawals: [...(a.withdrawals ?? []), withdrawal] }
+              : a
+          ),
+        })),
+      removeWithdrawal: (accountId, withdrawalId) =>
+        set((s) => ({
+          savingsAccounts: s.savingsAccounts.map((a) =>
+            a.id === accountId
+              ? { ...a, withdrawals: (a.withdrawals ?? []).filter((w) => w.id !== withdrawalId) }
+              : a
+          ),
+        })),
+      addContribution: (accountId, contribution) =>
+        set((s) => ({
+          savingsAccounts: s.savingsAccounts.map((a) =>
+            a.id === accountId
+              ? { ...a, contributions: [...(a.contributions ?? []), contribution] }
+              : a
+          ),
+        })),
+      removeContribution: (accountId, contributionId) =>
+        set((s) => ({
+          savingsAccounts: s.savingsAccounts.map((a) =>
+            a.id === accountId
+              ? { ...a, contributions: (a.contributions ?? []).filter((c) => c.id !== contributionId) }
               : a
           ),
         })),
@@ -389,6 +518,15 @@ export const useEconomyStore = create<EconomyState>()(
       removeSubscription: (id) =>
         set((s) => ({ subscriptions: s.subscriptions.filter((s) => s.id !== id) })),
 
+      // --- Midlertidig lønn ---
+      addTemporaryPay: (entry) => set((s) => ({ temporaryPayEntries: [...s.temporaryPayEntries, entry] })),
+      updateTemporaryPay: (id, updates) =>
+        set((s) => ({
+          temporaryPayEntries: s.temporaryPayEntries.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+        })),
+      removeTemporaryPay: (id) =>
+        set((s) => ({ temporaryPayEntries: s.temporaryPayEntries.filter((e) => e.id !== id) })),
+
       // --- Forsikring ---
       addInsurance: (ins) => set((s) => ({ insurances: [...s.insurances, ins] })),
       updateInsurance: (id, updates) =>
@@ -426,6 +564,60 @@ export const useEconomyStore = create<EconomyState>()(
           },
         })),
 
+      // --- Migrering: gjenoppbygg profil fra eksisterende slipper hvis profil mangler ---
+      restoreProfileFromSlips: () => {
+        const { profile, monthHistory } = get()
+        if (profile !== null) return
+
+        const slips = monthHistory
+          .filter((m) => (m.slipData?.maanedslonn ?? 0) > 0)
+          .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)
+
+        if (slips.length === 0) return
+
+        const rec = slips[0]
+        const slip = rec.slipData!
+        const slipDato = `${rec.year}-${String(rec.month).padStart(2, '0')}`
+
+        const newProfile: EmploymentProfile = {
+          employer: 'forsvaret',
+          baseMonthly: slip.maanedslonn,
+          fixedAdditions: slip.fasteTillegg
+            .filter((t) => t.artskode !== '3209')
+            .map((t) => ({ kode: t.artskode, label: t.navn, amount: t.belop })),
+          lastKnownTaxWithholding: slip.skattetrekk,
+          extraTaxWithholding: slip.ekstraTrekk > 0 ? slip.ekstraTrekk : 0,
+          housingDeduction: slip.husleietrekk > 0 ? slip.husleietrekk : 0,
+          pensionPercent: 2,
+          unionFee: slip.fagforeningskontingent > 0 ? slip.fagforeningskontingent : 0,
+          atfEnabled: false,
+          ...(slip.tabelltrekkGrunnlag > 0 && slip.tabelltrekkBelop > 0 ? {
+            lastKnownTableTaxPercent: Math.round((slip.tabelltrekkBelop / slip.tabelltrekkGrunnlag) * 10000) / 100,
+          } : {}),
+          ...(slip.tabellnummer ? { tabellnummer: slip.tabellnummer } : {}),
+          ...(slip.atfRater ? {
+            knownATFRates: Object.fromEntries(
+              Object.entries(slip.atfRater).map(([kode, sats]) => [
+                kode,
+                { sats, fraAarslonn: slip.maanedslonn * 12, dato: slipDato } satisfies KnownATFRate,
+              ])
+            ),
+          } : {}),
+        }
+
+        set({ profile: newProfile })
+      },
+
+      // --- Budsjett-overrides ---
+      setBudgetOverride: (year, month, rowId, value) =>
+        set((s) => ({ budgetOverrides: { ...s.budgetOverrides, [`${year}:${month}:${rowId}`]: value } })),
+      clearBudgetOverride: (year, month, rowId) =>
+        set((s) => {
+          const next = { ...s.budgetOverrides }
+          delete next[`${year}:${month}:${rowId}`]
+          return { budgetOverrides: next }
+        }),
+
       // --- Eksport / Import ---
       exportData: () => JSON.stringify(get(), null, 2),
 
@@ -447,11 +639,18 @@ export const useEconomyStore = create<EconomyState>()(
             subscriptions: data.subscriptions ?? [],
             insurances: data.insurances ?? [],
             policyRateHistory: data.policyRateHistory ?? POLICY_RATE_HISTORY,
+            temporaryPayEntries: data.temporaryPayEntries ?? [],
+            budgetOverrides: data.budgetOverrides ?? {},
           })
         } catch {
           console.error('[EconomyStore] importData: ugyldig JSON')
         }
       },
+
+      clearAllSlips: () =>
+        set((s) => ({
+          monthHistory: s.monthHistory.filter((m) => m.source !== 'imported_slip'),
+        })),
 
       resetAll: () =>
         set({
@@ -469,16 +668,36 @@ export const useEconomyStore = create<EconomyState>()(
           subscriptions: [],
           insurances: [],
           policyRateHistory: POLICY_RATE_HISTORY,
+          temporaryPayEntries: [],
+          budgetOverrides: {},
         }),
     }),
     {
       name: 'min-okonomi-v1',
-      version: 1,
+      version: 2,
+      migrate: (persistedState: unknown, fromVersion: number) => {
+        const state = persistedState as Record<string, unknown>
+        // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
+        if (fromVersion < 2 && state.profile && state.monthHistory) {
+          const history = state.monthHistory as Array<{ year: number; month: number; slipData?: { fasteTillegg?: Array<{ artskode: string; navn: string; belop: number }> } }>
+          const profile = state.profile as Record<string, unknown>
+          // Finn nyeste slipp med fasteTillegg
+          const latestSlip = [...history]
+            .sort((a, b) => b.year !== a.year ? b.year - a.year : b.month - a.month)
+            .find((r) => (r.slipData?.fasteTillegg?.length ?? 0) > 0)
+          if (latestSlip?.slipData?.fasteTillegg) {
+            profile.fixedAdditions = latestSlip.slipData.fasteTillegg
+              .filter((t) => t.artskode !== '3209')
+              .map((t) => ({ kode: t.artskode, label: t.navn, amount: t.belop }))
+          }
+        }
+        return state
+      },
       partialize: (state) => ({
         storeVersion: state.storeVersion,
         profile: state.profile,
         budgetTemplate: state.budgetTemplate,
-        monthHistory: state.monthHistory,
+        monthHistory: state.monthHistory.map(({ slipPdfBase64: _pdf, ...m }) => m),
         atfEntries: state.atfEntries,
         savingsAccounts: state.savingsAccounts,
         savingsGoals: state.savingsGoals,
@@ -490,6 +709,8 @@ export const useEconomyStore = create<EconomyState>()(
         subscriptions: state.subscriptions,
         insurances: state.insurances,
         policyRateHistory: state.policyRateHistory,
+        temporaryPayEntries: state.temporaryPayEntries,
+        budgetOverrides: state.budgetOverrides,
       }),
     }
   )

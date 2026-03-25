@@ -250,73 +250,75 @@ export const ATF_BASE_RATES = {
 
 export type ATFRates = { [K in keyof typeof ATF_BASE_RATES]: number }
 
-/** Mapping fra ATFRates-nøkkel til artskode på lønnsslippen */
-const KEY_TO_ARTSKODE: Record<keyof typeof ATF_BASE_RATES, string> = {
-  ovingHverdag: '2230',
-  ovingHelg: '2232',
-  ovingHelligdag: '2233',
-  ovingPrTimeHverdag: '2236',
-  ovingPrTimeHelg: '2237',
-  ovingPrTimeHelligdag: '2238',
-  ovingInntil7t50Hverdag: '2242',
-  ovingInntil7tHelg: '2243',
-  ovingInntil7t100Hverdag: '2244',
-}
 
 /**
- * Beregner ATF-satser.
- * Prioritet: 1) kjente satser fra importert slipp (skalert til nåværende årslønn)
- *            2) fallback til base-tabell fra 1/5-2023 (skalert)
+ * Beregner ATF-satser fra Excel-formler (ATF kalkulator 1.mai 2023, ltr 72).
+ * Alle satser beregnes direkte fra årslønn — ingen skalering fra statisk tabell.
  *
  * @param annualSalary  Grunnlønn × 12
- * @param fixedAdditions  Faste tillegg per år (brukes kun i fallback-skaleringen)
- * @param knownATFRates  profile.knownATFRates — satser hentet fra importerte slipper
+ * @param _fixedAdditions  Ubrukt (beholdt for bakoverkompatibilitet)
+ * @param _knownATFRates  Ubrukt (beholdt for bakoverkompatibilitet)
  */
 export function calculateATFRates(
   annualSalary: number,
-  fixedAdditions = 0,
-  knownATFRates?: Record<string, KnownATFRate>,
+  _fixedAdditions = 0,
+  _knownATFRates?: Record<string, KnownATFRate>,
 ): ATFRates {
-  return Object.fromEntries(
-    Object.entries(ATF_BASE_RATES).map(([key, baseRate]) => {
-      const artskode = KEY_TO_ARTSKODE[key as keyof typeof ATF_BASE_RATES]
-      const known = knownATFRates?.[artskode]
+  // A-tabell timesats og overtidssatser
+  const timesats = annualSalary / 1850
+  const OT50  = timesats * 1.5
+  const OT100 = timesats * 2
+  const OTA50 = OT50 / 3        // = timesats * 0.5
 
-      let sats: number
-      if (known && known.fraAarslonn > 0) {
-        // Skaler fra kjent sats til nåværende grunnlønn
-        const scale = annualSalary / known.fraAarslonn
-        sats = Math.round(known.sats * scale * 100) / 100
-      } else {
-        // Fallback: base-tabell fra 1/5-2023
-        const scale = (annualSalary + fixedAdditions) / ATF_BASE_ANNUAL
-        sats = Math.round(baseRate * scale * 100) / 100
-      }
-      return [key, sats]
-    })
-  ) as ATFRates
+  // Natttillegg (45% av timesats) og faste tillegg (fast kr/t uavhengig av lønn)
+  const natt        = timesats * 0.45
+  const ettermiddag = 25   // kr/t
+  const lordag      = 65   // kr/t
+  const sondag      = 65   // kr/t
+
+  // Øving Ma-Fr døgn: 8,67t OT + 6t OT50 + ettermiddag 4t + natt 10t
+  const ovingHverdag = ((OT100 * 10 + OT50 * 6) * (8.67 / 16))
+                     + ((ettermiddag * 4 + natt * 10) * 2 / 16)
+
+  // Øving Lø-Sø døgn: 11,33t OT100 + lørdag hele døgnet + søndag + natt
+  const ovingHelg = ((OT100 * 24 + lordag * 24) * (11.33 / 24))
+                  + ((sondag * 24 + natt * 10) * 2 / 24)
+
+  // Timesatser = dagssats / antall timer
+  const ovingPrTimeHverdag = ovingHverdag / 16
+  const ovingPrTimeHelg    = ovingHelg / 24
+
+  // Inntil 7t hverdag: 50% OT (75% OT50 + 25% OTA50)
+  const ovingInntil7t50Hverdag  = (OT50 * 0.75) + (OTA50 * 0.25)
+  // Inntil 7t hverdag: 100% OT (gjennomsnitt OT50 og OT100)
+  const ovingInntil7t100Hverdag = (OT50 + OT100) / 2
+  // Inntil 7t helg: 100% OT + lørdag-tillegg
+  const ovingInntil7tHelg = (OT50 + OT100) / 2 + lordag
+
+  // Helligdag: skaler fra base-sats (formler ikke tilgjengelig fra Excel)
+  const scale = annualSalary / ATF_BASE_ANNUAL
+  const ovingHelligdag       = ATF_BASE_RATES.ovingHelligdag * scale
+  const ovingPrTimeHelligdag = ATF_BASE_RATES.ovingPrTimeHelligdag * scale
+
+  return {
+    ovingHverdag:           r2(ovingHverdag),
+    ovingHelg:              r2(ovingHelg),
+    ovingHelligdag:         r2(ovingHelligdag),
+    ovingPrTimeHverdag:     r2(ovingPrTimeHverdag),
+    ovingPrTimeHelg:        r2(ovingPrTimeHelg),
+    ovingPrTimeHelligdag:   r2(ovingPrTimeHelligdag),
+    ovingInntil7t50Hverdag: r2(ovingInntil7t50Hverdag),
+    ovingInntil7t100Hverdag:r2(ovingInntil7t100Hverdag),
+    ovingInntil7tHelg:      r2(ovingInntil7tHelg),
+  }
 }
 
 /**
  * Returnerer en lesbar kilde-label for ATF-satsene.
  * Vises i UI under sats-kortet.
  */
-export function getATFRatesSourceLabel(knownATFRates?: Record<string, KnownATFRate>): string {
-  if (!knownATFRates || Object.keys(knownATFRates).length === 0) {
-    return '⚠️ Estimerte satser — importer en slipp med øvelse for nøyaktige satser'
-  }
-
-  // Finn nyeste registrerte sats
-  let newest: KnownATFRate | null = null
-  for (const rate of Object.values(knownATFRates)) {
-    if (!newest || rate.dato > newest.dato) newest = rate
-  }
-  if (!newest) return '⚠️ Estimerte satser'
-
-  const [y, m] = newest.dato.split('-')
-  const MONTH_NAMES = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des']
-  const monthName = MONTH_NAMES[(parseInt(m) - 1)] ?? m
-  return `Satser basert på slipp ${monthName} ${y} (årslønn ${Math.round(newest.fraAarslonn).toLocaleString('no-NO')} kr)`
+export function getATFRatesSourceLabel(_knownATFRates?: Record<string, KnownATFRate>): string {
+  return 'Satser beregnet fra årslønn (ATF kalkulator 1.mai 2023)'
 }
 
 // ------------------------------------------------------------

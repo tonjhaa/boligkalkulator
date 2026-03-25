@@ -87,7 +87,6 @@ export interface KnownATFRate {
 
 export interface EmploymentProfile {
   employer: 'forsvaret' | 'custom'
-  salaryGrade: number            // lønnstrinn
   baseMonthly: number            // grunnlønn per måned
   fixedAdditions: {
     kode: string
@@ -168,6 +167,10 @@ export interface ATFEntry {
   tilDateISO?: string      // "2026-03-19T15:30"
   øvelsestype?: 'døgn' | 'time'
   datoRader?: ATFDatoRad[]
+  /** Måned ATF utbetales (1–12). Beregnes automatisk som måneden etter øvelsens slutt. */
+  payoutMonth?: number
+  /** År ATF utbetales. Kan avvike fra year hvis øvelsen slutter i desember. */
+  payoutYear?: number
 }
 
 // ------------------------------------------------------------
@@ -189,9 +192,16 @@ export interface BalanceHistoryEntry {
 }
 
 export interface WithdrawalEntry {
-  year: number
-  month: number
+  id: string
+  date: string             // "YYYY-MM-DD"
   amount: number           // negativt beløp
+  note?: string
+}
+
+export interface SavingsContribution {
+  id: string
+  date: string             // "YYYY-MM-DD"
+  amount: number           // positivt beløp
   note?: string
 }
 
@@ -201,13 +211,16 @@ export interface SavingsAccount {
   label: string
   openingBalance: number         // startbalanse da kontoen ble registrert
   openingDate: string            // ISO-dato for startbalansen
-  monthlyContribution: number    // planlagt månedssparing
+  monthlyContribution: number    // planlagt månedssparing (estimat)
   interestCreditFrequency: 'monthly' | 'yearly'  // BSU = yearly
   rateHistory: RateHistoryEntry[]  // rentesatsen endrer seg over tid
   balanceHistory: BalanceHistoryEntry[]  // faktisk saldo ved månedsslutt
   withdrawals: WithdrawalEntry[]
+  contributions: SavingsContribution[]  // faktiske innskudd
   maxYearlyContribution?: number   // BSU: 27 500
   maxTotalBalance?: number         // BSU: 300 000
+  /** Kontonummer fra banken, brukes for matching ved re-import */
+  accountNumber?: string
 }
 
 export interface SavingsGoal {
@@ -272,6 +285,18 @@ export interface RepaymentPlan {
   rows: RepaymentRow[]
   payoffDate: Date
   totalInterestCost: number
+}
+
+// ------------------------------------------------------------
+// MIDLERTIDIG LØNN (FUNGERING)
+// ------------------------------------------------------------
+
+export interface TemporaryPayEntry {
+  id: string
+  label: string        // f.eks. "Fungering som major"
+  fromDate: string     // "YYYY-MM-DD"
+  toDate: string       // "YYYY-MM-DD"
+  maanedslonn: number  // midlertidig lønn per måned i perioden
 }
 
 // ------------------------------------------------------------

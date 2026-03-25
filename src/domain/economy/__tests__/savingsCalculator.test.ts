@@ -14,6 +14,7 @@ function makeBSUAccount(overrides: Partial<SavingsAccount> = {}): SavingsAccount
     rateHistory: [{ fromDate: '2025-01-01', rate: 5.5 }],
     balanceHistory: [],
     withdrawals: [],
+    contributions: [],
     maxYearlyContribution: 27_500,
     maxTotalBalance: 300_000,
     ...overrides,

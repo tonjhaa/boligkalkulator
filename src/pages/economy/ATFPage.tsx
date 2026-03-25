@@ -16,6 +16,7 @@ import {
   sumATFDatoRader,
   beregnTidskompensasjonFromRows,
 } from '@/domain/economy/atfCalculator'
+import { estimateSalaryTrend, projectMonthlySalary } from '@/domain/economy/salaryCalculator'
 import type { ATFEntry, ATFDatoRad, KnownATFRate } from '@/types/economy'
 
 // ------------------------------------------------------------
@@ -24,6 +25,14 @@ import type { ATFEntry, ATFDatoRad, KnownATFRate } from '@/types/economy'
 
 function fmtNOK(n: number): string {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
+}
+
+function fmtSats(n: number): string {
+  // Vis desimaler hvis de er signifikante, så antall × sats = beløp gir mening
+  const rounded = Math.round(n * 100) / 100
+  return rounded % 1 === 0
+    ? rounded.toLocaleString('no-NO') + ' kr'
+    : rounded.toLocaleString('no-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' kr'
 }
 
 const MONTH_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
@@ -119,7 +128,7 @@ function BreakdownTable({
                 <td className="py-1 pr-2 text-right font-mono">
                   {row.antall} {row.enhet === 'timer' ? 't' : 'døgn'}
                 </td>
-                <td className="py-1 pr-2 text-right font-mono">{fmtNOK(row.sats)}</td>
+                <td className="py-1 pr-2 text-right font-mono">{fmtSats(row.sats)}</td>
                 <td className="py-1 text-right font-mono font-medium">{fmtNOK(row.belop)}</td>
               </tr>
             ))}
@@ -183,9 +192,9 @@ function SatsCard({
     { label: 'Hverdag-døgn', value: fmtNOK(rates.ovingHverdag) },
     { label: 'Helg-døgn', value: fmtNOK(rates.ovingHelg) },
     { label: 'Helligdag-døgn', value: fmtNOK(rates.ovingHelligdag) },
-    { label: 'Pr time hverdag', value: fmtNOK(rates.ovingPrTimeHverdag) + '/t' },
-    { label: 'Pr time helg', value: fmtNOK(rates.ovingPrTimeHelg) + '/t' },
-    { label: 'Inntil 7t 50%', value: fmtNOK(rates.ovingInntil7t50Hverdag) + '/t' },
+    { label: 'Pr time hverdag', value: fmtSats(rates.ovingPrTimeHverdag) + '/t' },
+    { label: 'Pr time helg', value: fmtSats(rates.ovingPrTimeHelg) + '/t' },
+    { label: 'Inntil 7t 50%', value: fmtSats(rates.ovingInntil7t50Hverdag) + '/t' },
   ]
   return (
     <Card>
@@ -278,6 +287,10 @@ function NyØvelseModal({
 
   function handleSave() {
     if (!isValid || !fra || !til) return
+    // Utbetaling skjer normalt måneden etter øvelsens slutt
+    const payoutDate = new Date(til.getFullYear(), til.getMonth() + 1, 1)
+    const payoutMonth = payoutDate.getMonth() + 1
+    const payoutYear = payoutDate.getFullYear()
     onSave({
       id: crypto.randomUUID(),
       year,
@@ -290,6 +303,8 @@ function NyØvelseModal({
       tilDateISO: tilISO ?? undefined,
       øvelsestype,
       datoRader: rows.length > 0 ? rows : undefined,
+      payoutMonth,
+      payoutYear,
     })
   }
 
@@ -456,12 +471,16 @@ function NyØvelseModal({
 // ------------------------------------------------------------
 
 export function ATFPage() {
-  const { atfEntries, addATFEntry, removeATFEntry, profile } = useEconomyStore()
+  const { atfEntries, addATFEntry, removeATFEntry, profile, monthHistory } = useEconomyStore()
   const [activeYear, setActiveYear] = useState(CURRENT_YEAR)
   const [showModal, setShowModal] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const annualSalary = profile ? profile.baseMonthly * 12 : 0
+  // Bruk fremskrevet lønn for fremtidige år (lønnsoppgjør skjer typisk mai)
+  const trend = estimateSalaryTrend(monthHistory)
+  const annualSalary = profile
+    ? projectMonthlySalary(trend, activeYear, 5) * 12  // bruk mai (etter forventet oppgjør)
+    : 0
   const fixedAdditions = profile
     ? profile.fixedAdditions.reduce((s, a) => s + a.amount * 12, 0)
     : 0
@@ -554,6 +573,11 @@ export function ATFPage() {
                         {entry.fraDateISO && entry.tilDateISO && (
                           <p className="text-xs text-muted-foreground">
                             {formatDateRange(entry.fraDateISO, entry.tilDateISO)}
+                          </p>
+                        )}
+                        {entry.payoutMonth && (
+                          <p className="text-xs text-blue-400">
+                            Utbet. {MONTH_SHORT[entry.payoutMonth]} {entry.payoutYear ?? entry.year}
                           </p>
                         )}
                       </div>

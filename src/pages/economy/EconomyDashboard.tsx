@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { Home, AlertTriangle, X } from 'lucide-react'
+import { Home, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -8,14 +7,11 @@ import { calculateGoalProgress } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import { sumATFByYear } from '@/domain/economy/atfCalculator'
-import {
-  forecastAllJunes,
-  calculateAccruedHolidayBase,
-} from '@/domain/economy/holidayPayCalculator'
+import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
-import type { ParsetLonnsslipp, JuneForecast } from '@/types/economy'
+import type { ParsetLonnsslipp } from '@/types/economy'
 
 const MONTH_NAMES = [
   '', 'Jan', 'Feb', 'Mars', 'April', 'Mai', 'Juni',
@@ -270,13 +266,14 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         </Card>
       </div>
 
-      {/* Feriepenger */}
+      {/* Feriepenger — kompakt (detaljer i egen fane) */}
       {profile && (
-        <HolidayPayWidget
+        <FeriepengeSummaryCard
           monthHistory={monthHistory}
           profile={profile}
           atfEntries={atfEntries}
           currentYear={currentYear}
+          onNavigate={onNavigate}
         />
       )}
 
@@ -504,275 +501,66 @@ function EmptyState({
   )
 }
 
+
 // ------------------------------------------------------------
-// FERIEPENGE-WIDGET
+// FERIEPENGE-SAMMENDRAG (kompakt, lenker til feriepengefanen)
 // ------------------------------------------------------------
 
-function confidenceLabel(c: 'høy' | 'middels' | 'lav'): string {
-  if (c === 'høy') return '✅ Høy'
-  if (c === 'middels') return '🟡 Middels'
-  return '⚠️ Lav'
-}
-
-function HolidayPayWidget({
+function FeriepengeSummaryCard({
   monthHistory,
   profile,
   atfEntries,
   currentYear,
+  onNavigate,
 }: {
   monthHistory: ReturnType<typeof useEconomyStore.getState>['monthHistory']
   profile: NonNullable<ReturnType<typeof useEconomyStore.getState>['profile']>
   atfEntries: ReturnType<typeof useEconomyStore.getState>['atfEntries']
   currentYear: number
+  onNavigate?: (page: string) => void
 }) {
-  const [modalYear, setModalYear] = useState<number | null>(null)
+  const forecast = forecastJune(currentYear, monthHistory, profile, atfEntries)
+  if (!forecast) return null
 
-  const forecasts = forecastAllJunes(currentYear, monthHistory, profile, atfEntries, 1)
-  const thisYear = forecasts[0]
-  const nextYear = forecasts[1]
-
-  // Løpende opptjening: for inneværende år (grunnlag for neste juni)
-  const opptjening = calculateAccruedHolidayBase(currentYear, monthHistory, profile)
-  const opptjeningProsent = Math.min(100, Math.round((opptjening.monthsWithSlip / 12) * 100))
-
-  if (!thisYear || !nextYear) return null
-
-  const modalForecast = modalYear != null ? forecasts.find((f) => f.year === modalYear) ?? null : null
+  function fmtNOK(n: number) {
+    return Math.round(n).toLocaleString('no-NO') + ' kr'
+  }
 
   return (
-    <>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Feriepenger</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {/* Tokolonne-tabell */}
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/30 border-b border-border">
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-1/2" />
-                <th className="text-right px-3 py-2 text-xs font-medium text-muted-foreground">
-                  Juni {thisYear.year}
-                </th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
-                  Juni {nextYear.year}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <HolidayRow
-                label="Feriepengegrunnlag"
-                a={thisYear.feriepengegrunnlag}
-                b={nextYear.feriepengegrunnlag}
-                bIsEstimate={nextYear.confidence === 'lav'}
-              />
-              <HolidayRow
-                label="Feriepenger (12%)"
-                a={thisYear.feriepenger}
-                b={nextYear.feriepenger}
-                bIsEstimate={nextYear.confidence === 'lav'}
-                positive
-              />
-              <HolidayRow
-                label="Ferietrekk (25 dager)"
-                a={-thisYear.ferietrekk}
-                b={-nextYear.ferietrekk}
-                negative
-              />
-              <HolidayRow
-                label="Netto ekstra i juni"
-                a={thisYear.nettoEkstra}
-                b={nextYear.nettoEkstra}
-                signed
-                bold
-              />
-              <HolidayRow
-                label="Skattetrekk i juni"
-                a={-thisYear.skattetrekk}
-                b={-nextYear.skattetrekk}
-                negative
-              />
-              <HolidayRow
-                label="Estimert netto juni"
-                a={thisYear.nettoJuni}
-                b={nextYear.nettoJuni}
-                bIsEstimate={nextYear.confidence === 'lav'}
-                positive
-                bold
-              />
-            </tbody>
-            <tfoot className="border-t border-border">
-              <tr>
-                <td className="px-4 py-2 text-xs text-muted-foreground">Konfidensgrad</td>
-                <td className="px-3 py-2 text-right text-xs">
-                  <button
-                    className="underline hover:text-foreground"
-                    onClick={() => setModalYear(thisYear.year)}
-                  >
-                    {confidenceLabel(thisYear.confidence)}
-                  </button>
-                </td>
-                <td className="px-4 py-2 text-right text-xs">
-                  <button
-                    className="underline hover:text-foreground"
-                    onClick={() => setModalYear(nextYear.year)}
-                  >
-                    {confidenceLabel(nextYear.confidence)}
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td className="px-4 pb-2 text-xs text-muted-foreground">Kilde grunnlag</td>
-                <td className="px-3 pb-2 text-right text-xs text-muted-foreground">
-                  {thisYear.kilder.feriepengegrunnlag}
-                </td>
-                <td className="px-4 pb-2 text-right text-xs text-muted-foreground">
-                  {nextYear.kilder.feriepengegrunnlag}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {/* Løpende opptjening */}
-          <div className="px-4 pb-4 pt-3 border-t border-border space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">
-                Opptjening {currentYear} (grunnlag for juni {currentYear + 1})
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {opptjening.monthsWithSlip}/12 slipper
-              </span>
-            </div>
-            <Progress value={opptjeningProsent} className="h-1.5" />
-            <div className="grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
-              <div>
-                <span className="block">Opptjent (slipper)</span>
-                <span className="font-mono font-medium text-foreground">
-                  {fmtNOK(opptjening.actual)}
-                </span>
-              </div>
-              <div>
-                <span className="block">Estimert rest</span>
-                <span className="font-mono font-medium text-foreground">
-                  ~{fmtNOK(opptjening.projected)}
-                </span>
-              </div>
-              <div className="col-span-2 mt-1">
-                <span className="text-muted-foreground">Prosjektert årsgrunnlag: </span>
-                <span className="font-mono font-medium">~{fmtNOK(opptjening.total)}</span>
-                <span className="text-muted-foreground ml-2">→ feriepenger: </span>
-                <span className="font-mono font-medium">~{fmtNOK(Math.round(opptjening.total * 0.12))}</span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Detaljmodal */}
-      {modalForecast && (
-        <JuneDetailModal forecast={modalForecast} onClose={() => setModalYear(null)} />
-      )}
-    </>
-  )
-}
-
-function HolidayRow({
-  label,
-  a,
-  b,
-  positive,
-  negative,
-  signed,
-  bold,
-  bIsEstimate,
-}: {
-  label: string
-  a: number
-  b: number
-  positive?: boolean
-  negative?: boolean
-  signed?: boolean
-  bold?: boolean
-  bIsEstimate?: boolean
-}) {
-  const colorA = positive ? 'text-green-500' : negative ? 'text-red-400' : signed ? (a >= 0 ? 'text-green-500' : 'text-red-400') : ''
-  const colorB = positive ? (bIsEstimate ? 'text-green-500/70' : 'text-green-500') : negative ? 'text-red-400' : signed ? (b >= 0 ? 'text-green-500/70' : 'text-red-400/70') : bIsEstimate ? 'text-muted-foreground' : ''
-  const prefix = signed ? (a >= 0 ? '+' : '') : ''
-  const prefixB = signed ? (b >= 0 ? '+' : '') : ''
-  return (
-    <tr className={cn('border-b border-border/50 last:border-0', bold && 'bg-muted/20 font-semibold')}>
-      <td className="px-4 py-2 text-muted-foreground">{label}</td>
-      <td className={cn('px-3 py-2 text-right font-mono', colorA)}>
-        {prefix}{fmtNOK(Math.abs(a))}
-      </td>
-      <td className={cn('px-4 py-2 text-right font-mono', colorB)}>
-        {bIsEstimate ? '~' : ''}{prefixB}{fmtNOK(Math.abs(b))}
-      </td>
-    </tr>
-  )
-}
-
-function JuneDetailModal({
-  forecast,
-  onClose,
-}: {
-  forecast: JuneForecast
-  onClose: () => void
-}) {
-  const rows = [
-    { label: 'Feriepengegrunnlag (opptjent forrige år)', value: forecast.feriepengegrunnlag, note: forecast.kilder.feriepengegrunnlag },
-    { label: `Feriepenger (${(forecast.feriepengegrunnlag > 0 ? Math.round(forecast.feriepenger / forecast.feriepengegrunnlag * 1000) / 10 : 12)}%)`, value: forecast.feriepenger, positive: true },
-    { label: `Ferietrekk (${forecast.ferietrekkDagsats.toLocaleString('no-NO')} kr/dag × 25)`, value: -forecast.ferietrekk, negative: true },
-    { label: 'Skattepliktig lønn i juni', value: forecast.skattepliktigJuni, note: forecast.kilder.juneLonn },
-    ...(forecast.juneATF > 0 ? [{ label: 'ATF i juni', value: forecast.juneATF, positive: true }] : []),
-    { label: 'Skattegrunnlag i juni', value: forecast.skattegrunnlag, note: 'max(0, lønn + ATF − ferietrekk)' },
-    { label: 'Skattetrekk i juni', value: -forecast.skattetrekk, negative: true },
-    { label: 'Andre trekk i juni', value: -forecast.andreJuneTrekk, negative: true },
-    { label: 'Netto ekstra i juni', value: forecast.nettoEkstra, bold: true, signed: true },
-    { label: 'Estimert netto juni', value: forecast.nettoJuni, bold: true, positive: true },
-  ]
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-8 px-4">
-      <div className="bg-background rounded-lg shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-semibold">Feriepenger — Juni {forecast.year}</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-sm">{confidenceLabel(forecast.confidence)}</span>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium">Feriepenger — juni {currentYear}</CardTitle>
+          {onNavigate && (
+            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => onNavigate('feriepenger')}>
+              Detaljer →
+            </Button>
+          )}
         </div>
-        <div className="p-4">
-          <table className="w-full text-sm">
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} className={cn('border-b border-border/40 last:border-0', row.bold && 'bg-muted/20 font-semibold')}>
-                  <td className="py-2 pr-3 text-muted-foreground">
-                    <div>{row.label}</div>
-                    {row.note && <div className="text-xs text-muted-foreground/70">{row.note}</div>}
-                  </td>
-                  <td className={cn(
-                    'py-2 text-right font-mono',
-                    row.positive ? 'text-green-500' :
-                    row.negative ? 'text-red-400' :
-                    row.signed ? (row.value >= 0 ? 'text-green-500' : 'text-red-400') : ''
-                  )}>
-                    {row.signed && row.value >= 0 ? '+' : ''}
-                    {fmtSigned(row.value)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      </CardHeader>
+      <CardContent className="space-y-1.5 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Feriepenger (12%)</span>
+          <span className="font-mono text-green-500">+{fmtNOK(forecast.feriepenger)}</span>
         </div>
-        <div className="px-4 pb-4">
-          <Button variant="outline" size="sm" onClick={onClose} className="w-full">
-            Lukk
-          </Button>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Ferietrekk (25 dager)</span>
+          <span className="font-mono text-red-400">-{fmtNOK(forecast.ferietrekk)}</span>
         </div>
-      </div>
-    </div>
+        <div className="flex justify-between border-t border-border pt-1.5 font-medium">
+          <span className="text-muted-foreground">Netto ekstra</span>
+          <span className={`font-mono ${forecast.nettoEkstra >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+            {forecast.nettoEkstra >= 0 ? '+' : ''}{fmtNOK(forecast.nettoEkstra)}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Estimert netto juni</span>
+          <span className="font-mono text-green-500">{fmtNOK(forecast.nettoJuni)}</span>
+        </div>
+        <p className="text-xs text-muted-foreground pt-1">
+          Konfidensgrad: {forecast.confidence === 'høy' ? '✓ Høy' : forecast.confidence === 'middels' ? '~ Middels' : '? Lav'} · {forecast.kilder.feriepengegrunnlag}
+        </p>
+      </CardContent>
+    </Card>
   )
 }

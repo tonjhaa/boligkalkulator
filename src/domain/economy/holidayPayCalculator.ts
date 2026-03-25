@@ -10,6 +10,7 @@ import {
   FERIEDAGER_TREKK,
   FERIETREKK_DIVISOR,
 } from '@/config/economy.config'
+import { estimateSalaryTrend, projectMonthlySalary } from './salaryCalculator'
 
 // ------------------------------------------------------------
 // OPPTJENING
@@ -123,7 +124,10 @@ export function forecastJune(
   const juneSlip = monthHistory.find(
     (r) => r.year === year && r.month === 6 && r.slipData != null,
   )
-  const juneMaanedslonn = juneSlip?.slipData?.maanedslonn ?? profile.baseMonthly
+  // Bruk fremskrevet lønn for måneder vi ikke har slipp for (steg-funksjon fra mai)
+  const trend = estimateSalaryTrend(monthHistory)
+  const projectedJune = projectMonthlySalary(trend, year, 6)
+  const juneMaanedslonn = juneSlip?.slipData?.maanedslonn ?? (projectedJune > 0 ? projectedJune : profile.baseMonthly)
   const juneFixedTillegg = getMonthlyFixedAdditions(profile)
   const juneArslonn = juneMaanedslonn * 12
   const juneFasteTilleggAar = juneFixedTillegg * 12

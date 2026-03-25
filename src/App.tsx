@@ -7,6 +7,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { LoginPage } from '@/pages/LoginPage'
 import { loadFromSupabase, startAutoSync } from '@/lib/syncEconomyData'
+import { useEconomyStore } from '@/application/useEconomyStore'
 
 const EconomyPage = lazy(() =>
   import('@/pages/economy/EconomyPage').then((m) => ({
@@ -42,11 +43,17 @@ function AppContent() {
 
 function App() {
   const { user, initialized, initialize } = useAuthStore()
+  const restoreProfileFromSlips = useEconomyStore((s) => s.restoreProfileFromSlips)
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     initialize()
   }, [initialize])
+
+  // Gjenoppbygg lønnsprofil fra importerte slipper om profil mangler (datamigrasjon)
+  useEffect(() => {
+    restoreProfileFromSlips()
+  }, [restoreProfileFromSlips])
 
   useEffect(() => {
     if (!user) return

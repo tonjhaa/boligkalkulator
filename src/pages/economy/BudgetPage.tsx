@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Lock, LockOpen, Upload, Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Lock, LockOpen, Upload, Plus, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,7 +8,8 @@ import { useEconomyStore } from '@/application/useEconomyStore'
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import type { BudgetRow, MonthMeta } from '@/domain/economy/budgetTableComputer'
-import type { BudgetCategory, BudgetLine } from '@/types/economy'
+import { forecastJune } from '@/domain/economy/holidayPayCalculator'
+import type { BudgetCategory, BudgetLine, TemporaryPayEntry } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
 // ----------------------------------------------------------------
@@ -61,16 +62,37 @@ export function BudgetPage() {
     debts,
     subscriptions,
     insurances,
+    temporaryPayEntries,
     lockMonth,
     unlockMonth,
     addBudgetLine,
+    budgetOverrides,
+    setBudgetOverride,
+    clearBudgetOverride,
+    addTemporaryPay,
+    removeTemporaryPay,
   } = useEconomyStore()
 
   const now = new Date()
   const [activeYear, setActiveYear] = useState(now.getFullYear())
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
+  const [showFungering, setShowFungering] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
+
+  const yearOverrides = useMemo(() => {
+    const prefix = `${activeYear}:`
+    const result: Record<string, number> = {}
+    for (const [k, v] of Object.entries(budgetOverrides)) {
+      if (k.startsWith(prefix)) result[k.slice(prefix.length)] = v
+    }
+    return result
+  }, [budgetOverrides, activeYear])
+
+  const juneForecast = profile
+    ? forecastJune(activeYear, monthHistory, profile, atfEntries)
+    : undefined
 
   const tableData = computeBudgetTable(
     activeYear,
@@ -82,9 +104,17 @@ export function BudgetPage() {
     debts,
     subscriptions,
     insurances,
+    yearOverrides,
+    temporaryPayEntries,
+    juneForecast ?? undefined,
   )
 
-  const { metas, sections } = tableData
+  const { metas, sections, estimatedAnnualGrowthRate } = tableData
+
+  function handleOverride(rowId: string, month: number, value: number | null) {
+    if (value === null) clearBudgetOverride(activeYear, month, rowId)
+    else setBudgetOverride(activeYear, month, rowId, value)
+  }
 
   function toggleSection(key: string) {
     setCollapsedSections((prev) => {
@@ -104,21 +134,39 @@ export function BudgetPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* ---- Top bar ---- */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 gap-3 flex-wrap">
-        <div className="flex gap-1">
-          {years.map((y) => (
-            <Button
-              key={y}
-              variant={activeYear === y ? 'default' : 'outline'}
-              size="sm"
-              className="text-xs h-7 px-3"
-              onClick={() => setActiveYear(y)}
-            >
-              {y}
-            </Button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex gap-1">
+            {years.map((y) => (
+              <Button
+                key={y}
+                variant={activeYear === y ? 'default' : 'outline'}
+                size="sm"
+                className="text-xs h-7 px-3"
+                onClick={() => setActiveYear(y)}
+              >
+                {y}
+              </Button>
+            ))}
+          </div>
+          {estimatedAnnualGrowthRate !== null && (
+            <span className="text-xs text-muted-foreground">
+              Estimert lønnsøkning:{' '}
+              <span className="text-green-400 font-medium">
+                ~{(estimatedAnnualGrowthRate * 100).toFixed(1)} % / år
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="flex gap-2">
+          <Button
+            variant={showFungering ? 'default' : 'outline'}
+            size="sm"
+            className="text-xs h-7 gap-1"
+            onClick={() => setShowFungering((v) => !v)}
+          >
+            Fungering
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -138,6 +186,15 @@ export function BudgetPage() {
         </div>
       </div>
 
+      {/* ---- Fungering panel ---- */}
+      {showFungering && (
+        <FungeringPanel
+          entries={temporaryPayEntries}
+          onAdd={addTemporaryPay}
+          onRemove={removeTemporaryPay}
+        />
+      )}
+
       {/* ---- Table ---- */}
       <div className="overflow-auto flex-1">
         <table className="text-xs border-collapse min-w-max">
@@ -152,10 +209,21 @@ export function BudgetPage() {
                 <th
                   key={meta.month}
                   colSpan={2}
-                  className="px-1 py-2 text-center font-medium min-w-[100px] border-r border-border/40"
+                  className={cn(
+                    'px-1 py-2 text-center font-medium min-w-[100px] border-r border-border/40',
+                    highlightedMonth === meta.month && 'bg-sky-500/15',
+                  )}
                 >
                   <div className="flex items-center justify-center gap-1">
-                    <span>{MONTH_SHORT[meta.month]}</span>
+                    <button
+                      className={cn(
+                        'hover:text-sky-400 transition-colors',
+                        highlightedMonth === meta.month && 'text-sky-400',
+                      )}
+                      onClick={() => setHighlightedMonth(highlightedMonth === meta.month ? null : meta.month)}
+                    >
+                      {MONTH_SHORT[meta.month]}
+                    </button>
                     {meta.isLocked ? (
                       <button
                         title="Lås opp måned"
@@ -184,10 +252,13 @@ export function BudgetPage() {
               <th className="sticky left-0 z-30 bg-muted/70 px-3 py-1 border-r border-border" />
               {metas.map((meta) => (
                 meta.hasSlip ? (
-                  <>
-                    <th key={`${meta.month}-bud`} className="px-2 py-1 text-center text-muted-foreground font-normal min-w-[48px]">Bud</th>
-                    <th key={`${meta.month}-fak`} className="px-2 py-1 text-center font-normal min-w-[52px] border-r border-border/40">Fak</th>
-                  </>
+                  <th
+                    key={`${meta.month}-fak`}
+                    colSpan={2}
+                    className={cn('px-2 py-1 text-center font-normal min-w-[100px] border-r border-border/40', highlightedMonth === meta.month && 'bg-sky-500/15')}
+                  >
+                    Faktisk
+                  </th>
                 ) : (
                   <th
                     key={`${meta.month}-prog`}
@@ -195,13 +266,14 @@ export function BudgetPage() {
                     className={cn(
                       'px-2 py-1 text-center font-normal border-r border-border/40',
                       meta.isLocked ? 'text-foreground' : 'text-muted-foreground italic',
+                      highlightedMonth === meta.month && 'bg-sky-500/15',
                     )}
                   >
                     {meta.isLocked ? 'Faktisk' : 'Prog'}
                   </th>
                 )
               ))}
-              <th className="px-3 py-1 text-right text-muted-foreground font-normal">Bud</th>
+              <th className="px-3 py-1 text-right text-muted-foreground font-normal">År</th>
             </tr>
           </thead>
 
@@ -209,7 +281,7 @@ export function BudgetPage() {
           <tbody>
             {sections.map((section) => {
               const isCollapsed = collapsedSections.has(section.key)
-              const isSummary = section.key === 'NETTO' || section.key === 'DISPONIBELT'
+              const isSummary = section.key === 'NETTO' || section.key === 'DISPONIBELT' || section.key === 'OPPSUMMERING'
 
               return (
                 <>
@@ -239,20 +311,20 @@ export function BudgetPage() {
                       </div>
                     </td>
 
-                    {/* Summary values in section header for NETTO and DISPONIBELT */}
-                    {isSummary ? (
+                    {/* Summary values in section header for NETTO and DISPONIBELT (not OPPSUMMERING) */}
+                    {isSummary && section.key !== 'OPPSUMMERING' ? (
                       metas.map((meta) => {
                         const row = section.rows[0]
                         const cell = row.cells[meta.month - 1]
+                        const hl = highlightedMonth === meta.month
                         return meta.hasSlip ? (
-                          <>
-                            <td key={`${meta.month}-b`} className={cn('px-2 py-1.5 text-right', amountClass(cell.budget))}>
-                              {fmtNOK(cell.budget)}
-                            </td>
-                            <td key={`${meta.month}-a`} className={cn('px-2 py-1.5 text-right border-r border-border/40 font-semibold', amountClass(cell.actual ?? cell.budget, true))}>
-                              {fmtNOK(cell.actual ?? cell.budget)}
-                            </td>
-                          </>
+                          <td
+                            key={`${meta.month}-a`}
+                            colSpan={2}
+                            className={cn('px-2 py-1.5 text-right border-r border-border/40 font-semibold', amountClass(cell.actual ?? cell.budget, true), hl && 'bg-sky-500/15')}
+                          >
+                            {fmtNOK(cell.actual ?? cell.budget)}
+                          </td>
                         ) : (
                           <td
                             key={`${meta.month}-s`}
@@ -261,6 +333,7 @@ export function BudgetPage() {
                               'px-2 py-1.5 text-right border-r border-border/40 font-semibold',
                               meta.isLocked ? amountClass(cell.actual ?? cell.budget, true) : amountClass(cell.budget),
                               !meta.isLocked && 'italic text-muted-foreground',
+                              hl && 'bg-sky-500/15',
                             )}
                           >
                             {fmtNOK(meta.isLocked ? (cell.actual ?? cell.budget) : cell.budget)}
@@ -271,22 +344,37 @@ export function BudgetPage() {
                       <td colSpan={TOTAL_COLS - 2} />
                     )}
 
-                    {isSummary ? (
-                      <td className={cn('px-3 py-1.5 text-right font-semibold border-l border-border/40', amountClass(section.rows[0].annualBudget, true))}>
-                        {fmtNOK(section.rows[0].annualBudget)}
-                      </td>
+                    {isSummary && section.key !== 'OPPSUMMERING' ? (
+                      (() => {
+                        const summaryRow = section.rows[0]
+                        const annualSum = metas.reduce((s, meta) => {
+                          const cell = summaryRow.cells[meta.month - 1]
+                          if (meta.hasSlip) return s + (cell.actual ?? cell.budget)
+                          if (meta.isLocked) return s + (cell.actual ?? cell.budget)
+                          return s + cell.budget
+                        }, 0)
+                        return (
+                          <td className={cn('px-3 py-1.5 text-right font-semibold border-l border-border/40', amountClass(annualSum, true))}>
+                            {fmtNOK(annualSum)}
+                          </td>
+                        )
+                      })()
                     ) : (
                       <td />
                     )}
                   </tr>
 
-                  {/* Data rows */}
-                  {!isCollapsed && !isSummary && section.rows.map((row) => (
+                  {/* Data rows — alltid synlig for OPPSUMMERING, ellers avhengig av collapsed */}
+                  {(section.key === 'OPPSUMMERING' || (!isCollapsed && !isSummary)) && section.rows.map((row) => (
                     <DataRow
                       key={row.id}
                       row={row}
                       metas={metas}
                       dualColumn={section.dualColumn}
+                      isEditable={section.key !== 'NETTO' && section.key !== 'DISPONIBELT' && section.key !== 'OPPSUMMERING'}
+                      yearOverrides={yearOverrides}
+                      onOverride={(month, value) => handleOverride(row.id, month, value)}
+                      highlightedMonth={highlightedMonth}
                     />
                   ))}
                 </>
@@ -342,13 +430,91 @@ function DataRow({
   row,
   metas,
   dualColumn,
+  isEditable = false,
+  yearOverrides,
+  onOverride,
+  highlightedMonth,
 }: {
   row: BudgetRow
   metas: MonthMeta[]
   dualColumn: boolean
+  isEditable?: boolean
+  yearOverrides?: Record<string, number>
+  onOverride?: (month: number, value: number | null) => void
+  highlightedMonth?: number | null
 }) {
+  const [editingMonth, setEditingMonth] = useState<number | null>(null)
+  const [editValue, setEditValue] = useState('')
+
+  function startEdit(month: number, val: number) {
+    setEditingMonth(month)
+    setEditValue(String(Math.round(val)))
+  }
+  function commitEdit() {
+    if (editingMonth === null) return
+    const v = parseFloat(editValue)
+    if (!isNaN(v)) onOverride?.(editingMonth, v)
+    setEditingMonth(null)
+  }
+  function cancelEdit() { setEditingMonth(null) }
+
   const hasAnyNonZero = row.cells.some((c) => c.budget !== 0 || c.actual !== null)
   if (!hasAnyNonZero) return null
+
+  // Årssum som reflekterer nøyaktig hva som vises per celle
+  const displayAnnualSum = row.isCumulative
+    // YTD-rader: årssum = desember-verdi (= full årstotal)
+    ? (() => {
+        const decMeta = metas[11]
+        const decCell = row.cells[11]
+        if (!decMeta || !decCell) return 0
+        if (decMeta.hasSlip) return decCell.actual ?? decCell.budget
+        if (decMeta.isLocked) return decCell.actual ?? decCell.budget
+        return decCell.budget
+      })()
+    : metas.reduce((s, meta) => {
+        const cell = row.cells[meta.month - 1]
+        const overrideKey = `${meta.month}:${row.id}`
+        const hasOverride = yearOverrides && overrideKey in yearOverrides
+        if (hasOverride) return s + yearOverrides![overrideKey]
+        if (meta.hasSlip) return s + (cell.actual ?? 0)
+        if (meta.isLocked) return s + (cell.actual ?? cell.budget)
+        return s + cell.budget
+      }, 0)
+
+  // Kumulative rader (YTD): alltid positiv farge, uten avviksmarkering
+  if (row.isCumulative) {
+    return (
+      <tr className="border-b border-border/20 hover:bg-muted/10">
+        <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate text-muted-foreground text-xs">
+          {row.label}
+        </td>
+        {metas.map((meta) => {
+          const cell = row.cells[meta.month - 1]
+          const hl = highlightedMonth === meta.month
+          if (meta.hasSlip) {
+            return (
+              <td key={`${meta.month}-a`} colSpan={2} className={cn('px-2 py-1.5 text-right border-r border-border/40 tabular-nums text-xs font-medium', hl && 'bg-sky-500/15')}>
+                {fmtNOK(cell.actual ?? cell.budget)}
+              </td>
+            )
+          }
+          return (
+            <td
+              key={`${meta.month}-p`}
+              colSpan={2}
+              className={cn('px-2 py-1.5 text-right border-r border-border/40 tabular-nums text-xs italic text-muted-foreground', hl && 'bg-sky-500/15')}
+            >
+              {fmtNOK(cell.budget)}
+            </td>
+          )
+        })}
+        <td className="px-3 py-1.5 text-right font-medium border-l border-border/40 tabular-nums text-xs text-muted-foreground">
+          {fmtNOK(displayAnnualSum)}
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <tr className="border-b border-border/30 hover:bg-muted/10">
@@ -358,9 +524,9 @@ function DataRow({
 
       {metas.map((meta) => {
         const cell = row.cells[meta.month - 1]
+        const hl = highlightedMonth === meta.month
 
         if (!dualColumn) {
-          // Always single cell (colspan=2)
           return (
             <td
               key={meta.month}
@@ -368,6 +534,7 @@ function DataRow({
               className={cn(
                 'px-2 py-1.5 text-right border-r border-border/40 tabular-nums',
                 cell.budget === 0 ? 'text-muted-foreground' : cell.budget < 0 ? 'text-red-400' : 'text-foreground',
+                hl && 'bg-sky-500/15',
               )}
             >
               {fmtNOK(cell.budget)}
@@ -375,53 +542,86 @@ function DataRow({
           )
         }
 
-        // dualColumn section
         if (meta.hasSlip) {
           const actual = cell.actual ?? 0
           const deviation = actual !== 0 && cell.budget !== 0 ? actual - cell.budget : null
           return (
-            <>
-              <td
-                key={`${meta.month}-bud`}
-                className="px-2 py-1.5 text-right text-muted-foreground tabular-nums"
-              >
-                {cell.budget !== 0 ? fmtNOK(cell.budget) : '—'}
-              </td>
-              <td
-                key={`${meta.month}-fak`}
-                className={cn(
-                  'px-2 py-1.5 text-right border-r border-border/40 font-medium tabular-nums',
-                  actual < 0 ? 'text-red-400' : actual > 0 ? 'text-foreground' : 'text-muted-foreground',
-                  deviation !== null && Math.abs(deviation) > Math.abs(cell.budget) * 0.1 && 'underline decoration-dotted',
-                )}
-                title={deviation !== null ? `Avvik: ${Math.round(deviation).toLocaleString('no-NO')}` : undefined}
-              >
-                {fmtNOK(actual)}
-              </td>
-            </>
+            <td
+              key={`${meta.month}-fak`}
+              colSpan={2}
+              className={cn(
+                'px-2 py-1.5 text-right border-r border-border/40 font-medium tabular-nums',
+                actual < 0 ? 'text-red-400' : actual > 0 ? 'text-foreground' : 'text-muted-foreground',
+                deviation !== null && Math.abs(deviation) > Math.abs(cell.budget) * 0.1 && 'underline decoration-dotted',
+                hl && 'bg-sky-500/15',
+              )}
+              title={deviation !== null ? `Avvik: ${Math.round(deviation).toLocaleString('no-NO')}` : undefined}
+            >
+              {fmtNOK(actual)}
+            </td>
           )
         }
 
-        // No slip: single cell, colspan=2
-        const value = meta.isLocked ? (cell.actual ?? cell.budget) : cell.budget
+        if (editingMonth === meta.month && isEditable) {
+          return (
+            <td key={`${meta.month}-edit`} colSpan={2} className={cn('px-1 py-0.5 border-r border-border/40', hl && 'bg-sky-500/15')}>
+              <input
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit() }}
+                autoFocus
+                className="w-full bg-muted/30 text-right text-xs px-1 py-0.5 rounded outline-none tabular-nums"
+              />
+            </td>
+          )
+        }
+
+        const overrideKey = `${meta.month}:${row.id}`
+        const hasOverride = yearOverrides && overrideKey in yearOverrides
+        const displayVal = hasOverride ? yearOverrides![overrideKey] : (meta.isLocked ? (cell.actual ?? cell.budget) : cell.budget)
+
         return (
           <td
             key={`${meta.month}-prog`}
             colSpan={2}
             className={cn(
-              'px-2 py-1.5 text-right border-r border-border/40 tabular-nums',
-              !meta.isLocked && 'italic text-muted-foreground',
-              meta.isLocked && value < 0 && 'text-red-400',
-              meta.isLocked && value > 0 && 'text-foreground',
+              'px-2 py-1.5 text-right border-r border-border/40 tabular-nums group/cell',
+              !meta.isLocked && !hasOverride && 'italic text-muted-foreground',
+              meta.isLocked && displayVal < 0 && 'text-red-400',
+              meta.isLocked && displayVal > 0 && 'text-foreground',
+              hasOverride && 'text-amber-400 not-italic',
+              isEditable && !meta.isLocked && 'cursor-text hover:bg-muted/20',
+              hl && 'bg-sky-500/15',
             )}
+            onClick={() => isEditable && !meta.isLocked && startEdit(meta.month, displayVal)}
           >
-            {fmtNOK(value)}
+            <span className="flex items-center justify-end gap-1">
+              {fmtNOK(displayVal)}
+              {isEditable && !meta.isLocked && (
+                <button
+                  className={cn(
+                    'text-xs leading-none transition-colors',
+                    hasOverride
+                      ? 'text-amber-400 hover:text-red-400'
+                      : 'opacity-0 group-hover/cell:opacity-100 text-muted-foreground hover:text-red-400',
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (hasOverride && displayVal === 0) onOverride?.(meta.month, null)
+                    else onOverride?.(meta.month, 0)
+                  }}
+                  title={hasOverride && displayVal === 0 ? 'Tilbakestill til beregnet' : 'Sett til 0'}
+                >×</button>
+              )}
+            </span>
           </td>
         )
       })}
 
-      <td className={cn('px-3 py-1.5 text-right font-medium border-l border-border/40 tabular-nums', amountClass(row.annualBudget))}>
-        {fmtNOK(row.annualBudget)}
+      <td className={cn('px-3 py-1.5 text-right font-medium border-l border-border/40 tabular-nums', amountClass(displayAnnualSum))}>
+        {fmtNOK(displayAnnualSum)}
       </td>
     </tr>
   )
@@ -520,6 +720,110 @@ function AddBudgetLineModal({
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// FungeringPanel
+// ----------------------------------------------------------------
+
+function FungeringPanel({
+  entries,
+  onAdd,
+  onRemove,
+}: {
+  entries: TemporaryPayEntry[]
+  onAdd: (e: TemporaryPayEntry) => void
+  onRemove: (id: string) => void
+}) {
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({ label: '', fromDate: today, toDate: today, aarslonn: 0 })
+  const [adding, setAdding] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  function handleSave() {
+    if (!form.label.trim()) { setSaveError('Beskrivelse mangler'); return }
+    if (!form.fromDate || !form.toDate) { setSaveError('Datoer mangler'); return }
+    if (form.toDate < form.fromDate) { setSaveError('Til-dato må være etter fra-dato'); return }
+    if (form.aarslonn <= 0) { setSaveError('Årslønn må være større enn 0'); return }
+    setSaveError(null)
+    onAdd({ id: crypto.randomUUID(), label: form.label.trim(), fromDate: form.fromDate, toDate: form.toDate, maanedslonn: Math.round(form.aarslonn / 12) })
+    setForm({ label: '', fromDate: today, toDate: today, aarslonn: 0 })
+    setAdding(false)
+  }
+
+  return (
+    <div className="px-4 py-3 border-b border-border bg-muted/20 shrink-0 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-foreground">Midlertidig lønn (fungering)</p>
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setAdding((v) => !v)}>
+          <Plus className="h-3 w-3" /> Legg til
+        </Button>
+      </div>
+
+      {adding && (
+        <><div className="flex flex-wrap items-end gap-2 text-xs">
+          <div className="space-y-0.5">
+            <Label className="text-xs">Beskrivelse</Label>
+            <Input
+              className="h-7 text-xs w-48"
+              placeholder="f.eks. Fungering som major"
+              value={form.label}
+              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-0.5">
+            <Label className="text-xs">Fra dato</Label>
+            <Input type="date" className="h-7 text-xs w-36" value={form.fromDate} onChange={(e) => setForm((f) => ({ ...f, fromDate: e.target.value }))} />
+          </div>
+          <div className="space-y-0.5">
+            <Label className="text-xs">Til dato</Label>
+            <Input type="date" className="h-7 text-xs w-36" value={form.toDate} onChange={(e) => setForm((f) => ({ ...f, toDate: e.target.value }))} />
+          </div>
+          <div className="space-y-0.5">
+            <Label className="text-xs">Årslønn (kr)</Label>
+            <Input
+              type="number"
+              className="h-7 text-xs w-36"
+              placeholder="f.eks. 700000"
+              value={form.aarslonn || ''}
+              onChange={(e) => setForm((f) => ({ ...f, aarslonn: parseFloat(e.target.value) || 0 }))}
+            />
+          </div>
+          {form.aarslonn > 0 && (
+            <div className="space-y-0.5 self-end pb-1.5">
+              <p className="text-muted-foreground text-xs">= {Math.round(form.aarslonn / 12).toLocaleString('no-NO')} kr/mnd</p>
+            </div>
+          )}
+          <Button size="sm" className="h-7 text-xs" onClick={handleSave}>Lagre</Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAdding(false); setSaveError(null) }}>Avbryt</Button>
+        </div>
+        {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+        </>
+      )}
+
+      {entries.length > 0 && (
+        <div className="space-y-1">
+          {entries.map((e) => (
+            <div key={e.id} className="flex items-center justify-between gap-3 text-xs rounded border border-border/50 px-2 py-1.5">
+              <span className="font-medium">{e.label}</span>
+              <span className="text-muted-foreground">{e.fromDate} → {e.toDate}</span>
+              <span className="font-mono text-green-500">{Math.round(e.maanedslonn * 12).toLocaleString('no-NO')} kr/år <span className="text-muted-foreground font-normal">({Math.round(e.maanedslonn).toLocaleString('no-NO')} kr/mnd)</span></span>
+              <button
+                className="text-muted-foreground hover:text-red-400 transition-colors ml-2"
+                onClick={() => onRemove(e.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {entries.length === 0 && !adding && (
+        <p className="text-xs text-muted-foreground">Ingen fungeringsperioder registrert.</p>
+      )}
     </div>
   )
 }

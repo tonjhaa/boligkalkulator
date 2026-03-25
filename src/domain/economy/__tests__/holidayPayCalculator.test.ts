@@ -9,7 +9,6 @@ import type { EmploymentProfile, MonthRecord, ParsetLonnsslipp } from '@/types/e
 // Basert på Tonjes faktiske tall
 const PROFILE: EmploymentProfile = {
   employer: 'forsvaret',
-  salaryGrade: 61,
   baseMonthly: 55_844,
   fixedAdditions: [
     { kode: '1501', label: 'Kompensasjonstillegg husleie', amount: 4_534 },
