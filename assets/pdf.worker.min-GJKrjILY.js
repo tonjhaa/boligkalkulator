@@ -1,1 +1,0 @@
-import{c}from"./index-CYNUt6K0.js";const e=[["path",{d:"M21.801 10A10 10 0 1 1 17 3.335",key:"yps3ct"}],["path",{d:"m9 11 3 3L22 4",key:"1pflzl"}]],a=c("circle-check-big",e);const o=[["path",{d:"M21 12a9 9 0 1 1-6.219-8.56",key:"13zald"}]],s=c("loader-circle",o),t="/boligkalkulator/assets/pdf.worker.min-B_fnEKel.mjs";export{a as C,s as L,t as w};
