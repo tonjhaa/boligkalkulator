@@ -106,6 +106,7 @@ interface EconomyState {
   addAbsenceEvent: (event: AbsenceEvent) => void
   removeAbsenceEvent: (id: string) => void
   setAbsenceHireDate: (date: string | null) => void
+  clearAbsenceData: () => void
 
   addTaxSettlement: (record: TaxSettlementRecord) => void
   updateTaxSettlement: (year: number, updates: Partial<TaxSettlementRecord>) => void
@@ -491,6 +492,7 @@ export const useEconomyStore = create<EconomyState>()(
       removeAbsenceEvent: (id) =>
         set((s) => ({ absenceEvents: s.absenceEvents.filter((e) => e.id !== id) })),
       setAbsenceHireDate: (date) => set({ absenceHireDate: date }),
+      clearAbsenceData: () => set({ absenceRecords: [], absenceEvents: [], absenceHireDate: null }),
 
       // --- Skatteoppgjør ---
       addTaxSettlement: (record) =>

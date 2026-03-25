@@ -40,10 +40,11 @@ export function AbsencePage() {
   const {
     absenceRecords, addAbsenceRecord, removeAbsenceRecord,
     absenceEvents, addAbsenceEvent, removeAbsenceEvent,
-    absenceHireDate, setAbsenceHireDate,
+    absenceHireDate, setAbsenceHireDate, clearAbsenceData,
   } = useEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
   const [checkDateStr, setCheckDateStr] = useState(toLocalDateISO(new Date()))
@@ -106,6 +107,17 @@ export function AbsencePage() {
               content="Last opp en .xlsx-fil eksportert fra SAP. Filen må inneholde kolonnene: «Tekst frav.type» (f.eks. 0120 Sykemeldt egenmld), «Startdato» og «Frav.dager». Kolonnerekefølge og ekstra kolonner spiller ingen rolle. 0120 = egenmelding, 0110 = sykemelding."
             />
           </div>
+          {confirmClear ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-red-400">Sletter alt fravær!</span>
+              <Button variant="destructive" size="sm" onClick={() => { clearAbsenceData(); setConfirmClear(false) }}>Bekreft</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>Avbryt</Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" className="text-red-400 hover:border-red-400" onClick={() => setConfirmClear(true)}>
+              Nullstill
+            </Button>
+          )}
           <Button size="sm" onClick={() => setShowAddForm(true)}>
             <Plus className="h-4 w-4 mr-1" />
             Registrer
