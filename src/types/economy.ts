@@ -413,6 +413,31 @@ export interface InsuranceEntry {
 }
 
 // ------------------------------------------------------------
+// FOND (KRON-PORTEFØLJE)
+// ------------------------------------------------------------
+
+export interface FondEntry {
+  id: string
+  name: string
+  type: 'aktivt' | 'indeks' | 'rente' | 'annet'
+  allocationPercent: number
+  ticker?: string  // Yahoo Finance ticker for live data
+  color: string
+}
+
+export interface FondPortfolioSnapshot {
+  date: string  // YYYY-MM-DD
+  totalValue: number
+}
+
+export interface FondPortfolio {
+  monthlyDeposit: number
+  startDate: string  // YYYY-MM-DD
+  funds: FondEntry[]
+  snapshots: FondPortfolioSnapshot[]
+}
+
+// ------------------------------------------------------------
 // STYRINGSRENTE
 // ------------------------------------------------------------
 

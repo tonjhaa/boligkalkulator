@@ -35,7 +35,6 @@ export function TaxSettlementPage() {
     subscriptions,
     insurances,
     temporaryPayEntries,
-    ivfTransactions,
     budgetOverrides,
   } = useEconomyStore()
 

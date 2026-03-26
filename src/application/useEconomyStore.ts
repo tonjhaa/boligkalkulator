@@ -25,6 +25,8 @@ import type {
   TemporaryPayEntry,
   IVFTransaction,
   IVFSettings,
+  FondPortfolio,
+  FondPortfolioSnapshot,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -71,6 +73,9 @@ interface EconomyState {
   // IVF-prosjekt
   ivfTransactions: IVFTransaction[]
   ivfSettings: IVFSettings
+
+  // Fond (KRON-portefølje)
+  fondPortfolio: FondPortfolio
 
   // Actions
   setProfile: (profile: EmploymentProfile) => void
@@ -136,6 +141,10 @@ interface EconomyState {
   removeIvfTransaction: (id: string) => void
   setIvfSettings: (settings: Partial<IVFSettings>) => void
 
+  setFondPortfolio: (p: FondPortfolio) => void
+  addFondSnapshot: (snapshot: FondPortfolioSnapshot) => void
+  removeFondSnapshot: (date: string) => void
+
   updateBudgetTemplate: (template: Partial<BudgetTemplate>) => void
   addBudgetLine: (line: BudgetLine) => void
   updateBudgetLine: (id: string, updates: Partial<BudgetLine>) => void
@@ -159,6 +168,19 @@ interface EconomyState {
 const DEFAULT_TEMPLATE: BudgetTemplate = {
   lines: [],
   lastUpdated: new Date().toISOString().split('T')[0],
+}
+
+const DEFAULT_FOND_PORTFOLIO: FondPortfolio = {
+  monthlyDeposit: 2500,
+  startDate: '2025-01-01',
+  funds: [
+    { id: '1', name: 'DNB Telecom A', type: 'aktivt', allocationPercent: 21.0, ticker: undefined, color: '#6366f1' },
+    { id: '2', name: 'VanEck Defense UCITS ETF', type: 'indeks', allocationPercent: 20.6, ticker: 'DFNS.AS', color: '#f43f5e' },
+    { id: '3', name: 'DNB Teknologi A', type: 'aktivt', allocationPercent: 19.7, ticker: undefined, color: '#f97316' },
+    { id: '4', name: 'Borea Nordisk Utbytte N', type: 'aktivt', allocationPercent: 19.6, ticker: undefined, color: '#ec4899' },
+    { id: '5', name: 'DNB European Defence A', type: 'aktivt', allocationPercent: 19.2, ticker: undefined, color: '#3b82f6' },
+  ],
+  snapshots: [],
 }
 
 const DEFAULT_IVF_SETTINGS: IVFSettings = {
@@ -241,6 +263,7 @@ export const useEconomyStore = create<EconomyState>()(
       temporaryPayEntries: [],
       ivfTransactions: INITIAL_IVF_TRANSACTIONS,
       ivfSettings: DEFAULT_IVF_SETTINGS,
+      fondPortfolio: DEFAULT_FOND_PORTFOLIO,
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),
@@ -617,6 +640,26 @@ export const useEconomyStore = create<EconomyState>()(
       setIvfSettings: (settings) =>
         set((s) => ({ ivfSettings: { ...s.ivfSettings, ...settings } })),
 
+      // --- Fond ---
+      setFondPortfolio: (p) => set({ fondPortfolio: p }),
+      addFondSnapshot: (snapshot) =>
+        set((s) => {
+          const filtered = s.fondPortfolio.snapshots.filter((snap) => snap.date !== snapshot.date)
+          return {
+            fondPortfolio: {
+              ...s.fondPortfolio,
+              snapshots: [...filtered, snapshot].sort((a, b) => a.date.localeCompare(b.date)),
+            },
+          }
+        }),
+      removeFondSnapshot: (date) =>
+        set((s) => ({
+          fondPortfolio: {
+            ...s.fondPortfolio,
+            snapshots: s.fondPortfolio.snapshots.filter((snap) => snap.date !== date),
+          },
+        })),
+
       // --- Forsikring ---
       addInsurance: (ins) => set((s) => ({ insurances: [...s.insurances, ins] })),
       updateInsurance: (id, updates) =>
@@ -740,6 +783,7 @@ export const useEconomyStore = create<EconomyState>()(
             temporaryPayEntries: data.temporaryPayEntries ?? [],
             ivfTransactions: data.ivfTransactions ?? INITIAL_IVF_TRANSACTIONS,
             ivfSettings: data.ivfSettings ?? DEFAULT_IVF_SETTINGS,
+            fondPortfolio: data.fondPortfolio ?? DEFAULT_FOND_PORTFOLIO,
             budgetOverrides: data.budgetOverrides ?? {},
           })
         } catch {
@@ -771,6 +815,7 @@ export const useEconomyStore = create<EconomyState>()(
           temporaryPayEntries: [],
           ivfTransactions: INITIAL_IVF_TRANSACTIONS,
           ivfSettings: DEFAULT_IVF_SETTINGS,
+          fondPortfolio: DEFAULT_FOND_PORTFOLIO,
           budgetOverrides: {},
         }),
     }),
@@ -831,6 +876,7 @@ export const useEconomyStore = create<EconomyState>()(
         temporaryPayEntries: state.temporaryPayEntries,
         ivfTransactions: state.ivfTransactions,
         ivfSettings: state.ivfSettings,
+        fondPortfolio: state.fondPortfolio,
         budgetOverrides: state.budgetOverrides,
       }),
     }

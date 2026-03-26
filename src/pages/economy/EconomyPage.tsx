@@ -14,6 +14,7 @@ import {
   HeartPulse,
   Umbrella,
   Settings,
+  BarChart2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -56,6 +57,9 @@ const VacationPage = lazy(() =>
 const EconomySettingsPage = lazy(() =>
   import('./EconomySettingsPage').then((m) => ({ default: m.EconomySettingsPage }))
 )
+const FondPage = lazy(() =>
+  import('./FondPage').then((m) => ({ default: m.FondPage }))
+)
 
 type EconomySubPage =
   | 'dashboard'
@@ -68,6 +72,7 @@ type EconomySubPage =
   | 'tax'
   | 'subscriptions'
   | 'feriepenger'
+  | 'fond'
   | 'ivf'
   | 'vacation'
   | 'settings'
@@ -85,6 +90,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'atf', label: 'ATF', Icon: Shield },
   { page: 'feriepenger', label: 'Feriepenger', Icon: Palmtree },
   { page: 'savings', label: 'Sparing', Icon: PiggyBank },
+  { page: 'fond', label: 'Fond', Icon: BarChart2 },
   { page: 'debt', label: 'Gjeld', Icon: CreditCard },
   { page: 'absence', label: 'Fravær', Icon: FileText },
   { page: 'tax', label: 'Skatt', Icon: TrendingUp },
@@ -167,6 +173,7 @@ export function EconomyPage() {
           {currentPage === 'salary' && <SalaryPage />}
           {currentPage === 'atf' && <ATFPage />}
           {currentPage === 'savings' && <SavingsPage />}
+          {currentPage === 'fond' && <FondPage />}
           {currentPage === 'debt' && <DebtPage />}
           {currentPage === 'absence' && <AbsencePage />}
           {currentPage === 'tax' && <TaxSettlementPage />}
