@@ -106,6 +106,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     taxSettlements,
     budgetTemplate,
     profile,
+    fondPortfolio,
   } = useEconomyStore()
 
   const [tick, setTick] = useState(() => new Date())
@@ -170,13 +171,17 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     : null
 
   // ── KPI-beregninger ────────────────────────────────────────
-  const totalSparing = savingsAccounts.reduce((s, a) => {
+  const sparingKontoer = savingsAccounts.reduce((s, a) => {
     const sorted = [...a.balanceHistory].sort((x, y) =>
       x.year !== y.year ? y.year - x.year : y.month - x.month
     )
     return s + (sorted[0]?.balance ?? a.openingBalance)
   }, 0)
 
+  const sortedFondSnapshots = [...fondPortfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
+  const fondVerdi = sortedFondSnapshots[0]?.totalValue ?? 0
+
+  const totalSparing = sparingKontoer + fondVerdi
   const totalGjeld = debts.reduce((s, d) => s + d.currentBalance, 0)
   const nettoFormue = totalSparing - totalGjeld
 
@@ -282,7 +287,15 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           label="Total sparing"
           value={totalSparing}
           color="blue"
-          sub={savingsAccounts.length > 0 ? `${savingsAccounts.length} kontoer` : undefined}
+          sub={
+            fondVerdi > 0 && savingsAccounts.length > 0
+              ? `${savingsAccounts.length} kontoer + fond`
+              : fondVerdi > 0
+              ? `inkl. fond ${Math.round(fondVerdi).toLocaleString('no-NO')} kr`
+              : savingsAccounts.length > 0
+              ? `${savingsAccounts.length} kontoer`
+              : undefined
+          }
         />
         <KpiCard
           label="Netto inn"

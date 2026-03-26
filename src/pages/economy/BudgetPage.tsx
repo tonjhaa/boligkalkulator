@@ -64,6 +64,7 @@ export function BudgetPage() {
     insurances,
     temporaryPayEntries,
     ivfTransactions,
+    fondPortfolio,
     lockMonth,
     unlockMonth,
     addBudgetLine,
@@ -108,6 +109,7 @@ export function BudgetPage() {
     juneForecast ?? undefined,
     hideTemporary,
     ivfTransactions,
+    fondPortfolio,
   )
 
   const { metas, sections, estimatedAnnualGrowthRate } = tableData

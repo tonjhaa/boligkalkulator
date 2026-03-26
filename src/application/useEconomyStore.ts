@@ -172,15 +172,17 @@ const DEFAULT_TEMPLATE: BudgetTemplate = {
 
 const DEFAULT_FOND_PORTFOLIO: FondPortfolio = {
   monthlyDeposit: 2500,
-  startDate: '2025-01-01',
+  startDate: '2023-09-01',
   funds: [
-    { id: '1', name: 'DNB Telecom A', type: 'aktivt', allocationPercent: 21.0, ticker: undefined, color: '#6366f1' },
-    { id: '2', name: 'VanEck Defense UCITS ETF', type: 'indeks', allocationPercent: 20.6, ticker: 'DFNS.AS', color: '#f43f5e' },
-    { id: '3', name: 'DNB Teknologi A', type: 'aktivt', allocationPercent: 19.7, ticker: undefined, color: '#f97316' },
-    { id: '4', name: 'Borea Nordisk Utbytte N', type: 'aktivt', allocationPercent: 19.6, ticker: undefined, color: '#ec4899' },
-    { id: '5', name: 'DNB European Defence A', type: 'aktivt', allocationPercent: 19.2, ticker: undefined, color: '#3b82f6' },
+    { id: '1', name: 'DNB Telecom A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#6366f1', returnPercent: 8.6 },
+    { id: '2', name: 'VanEck Defense UCITS ETF', type: 'indeks', allocationPercent: 20, ticker: 'DFNS.AS', color: '#f43f5e', returnPercent: 14.4 },
+    { id: '3', name: 'DNB Teknologi A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#f97316', returnPercent: -10.7 },
+    { id: '4', name: 'Borea Nordisk Utbytte N', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#ec4899', returnPercent: -6.8 },
+    { id: '5', name: 'DNB European Defence A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#3b82f6', returnPercent: -0.5 },
   ],
-  snapshots: [],
+  snapshots: [
+    { date: '2026-03-26', totalValue: 80458, totalDeposited: 76343 },
+  ],
 }
 
 const DEFAULT_IVF_SETTINGS: IVFSettings = {

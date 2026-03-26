@@ -10,6 +10,7 @@ import type {
   TemporaryPayEntry,
   JuneForecast,
   IVFTransaction,
+  FondPortfolio,
 } from '@/types/economy'
 import { estimateSalaryTrend, projectMonthlySalary } from './salaryCalculator'
 import { computeMonthContributions } from './savingsCalculator'
@@ -109,6 +110,7 @@ export function computeBudgetTable(
   juneForecast?: JuneForecast,
   hideTemporary = false,
   ivfTransactions: IVFTransaction[] = [],
+  fondPortfolio?: FondPortfolio,
 ): BudgetTableData {
 
   // ---- Month lookup (locked months in this year) ----
@@ -446,6 +448,26 @@ export function computeBudgetTable(
       (m) => {
         const actual = computeMonthContributions(acc, year, m)
         return actual > 0 ? -actual : null
+      },
+    )))
+  }
+
+  // KRON-fond spareavtale
+  if (fondPortfolio && fondPortfolio.monthlyDeposit > 0) {
+    const fondStartYear = new Date(fondPortfolio.startDate).getFullYear()
+    const fondStartMonth = new Date(fondPortfolio.startDate).getMonth() + 1
+    const nowYear = new Date().getFullYear()
+    const nowMonth = new Date().getMonth() + 1
+    sparingRows.push(mkRow('kron-fond', 'KRON Fond', uniform12(
+      (m) => {
+        if (year < fondStartYear || (year === fondStartYear && m < fondStartMonth)) return 0
+        return budgetVal('kron-fond', m, -fondPortfolio.monthlyDeposit)
+      },
+      (m) => {
+        // Bruk faktisk = budsjett for alle passerte måneder (spareavtale er fast)
+        if (year < fondStartYear || (year === fondStartYear && m < fondStartMonth)) return null
+        if (year < nowYear || (year === nowYear && m <= nowMonth)) return -fondPortfolio.monthlyDeposit
+        return null
       },
     )))
   }

@@ -36,6 +36,7 @@ export function TaxSettlementPage() {
     insurances,
     temporaryPayEntries,
     budgetOverrides,
+    fondPortfolio,
   } = useEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -82,7 +83,7 @@ export function TaxSettlementPage() {
     if (k.startsWith(prefix)) yearOverrides[k.slice(prefix.length)] = v
   }
   const budgetTable = profile
-    ? computeBudgetTable(currentYear, profile, budgetTemplate, monthHistory, atfEntries, savingsAccounts, debts, subscriptions, insurances, yearOverrides, temporaryPayEntries, juneForecast ?? undefined)
+    ? computeBudgetTable(currentYear, profile, budgetTemplate, monthHistory, atfEntries, savingsAccounts, debts, subscriptions, insurances, yearOverrides, temporaryPayEntries, juneForecast ?? undefined, false, [], fondPortfolio)
     : null
   const allRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
   const skattRow = allRows.find((r) => r.id === 'skatt')

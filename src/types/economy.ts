@@ -423,11 +423,13 @@ export interface FondEntry {
   allocationPercent: number
   ticker?: string  // Yahoo Finance ticker for live data
   color: string
+  returnPercent?: number  // siste kjente avkastning %
 }
 
 export interface FondPortfolioSnapshot {
   date: string  // YYYY-MM-DD
   totalValue: number
+  totalDeposited?: number  // totalt innskutt beløp
 }
 
 export interface FondPortfolio {

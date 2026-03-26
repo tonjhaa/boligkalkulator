@@ -64,8 +64,18 @@ interface TickerItem {
 function Ticker({ funds }: { funds: FondEntry[] }) {
   const items: TickerItem[] = funds.map((f) => ({
     name: f.name,
-    label: `${f.allocationPercent.toFixed(1)}%`,
-    isPositive: null,
+    label:
+      f.returnPercent !== undefined
+        ? `${f.returnPercent >= 0 ? '+' : ''}${f.returnPercent.toFixed(1)}%`
+        : `${f.allocationPercent.toFixed(1)}%`,
+    isPositive:
+      f.returnPercent !== undefined
+        ? f.returnPercent > 0
+          ? true
+          : f.returnPercent < 0
+          ? false
+          : null
+        : null,
   }))
 
   const content = [...items, ...items] // duplicate for seamless loop
@@ -176,9 +186,12 @@ function buildChartData(portfolio: FondPortfolio, now: Date): ChartPoint[] {
       .filter((s) => s.date.slice(0, 7) <= isoPrefix)
       .at(-1)
 
+    // Use actual deposited amount from snapshot if available
+    const investertAktual = snap?.totalDeposited ?? investert
+
     points.push({
       label: `${monthStr}/${String(yearStr).slice(2)}`,
-      investert,
+      investert: investertAktual,
       faktisk: snap ? snap.totalValue : null,
     })
   }
@@ -325,6 +338,15 @@ function AllocationSection({ portfolio, latestValue }: { portfolio: FondPortfoli
                 {fundValue !== null && (
                   <p className="text-xs text-muted-foreground font-mono">{fmtNOK(fundValue)}</p>
                 )}
+                {fund.returnPercent !== undefined && (
+                  <p
+                    className={`text-xs font-mono font-medium ${
+                      fund.returnPercent > 0 ? 'text-green-400' : fund.returnPercent < 0 ? 'text-red-400' : 'text-muted-foreground'
+                    }`}
+                  >
+                    {fund.returnPercent >= 0 ? '+' : ''}{fund.returnPercent.toFixed(1)}%
+                  </p>
+                )}
               </div>
             </div>
           )
@@ -350,14 +372,17 @@ function SnapshotSection({
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate] = useState(today)
   const [value, setValue] = useState('')
+  const [deposited, setDeposited] = useState('')
 
   const sorted = [...portfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
 
   function handleAdd() {
     const v = parseFloat(value)
     if (!date || isNaN(v) || v <= 0) return
-    onAdd({ date, totalValue: v })
+    const dep = parseFloat(deposited)
+    onAdd({ date, totalValue: v, totalDeposited: isNaN(dep) ? undefined : dep })
     setValue('')
+    setDeposited('')
     setDate(today)
   }
 
@@ -379,9 +404,19 @@ function SnapshotSection({
           <Input
             type="number"
             className="h-8 text-xs w-32"
-            placeholder="f.eks. 28500"
+            placeholder="f.eks. 80458"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Innskutt (kr)</Label>
+          <Input
+            type="number"
+            className="h-8 text-xs w-32"
+            placeholder="f.eks. 76343"
+            value={deposited}
+            onChange={(e) => setDeposited(e.target.value)}
           />
         </div>
         <Button
@@ -402,25 +437,39 @@ function SnapshotSection({
             <thead>
               <tr className="border-b border-border bg-muted/30">
                 <th className="px-3 py-2 text-left font-medium text-muted-foreground">Dato</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Innskutt</th>
                 <th className="px-3 py-2 text-right font-medium text-muted-foreground">Verdi</th>
+                <th className="px-3 py-2 text-right font-medium text-muted-foreground">Avk.</th>
                 <th className="w-8" />
               </tr>
             </thead>
             <tbody>
-              {sorted.map((snap) => (
-                <tr key={snap.date} className="border-b border-border/50 last:border-0">
-                  <td className="px-3 py-2 text-muted-foreground">{fmtDate(snap.date)}</td>
-                  <td className="px-3 py-2 text-right font-mono font-medium">{fmtNOK(snap.totalValue)}</td>
-                  <td className="px-1 py-2">
-                    <button
-                      className="text-muted-foreground hover:text-red-400 transition-colors p-1"
-                      onClick={() => onRemove(snap.date)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {sorted.map((snap) => {
+                const gain = snap.totalDeposited !== undefined ? snap.totalValue - snap.totalDeposited : null
+                const gainPct = gain !== null && snap.totalDeposited ? (gain / snap.totalDeposited) * 100 : null
+                return (
+                  <tr key={snap.date} className="border-b border-border/50 last:border-0">
+                    <td className="px-3 py-2 text-muted-foreground">{fmtDate(snap.date)}</td>
+                    <td className="px-3 py-2 text-right font-mono">
+                      {snap.totalDeposited !== undefined ? fmtNOK(snap.totalDeposited) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-medium">{fmtNOK(snap.totalValue)}</td>
+                    <td className={`px-3 py-2 text-right font-mono text-xs ${gain !== null ? (gain >= 0 ? 'text-green-400' : 'text-red-400') : 'text-muted-foreground'}`}>
+                      {gain !== null
+                        ? `${gain >= 0 ? '+' : ''}${fmtNOK(gain)} (${gainPct !== null ? `${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%` : ''})`
+                        : '—'}
+                    </td>
+                    <td className="px-1 py-2">
+                      <button
+                        className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                        onClick={() => onRemove(snap.date)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -628,10 +677,12 @@ export function FondPage() {
   const now = useRef(new Date()).current
 
   const months = monthsBetween(fondPortfolio.startDate, now)
-  const investert = fondPortfolio.monthlyDeposit * months
 
   const sortedSnapshots = [...fondPortfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
   const latestSnapshot = sortedSnapshots[0] ?? null
+
+  // Use actual deposited amount from snapshot if available, else calculate from monthly deposit
+  const investert = latestSnapshot?.totalDeposited ?? fondPortfolio.monthlyDeposit * months
   const naverdi = latestSnapshot ? latestSnapshot.totalValue : investert
   const avkastning = naverdi - investert
   const avkastningPct = investert > 0 ? (avkastning / investert) * 100 : 0
@@ -668,7 +719,11 @@ export function FondPage() {
           <SummaryCard
             label="Investert"
             value={fmtNOK(investert)}
-            subvalue={`${months} mnd × ${fondPortfolio.monthlyDeposit.toLocaleString('no-NO')} kr`}
+            subvalue={
+              latestSnapshot?.totalDeposited !== undefined
+                ? `per ${fmtDate(latestSnapshot.date)}`
+                : `${months} mnd × ${fondPortfolio.monthlyDeposit.toLocaleString('no-NO')} kr`
+            }
             highlight="neutral"
           />
           <SummaryCard
