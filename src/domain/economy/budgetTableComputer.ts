@@ -36,6 +36,8 @@ export interface BudgetRow {
   annualActual: number  // uses actual where available, budget as fallback
   /** true = celler viser løpende YTD-sum, ikke månedlig beløp */
   isCumulative?: boolean
+  /** true = vises med fet skrift som en summeringsrad */
+  isBold?: boolean
 }
 
 export interface BudgetSection {
@@ -58,13 +60,14 @@ export interface BudgetTableData {
 // Internal helpers
 // ----------------------------------------------------------------
 
-function mkRow(id: string, label: string, cells: BudgetCell[]): BudgetRow {
+function mkRow(id: string, label: string, cells: BudgetCell[], isBold = false): BudgetRow {
   return {
     id,
     label,
     cells,
     annualBudget: cells.reduce((s, c) => s + c.budget, 0),
     annualActual: cells.reduce((s, c) => s + (c.actual ?? c.budget), 0),
+    isBold,
   }
 }
 
@@ -461,15 +464,40 @@ export function computeBudgetTable(
   // ================================================================
   const sections: BudgetSection[] = []
 
+  // BRUTTO-sumrad
+  const bruttoSumCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
+    const budget = inntekterRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    const hasActual = inntekterRows.some((r) => r.cells[i].actual !== null)
+    return {
+      budget,
+      actual: hasActual ? inntekterRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
+    }
+  })
+
+  // SUM TREKK-rad
+  const trekkSumCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
+    const budget = trekkRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    const hasActual = trekkRows.some((r) => r.cells[i].actual !== null)
+    return {
+      budget,
+      actual: hasActual ? trekkRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
+    }
+  })
+
   if (inntekterRows.length > 0) {
-    // Bruttoinntekt og skattepliktig inntekt er oppsummeringsrader for inntektsseksjonen
-    sections.push({ key: 'INNTEKTER', label: 'Inntekter', colorClass: 'text-green-400', dualColumn: true, rows: [...inntekterRows, ...grunnlagRows] })
+    sections.push({
+      key: 'INNTEKTER', label: 'Inntekter', colorClass: 'text-green-400', dualColumn: true,
+      rows: [...inntekterRows, ...grunnlagRows, mkRow('brutto', 'BRUTTO', bruttoSumCells, true)],
+    })
   }
   if (trekkRows.length > 0) {
-    sections.push({ key: 'TREKK', label: 'Trekk', colorClass: 'text-red-400', dualColumn: true, rows: trekkRows })
+    sections.push({
+      key: 'TREKK', label: 'Trekk', colorClass: 'text-red-400', dualColumn: true,
+      rows: [...trekkRows, mkRow('sum-trekk', 'SUM TREKK', trekkSumCells, true)],
+    })
   }
 
-  sections.push({ key: 'NETTO', label: 'Netto utbetalt', colorClass: 'text-foreground', dualColumn: true, rows: nettoRows })
+  sections.push({ key: 'NETTO', label: 'Netto utbetalt', colorClass: 'text-foreground', dualColumn: true, rows: [mkRow('netto', 'NETTO', nettoCells, true)] })
 
   if (fasteRows.length > 0) {
     sections.push({ key: 'FASTE', label: 'Faste utgifter', colorClass: 'text-blue-400', dualColumn: false, rows: fasteRows })
@@ -484,7 +512,26 @@ export function computeBudgetTable(
     sections.push({ key: 'SPARING', label: 'Sparing', colorClass: 'text-purple-400', dualColumn: true, rows: sparingRows })
   }
 
-  sections.push({ key: 'DISPONIBELT', label: 'Disponibelt', colorClass: 'text-foreground font-bold', dualColumn: true, rows: [mkRow('disponibelt', 'Disponibelt', disponibeltCells)] })
+  // SUM UT = sum av alle utgiftsrader
+  const sumUtCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => ({
+    budget: allExpenseRows.reduce((s, r) => s + r.cells[i].budget, 0),
+    actual: null,
+  }))
+
+  // OVERSKUDD = NETTO + SUM UT (utgifter er negative, så + gir riktig resultat)
+  const overskuddCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => ({
+    budget: disponibeltCells[i].budget,
+    actual: disponibeltCells[i].actual,
+  }))
+
+  sections.push({
+    key: 'BUNN', label: 'Oppsummering', colorClass: 'text-foreground', dualColumn: true,
+    rows: [
+      mkRow('sum-inn', 'SUM INN', nettoCells, true),
+      mkRow('sum-ut', 'SUM UT', sumUtCells, true),
+      mkRow('overskudd', 'OVERSKUDD', overskuddCells, true),
+    ],
+  })
 
   // ================================================================
   // ÅRSOPPSUMMERING — løpende YTD-totaler (kun når profil er satt)

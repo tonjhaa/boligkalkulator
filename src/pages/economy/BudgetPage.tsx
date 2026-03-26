@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Lock, LockOpen, Upload, Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { Lock, LockOpen, Upload, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -75,7 +75,6 @@ export function BudgetPage() {
   const [activeYear, setActiveYear] = useState(now.getFullYear())
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
 
   const yearOverrides = useMemo(() => {
@@ -111,15 +110,6 @@ export function BudgetPage() {
   function handleOverride(rowId: string, month: number, value: number | null) {
     if (value === null) clearBudgetOverride(activeYear, month, rowId)
     else setBudgetOverride(activeYear, month, rowId, value)
-  }
-
-  function toggleSection(key: string) {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
   }
 
   const years = [activeYear - 1, activeYear, activeYear + 1]
@@ -260,98 +250,30 @@ export function BudgetPage() {
           {/* === BODY === */}
           <tbody>
             {sections.map((section) => {
-              const isCollapsed = collapsedSections.has(section.key)
-              const isSummary = section.key === 'NETTO' || section.key === 'DISPONIBELT' || section.key === 'OPPSUMMERING'
-
+              const isReadOnly = section.key === 'NETTO' || section.key === 'BUNN' || section.key === 'OPPSUMMERING'
               return (
                 <>
-                  {/* Section header */}
-                  <tr
-                    key={`sh-${section.key}`}
-                    className={cn(
-                      'border-y border-border/50 cursor-pointer select-none',
-                      isSummary ? 'bg-muted/50' : 'bg-muted/20',
-                    )}
-                    onClick={() => !isSummary && toggleSection(section.key)}
-                  >
+                  {/* Seksjonsoverskrift — tynn skillelinje */}
+                  <tr key={`sh-${section.key}`} className="border-t-2 border-border/60 bg-muted/15">
                     <td
                       className={cn(
-                        'sticky left-0 z-10 px-3 py-1.5 font-semibold uppercase tracking-wide border-r border-border',
-                        isSummary ? 'bg-muted/60' : 'bg-muted/30',
+                        'sticky left-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest border-r border-border bg-muted/20',
                         section.colorClass,
                       )}
                     >
-                      <div className="flex items-center gap-1">
-                        {!isSummary && (
-                          isCollapsed
-                            ? <ChevronRight className="h-3 w-3 shrink-0" />
-                            : <ChevronDown className="h-3 w-3 shrink-0" />
-                        )}
-                        {section.label}
-                      </div>
+                      {section.label}
                     </td>
-
-                    {/* Summary values in section header for NETTO and DISPONIBELT (not OPPSUMMERING) */}
-                    {isSummary && section.key !== 'OPPSUMMERING' ? (
-                      metas.map((meta) => {
-                        const row = section.rows[0]
-                        const cell = row.cells[meta.month - 1]
-                        const hl = highlightedMonth === meta.month
-                        return meta.hasSlip ? (
-                          <td
-                            key={`${meta.month}-a`}
-                            colSpan={2}
-                            className={cn('px-2 py-1.5 text-right border-r border-border/40 font-semibold', amountClass(cell.actual ?? cell.budget, true), hl && 'bg-sky-500/15')}
-                          >
-                            {fmtNOK(cell.actual ?? cell.budget)}
-                          </td>
-                        ) : (
-                          <td
-                            key={`${meta.month}-s`}
-                            colSpan={2}
-                            className={cn(
-                              'px-2 py-1.5 text-right border-r border-border/40 font-semibold',
-                              meta.isLocked ? amountClass(cell.actual ?? cell.budget, true) : amountClass(cell.budget),
-                              !meta.isLocked && 'italic text-muted-foreground',
-                              hl && 'bg-sky-500/15',
-                            )}
-                          >
-                            {fmtNOK(meta.isLocked ? (cell.actual ?? cell.budget) : cell.budget)}
-                          </td>
-                        )
-                      })
-                    ) : (
-                      <td colSpan={TOTAL_COLS - 2} />
-                    )}
-
-                    {isSummary && section.key !== 'OPPSUMMERING' ? (
-                      (() => {
-                        const summaryRow = section.rows[0]
-                        const annualSum = metas.reduce((s, meta) => {
-                          const cell = summaryRow.cells[meta.month - 1]
-                          if (meta.hasSlip) return s + (cell.actual ?? cell.budget)
-                          if (meta.isLocked) return s + (cell.actual ?? cell.budget)
-                          return s + cell.budget
-                        }, 0)
-                        return (
-                          <td className={cn('px-3 py-1.5 text-right font-semibold border-l border-border/40', amountClass(annualSum, true))}>
-                            {fmtNOK(annualSum)}
-                          </td>
-                        )
-                      })()
-                    ) : (
-                      <td />
-                    )}
+                    <td colSpan={TOTAL_COLS - 2} />
                   </tr>
 
-                  {/* Data rows — alltid synlig for OPPSUMMERING, ellers avhengig av collapsed */}
-                  {(section.key === 'OPPSUMMERING' || (!isCollapsed && !isSummary)) && section.rows.map((row) => (
+                  {/* Datarader */}
+                  {section.rows.map((row) => (
                     <DataRow
                       key={row.id}
                       row={row}
                       metas={metas}
                       dualColumn={section.dualColumn}
-                      isEditable={section.key !== 'NETTO' && section.key !== 'DISPONIBELT' && section.key !== 'OPPSUMMERING'}
+                      isEditable={!isReadOnly && !row.isBold}
                       yearOverrides={yearOverrides}
                       onOverride={(month, value) => handleOverride(row.id, month, value)}
                       highlightedMonth={highlightedMonth}
@@ -496,11 +418,18 @@ function DataRow({
     )
   }
 
-  const isSummaryRow = row.id === 'brutto-inntekt' || row.id === 'skattepliktig'
+  const isGrunnlag = row.id === 'brutto-inntekt' || row.id === 'skattepliktig'
 
   return (
-    <tr className={cn('border-b border-border/30 hover:bg-muted/10', isSummaryRow && 'border-t border-border/50')}>
-      <td className={cn('sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate', isSummaryRow && 'text-muted-foreground italic')}>
+    <tr className={cn(
+      'border-b hover:bg-muted/10',
+      row.isBold ? 'border-border/60 bg-muted/20' : 'border-border/20',
+    )}>
+      <td className={cn(
+        'sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate',
+        row.isBold ? 'font-bold bg-muted/20 text-[11px] uppercase tracking-wide' : '',
+        isGrunnlag && 'text-muted-foreground italic',
+      )}>
         {row.label}
       </td>
 
