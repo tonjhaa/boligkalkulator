@@ -496,9 +496,11 @@ function DataRow({
     )
   }
 
+  const isSummaryRow = row.id === 'brutto-inntekt' || row.id === 'skattepliktig'
+
   return (
-    <tr className="border-b border-border/30 hover:bg-muted/10">
-      <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate">
+    <tr className={cn('border-b border-border/30 hover:bg-muted/10', isSummaryRow && 'border-t border-border/50')}>
+      <td className={cn('sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate', isSummaryRow && 'text-muted-foreground italic')}>
         {row.label}
       </td>
 

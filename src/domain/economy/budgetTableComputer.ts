@@ -462,10 +462,8 @@ export function computeBudgetTable(
   const sections: BudgetSection[] = []
 
   if (inntekterRows.length > 0) {
-    sections.push({ key: 'INNTEKTER', label: 'Inntekter', colorClass: 'text-green-400', dualColumn: true, rows: inntekterRows })
-  }
-  if (grunnlagRows.length > 0) {
-    sections.push({ key: 'GRUNNLAG', label: 'Grunnlag', colorClass: 'text-sky-400', dualColumn: true, rows: grunnlagRows })
+    // Bruttoinntekt og skattepliktig inntekt er oppsummeringsrader for inntektsseksjonen
+    sections.push({ key: 'INNTEKTER', label: 'Inntekter', colorClass: 'text-green-400', dualColumn: true, rows: [...inntekterRows, ...grunnlagRows] })
   }
   if (trekkRows.length > 0) {
     sections.push({ key: 'TREKK', label: 'Trekk', colorClass: 'text-red-400', dualColumn: true, rows: trekkRows })
