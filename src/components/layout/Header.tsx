@@ -27,7 +27,10 @@ export function Header() {
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
           <span className="text-xs font-bold text-primary-foreground">LB</span>
         </div>
-        <span className="font-semibold text-foreground">Lommeboka</span>
+        <div>
+          <span className="font-semibold text-foreground">Lommeboka</span>
+          <p className="text-xs text-muted-foreground italic leading-none">Oversikt er frihet</p>
+        </div>
       </div>
 
       <Button variant="ghost" size="icon" onClick={toggleTheme}>

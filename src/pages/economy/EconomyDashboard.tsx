@@ -97,9 +97,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold">LOMMEBOKA</h1>
-          <p className="text-xs text-muted-foreground italic">Oversikt er frihet</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             {MONTH_NAMES[currentMonth]} {currentYear}
           </p>
         </div>
