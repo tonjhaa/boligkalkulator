@@ -122,10 +122,18 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const nextPayday = getNextPayday(now)
   const daysToPayday = Math.ceil((nextPayday.getTime() - now.getTime()) / 86400000)
 
-  const summerStart = profile?.summerVacationStart ? new Date(profile.summerVacationStart) : null
-  const daysToSummer = summerStart
-    ? Math.ceil((summerStart.getTime() - now.getTime()) / 86400000)
+  // Neste kommende ferieperiode (siste arbeidsdag ennå ikke passert, eller pågående)
+  const nextVacation = (profile?.vacationPeriods ?? [])
+    .filter((p) => new Date(p.firstWorkDayAfter) > now)
+    .sort((a, b) => new Date(a.lastWorkDayBefore).getTime() - new Date(b.lastWorkDayBefore).getTime())[0] ?? null
+
+  const daysToVacation = nextVacation
+    ? Math.ceil((new Date(nextVacation.lastWorkDayBefore).getTime() - now.getTime()) / 86400000)
     : null
+  const daysBackFromVacation = nextVacation
+    ? Math.ceil((new Date(nextVacation.firstWorkDayAfter).getTime() - now.getTime()) / 86400000)
+    : null
+  const isOnVacation = daysToVacation !== null && daysToVacation <= 0
 
   const currentMonthRecord = monthHistory.find(
     (m) => m.year === currentYear && m.month === currentMonth
@@ -234,37 +242,29 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
             days={daysToPayday}
             detail={nextPayday.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
           />
-          {daysToSummer !== null && daysToSummer > 0 && (
+          {nextVacation && !isOnVacation && daysToVacation !== null && daysToVacation > 0 && (
             <CountdownChip
               icon="🏖️"
-              label="Siste arbeidsdag"
-              days={daysToSummer}
-              detail={summerStart!.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
+              label={nextVacation.label}
+              days={daysToVacation}
+              detail={new Date(nextVacation.lastWorkDayBefore).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
             />
           )}
-          {daysToSummer !== null && daysToSummer <= 0 && (() => {
-            const summerEnd = profile?.summerVacationEnd ? new Date(profile.summerVacationEnd) : null
-            const daysBack = summerEnd ? Math.ceil((summerEnd.getTime() - now.getTime()) / 86400000) : null
-            return daysBack !== null && daysBack > 0 ? (
-              <CountdownChip
-                icon="🏖️"
-                label="Tilbake på jobb"
-                days={daysBack}
-                detail={summerEnd!.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
-              />
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-green-500/10 border border-green-500/20 text-green-400">
-                🏖️ Sommerferie nå!
-              </span>
-            )
-          })()}
-          {daysToSummer === null && (
+          {nextVacation && isOnVacation && daysBackFromVacation !== null && (
+            <CountdownChip
+              icon="🏖️"
+              label={`${nextVacation.label} — tilbake`}
+              days={daysBackFromVacation}
+              detail={new Date(nextVacation.firstWorkDayAfter).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
+            />
+          )}
+          {!nextVacation && (
             <button
               onClick={() => onNavigate('vacation')}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
             >
               <CalendarDays className="h-3 w-3" />
-              Sett sommerferie
+              Planlegg ferie
             </button>
           )}
         </div>

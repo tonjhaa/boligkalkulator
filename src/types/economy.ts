@@ -108,10 +108,18 @@ export interface EmploymentProfile {
   lastKnownTableTaxPercent?: number
   /** Trekktabellnummer fra siste importerte slipp (f.eks. 8010) */
   tabellnummer?: number
-  /** Siste arbeidsdag før sommerferie (ISO, f.eks. "2026-06-19") */
-  summerVacationStart?: string
-  /** Første arbeidsdag etter sommerferie (ISO, f.eks. "2026-08-03") */
-  summerVacationEnd?: string
+  /** Ferieperioder for året */
+  vacationPeriods?: VacationPeriod[]
+  /** Antall feriedager per kalenderår (standard 25) */
+  vacationDaysPerYear?: number
+}
+
+export interface VacationPeriod {
+  id: string
+  label: string             // f.eks. "Sommerferie", "Juleferie"
+  lastWorkDayBefore: string // ISO — siste arbeidsdag, nedtelling hit
+  firstWorkDayAfter: string // ISO — første arbeidsdag tilbake
+  daysUsed: number          // feriedager som forbrukes
 }
 
 // ------------------------------------------------------------
