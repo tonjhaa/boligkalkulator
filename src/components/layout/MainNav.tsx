@@ -3,7 +3,7 @@ import { useAppStore, type AppView } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS: { view: AppView; label: string; Icon: React.FC<{ className?: string }> }[] = [
-  { view: 'economy',    label: 'Dashboard',       Icon: Wallet },
+  { view: 'economy',    label: 'Økonomi',         Icon: Wallet },
   { view: 'calculator', label: 'Boligkalkulator', Icon: Calculator },
 ]
 
