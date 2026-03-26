@@ -1,4 +1,7 @@
-import { Home, AlertTriangle } from 'lucide-react'
+import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+} from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -59,10 +62,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     (m) => m.year === currentYear && m.month === currentMonth
   )
 
-  // Netto inn = nettoUtbetalt fra slipp (ikke bruttosum)
   const nettoInn = currentMonthRecord?.nettoUtbetalt ?? 0
 
-  // Faste ut = recurring expense-linjer fra brukerens budsjettmal (ikke fra slippen)
   const fasteUt = budgetTemplate.lines
     .filter((l) => l.isRecurring && (EXPENSE_CATEGORIES as readonly string[]).includes(l.category))
     .reduce((s, l) => s + Math.abs(l.amount), 0)
@@ -73,7 +74,6 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
   const disponibelt = nettoInn - fasteUt
 
-  // Siste importerte slipp for inneværende år
   const latestSlipRecord = monthHistory
     .filter((m) => m.year === currentYear && m.slipData != null)
     .sort((a, b) => b.month - a.month)[0]
@@ -92,20 +92,142 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ? appStore.analyses[activeScenario.id]?.maxPurchase?.maxPurchasePrice
     : null
 
+  // ── KPI-beregninger ────────────────────────────────────────
+  const totalSparing = savingsAccounts.reduce((s, a) => {
+    const sorted = [...a.balanceHistory].sort((x, y) =>
+      x.year !== y.year ? y.year - x.year : y.month - x.month
+    )
+    return s + (sorted[0]?.balance ?? a.openingBalance)
+  }, 0)
+
+  const totalGjeld = debts.reduce((s, d) => s + d.currentBalance, 0)
+  const nettoFormue = totalSparing - totalGjeld
+
+  // ── Inntektstrend — siste 6 måneder med slipp ─────────────
+  const trendData = [...monthHistory]
+    .filter((m) => m.slipData != null)
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+    .slice(-6)
+    .map((m) => ({
+      mnd: MONTH_NAMES[m.month],
+      netto: m.nettoUtbetalt,
+    }))
+
+  const trendAvg = trendData.length > 0
+    ? trendData.reduce((s, d) => s + d.netto, 0) / trendData.length
+    : 0
+
+  // Sammenlign siste to måneder for trend-indikator
+  const trendDir: 'opp' | 'ned' | 'flat' = trendData.length >= 2
+    ? trendData[trendData.length - 1].netto > trendData[trendData.length - 2].netto * 1.01
+      ? 'opp'
+      : trendData[trendData.length - 1].netto < trendData[trendData.length - 2].netto * 0.99
+        ? 'ned'
+        : 'flat'
+    : 'flat'
+
+  // ── Innsiktstekst ─────────────────────────────────────────
+  const innsikt: string[] = []
+  if (trendData.length >= 3) {
+    innsikt.push(`Snitt netto siste ${trendData.length} mnd: ${fmtNOK(trendAvg)}`)
+  }
+  if (atfSum > 0) {
+    innsikt.push(`ATF registrert i ${currentYear}: ${fmtNOK(atfSum)}`)
+  }
+  if (nettoFormue > 0) {
+    innsikt.push(`Netto formue (sparing minus gjeld): ${fmtNOK(nettoFormue)}`)
+  }
+  if (taxAnalysis.recommendation === 'reduce_extra') {
+    innsikt.push(
+      `Skatteoppgjøret tyder på at du kan redusere ekstra trekk med ${fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.`
+    )
+  }
+
+  const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
-      {/* Header */}
+
+      {/* ── Topprad: dato + importer ── */}
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {MONTH_NAMES[currentMonth]} {currentYear}
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          {MONTH_NAMES[currentMonth]} {currentYear}
+        </p>
         <PayslipImporter compact />
       </div>
 
-      {/* Månedsstatus */}
-      {currentMonthRecord ? (
+      {/* ── KPI-strip ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          label="Netto formue"
+          value={nettoFormue}
+          color={nettoFormue >= 0 ? 'green' : 'red'}
+          sub={totalGjeld > 0 ? `Gjeld: ${fmtNOK(totalGjeld)}` : undefined}
+        />
+        <KpiCard
+          label="Total sparing"
+          value={totalSparing}
+          color="blue"
+          sub={savingsAccounts.length > 0 ? `${savingsAccounts.length} kontoer` : undefined}
+        />
+        <KpiCard
+          label="Netto inn"
+          value={nettoInn}
+          color={nettoInn > 0 ? 'green' : 'default'}
+          sub={currentMonthRecord ? undefined : 'Ingen slipp lastet'}
+        />
+        <KpiCard
+          label="Feriepenger juni"
+          value={juneForecast?.nettoJuni ?? 0}
+          color="purple"
+          sub={juneForecast ? `Ekstra: ${fmtNOK(juneForecast.nettoEkstra)}` : 'Trenger profil'}
+        />
+      </div>
+
+      {/* ── Inntektstrend-chart ── */}
+      {trendData.length >= 2 && (
+        <Card>
+          <CardHeader className="pb-1">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium">Nettoinntekt siste {trendData.length} måneder</CardTitle>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                {trendDir === 'opp' && <TrendingUp className="h-3.5 w-3.5 text-green-500" />}
+                {trendDir === 'ned' && <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+                {trendDir === 'flat' && <Minus className="h-3.5 w-3.5" />}
+                <span>Snitt {fmtNOK(trendAvg)}</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 pb-3">
+            <ResponsiveContainer width="100%" height={110}>
+              <BarChart data={trendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <XAxis dataKey="mnd" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis hide domain={['auto', 'auto']} />
+                <Tooltip
+                  formatter={(v) => [fmtNOK(Number(v)), 'Netto']}
+                  contentStyle={{ fontSize: 12, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6 }}
+                />
+                <ReferenceLine y={trendAvg} stroke="var(--muted-foreground)" strokeDasharray="3 3" strokeOpacity={0.5} />
+                <Bar dataKey="netto" fill="#22c55e" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+
+            {/* Innsiktstekst */}
+            {innsikt.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {innsikt.map((t, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">
+                    <span className="text-primary mr-1">·</span>{t}
+                  </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Månedsstatus (disponibelt) — vises kun ved ingen trend-data ── */}
+      {trendData.length < 2 && currentMonthRecord && (
         <>
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Netto inn" value={nettoInn} positive />
@@ -114,16 +236,15 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           </div>
           {!harBudsjettLinjer && (
             <p className="text-xs text-muted-foreground text-center">
-              <button
-                className="underline hover:text-foreground"
-                onClick={() => onNavigate('budget')}
-              >
+              <button className="underline hover:text-foreground" onClick={() => onNavigate('budget')}>
                 Legg til faste utgifter i Budsjett
               </button>
             </p>
           )}
         </>
-      ) : (
+      )}
+
+      {!currentMonthRecord && trendData.length === 0 && (
         <Card>
           <CardContent className="py-4 text-center">
             <p className="text-sm text-muted-foreground">
@@ -133,8 +254,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         </Card>
       )}
 
+      {/* ── 2-kolonne grid: Sparemål / ATF / Gjeld / Egenmelding ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Sparemål */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Sparemål</CardTitle>
@@ -152,9 +273,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
                         <span>{goal.icon}</span>
                         <span className="font-medium">{goal.label}</span>
                       </span>
-                      <span className="text-muted-foreground text-xs">
-                        {Math.round(progress.percent)}%
-                      </span>
+                      <span className="text-muted-foreground text-xs">{Math.round(progress.percent)}%</span>
                     </div>
                     <Progress value={progress.percent} className="h-1.5" />
                     <div className="flex justify-between text-xs text-muted-foreground">
@@ -168,26 +287,19 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           </CardContent>
         </Card>
 
-        {/* ATF */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">ATF dette året</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {yearATF.length === 0 ? (
-              <EmptyState
-                message={`Ingen øvelser registrert for ${currentYear}`}
-                action="Legg til øvelse"
-                onAction={() => onNavigate('atf')}
-              />
+              <EmptyState message={`Ingen øvelser registrert for ${currentYear}`} action="Legg til øvelse" onAction={() => onNavigate('atf')} />
             ) : (
               <>
                 {yearATF.slice(0, 4).map((e) => (
                   <div key={e.id} className="flex justify-between text-sm">
                     <span className="text-muted-foreground truncate">{e.øvelsesnavn}</span>
-                    <span className="font-mono font-medium ml-2 shrink-0">
-                      {fmtNOK(e.beregnetBeløp)}
-                    </span>
+                    <span className="font-mono font-medium ml-2 shrink-0">{fmtNOK(e.beregnetBeløp)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between text-sm border-t border-border pt-2 mt-2">
@@ -202,7 +314,6 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           </CardContent>
         </Card>
 
-        {/* Gjeld */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Gjeld</CardTitle>
@@ -229,7 +340,6 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           </CardContent>
         </Card>
 
-        {/* Egenmelding */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Egenmelding</CardTitle>
@@ -245,11 +355,9 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
               value={(absenceDays / 24) * 100}
               className={cn(
                 'h-2',
-                absenceStatus === 'ok'
-                  ? '[&>div]:bg-green-500'
-                  : absenceStatus === 'warning'
-                  ? '[&>div]:bg-yellow-500'
-                  : '[&>div]:bg-red-500'
+                absenceStatus === 'ok' ? '[&>div]:bg-green-500'
+                : absenceStatus === 'warning' ? '[&>div]:bg-yellow-500'
+                : '[&>div]:bg-red-500'
               )}
             />
             {taxAnalysis.recommendation === 'reduce_extra' && (
@@ -265,7 +373,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         </Card>
       </div>
 
-      {/* Feriepenger — kompakt (detaljer i egen fane) */}
+      {/* ── Feriepenger ── */}
       {profile && (
         <FeriepengeSummaryCard
           monthHistory={monthHistory}
@@ -276,10 +384,10 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         />
       )}
 
-      {/* Lønn og skatt — full bredde */}
+      {/* ── Lønn og skatt ── */}
       <SlipWidget slip={latestSlipRecord?.slipData ?? null} onNavigate={onNavigate} />
 
-      {/* Boligscenario */}
+      {/* ── Boligscenario ── */}
       {maxKjøpesum && (
         <Card>
           <CardContent className="py-3 flex items-center justify-between">
@@ -290,11 +398,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
                 <span className="font-semibold">{fmtNOK(maxKjøpesum)}</span>
               </span>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => useAppStore.getState().setCurrentView('calculator')}
-            >
+            <Button size="sm" variant="outline" onClick={() => useAppStore.getState().setCurrentView('calculator')}>
               Åpne kalkulator
             </Button>
           </CardContent>
@@ -305,16 +409,46 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 }
 
 // ------------------------------------------------------------
+// KPI-KORT
+// ------------------------------------------------------------
+
+function KpiCard({
+  label,
+  value,
+  color = 'default',
+  sub,
+}: {
+  label: string
+  value: number
+  color?: 'green' | 'red' | 'blue' | 'purple' | 'default'
+  sub?: string
+}) {
+  const colorClass = {
+    green: 'text-green-500',
+    red: 'text-red-400',
+    blue: 'text-blue-400',
+    purple: 'text-violet-400',
+    default: 'text-foreground',
+  }[color]
+
+  return (
+    <Card>
+      <CardContent className="py-3 px-4">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className={cn('text-base font-semibold font-mono mt-0.5 tabular-nums', colorClass)}>
+          {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
+        </p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ------------------------------------------------------------
 // LØNN OG SKATT WIDGET
 // ------------------------------------------------------------
 
-function SlipWidget({
-  slip,
-  onNavigate,
-}: {
-  slip: ParsetLonnsslipp | null
-  onNavigate: (page: string) => void
-}) {
+function SlipWidget({ slip, onNavigate }: { slip: ParsetLonnsslipp | null; onNavigate: (page: string) => void }) {
   if (!slip) {
     return (
       <Card>
@@ -323,9 +457,7 @@ function SlipWidget({
         </CardHeader>
         <CardContent className="text-center py-4 space-y-2">
           <p className="text-sm text-muted-foreground">Last opp lønnsslippen din for å se tall</p>
-          <Button variant="outline" size="sm" onClick={() => onNavigate('salary')}>
-            Last opp slipp
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('salary')}>Last opp slipp</Button>
         </CardContent>
       </Card>
     )
@@ -341,25 +473,11 @@ function SlipWidget({
 
   const rows: SlipRow[] = [
     { label: 'Brutto', denne: slip.bruttoSum, hittil: slip.hittilBrutto || null },
-    {
-      label: 'Skattetrekk',
-      denne: -slip.skattetrekk,
-      hittil: slip.hittilForskuddstrekk ? -slip.hittilForskuddstrekk : null,
-    },
-    {
-      label: 'Pensjonstrekk SPK',
-      denne: -slip.pensjonstrekk,
-      hittil: slip.hittilPensjon ? -slip.hittilPensjon : null,
-    },
-    ...(slip.husleietrekk > 0
-      ? [{ label: 'Husleietrekk', denne: -slip.husleietrekk, hittil: null as null }]
-      : []),
-    ...(slip.ekstraTrekk > 0
-      ? [{ label: 'Ekstra trekk', denne: -slip.ekstraTrekk, hittil: null as null }]
-      : []),
-    ...(slip.fagforeningskontingent > 0
-      ? [{ label: 'Fagforeningskont.', denne: -slip.fagforeningskontingent, hittil: null as null }]
-      : []),
+    { label: 'Skattetrekk', denne: -slip.skattetrekk, hittil: slip.hittilForskuddstrekk ? -slip.hittilForskuddstrekk : null },
+    { label: 'Pensjonstrekk SPK', denne: -slip.pensjonstrekk, hittil: slip.hittilPensjon ? -slip.hittilPensjon : null },
+    ...(slip.husleietrekk > 0 ? [{ label: 'Husleietrekk', denne: -slip.husleietrekk, hittil: null as null }] : []),
+    ...(slip.ekstraTrekk > 0 ? [{ label: 'Ekstra trekk', denne: -slip.ekstraTrekk, hittil: null as null }] : []),
+    ...(slip.fagforeningskontingent > 0 ? [{ label: 'Fagforeningskont.', denne: -slip.fagforeningskontingent, hittil: null as null }] : []),
     { label: 'Netto utbetalt', denne: slip.nettoUtbetalt, hittil: hittilNetto, bold: true },
   ]
 
@@ -378,41 +496,19 @@ function SlipWidget({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted/30 border-b border-border">
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-1/2">
-                Post
-              </th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
-                Denne mnd
-              </th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">
-                Hittil i år
-              </th>
+              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-1/2">Post</th>
+              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Denne mnd</th>
+              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Hittil i år</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr
-                key={i}
-                className={cn(
-                  'border-b border-border/50 last:border-0',
-                  row.bold && 'bg-muted/20 font-semibold'
-                )}
-              >
+              <tr key={i} className={cn('border-b border-border/50 last:border-0', row.bold && 'bg-muted/20 font-semibold')}>
                 <td className="px-4 py-2 text-muted-foreground">{row.label}</td>
-                <td
-                  className={cn(
-                    'px-4 py-2 text-right font-mono',
-                    row.denne < 0 ? 'text-red-400' : ''
-                  )}
-                >
+                <td className={cn('px-4 py-2 text-right font-mono', row.denne < 0 ? 'text-red-400' : '')}>
                   {fmtSigned(row.denne)}
                 </td>
-                <td
-                  className={cn(
-                    'px-4 py-2 text-right font-mono text-muted-foreground',
-                    row.hittil !== null && row.hittil < 0 ? 'text-red-400/70' : ''
-                  )}
-                >
+                <td className={cn('px-4 py-2 text-right font-mono text-muted-foreground', row.hittil !== null && row.hittil < 0 ? 'text-red-400/70' : '')}>
                   {fmtSigned(row.hittil)}
                 </td>
               </tr>
@@ -422,32 +518,22 @@ function SlipWidget({
             <tfoot className="border-t-2 border-border">
               {slip.feriepengegrunnlag > 0 && (
                 <tr className="border-b border-border/30">
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">
-                    Feriepengegrunnlag
-                  </td>
+                  <td className="px-4 py-1.5 text-xs text-muted-foreground">Feriepengegrunnlag</td>
                   <td />
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">
-                    {fmtNOK(slip.feriepengegrunnlag)}
-                  </td>
+                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.feriepengegrunnlag)}</td>
                 </tr>
               )}
               {slip.opptjentFerie > 0 && (
                 <tr className="border-b border-border/30">
                   <td className="px-4 py-1.5 text-xs text-muted-foreground">Opptjent ferie</td>
                   <td />
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">
-                    {fmtNOK(slip.opptjentFerie)}
-                  </td>
+                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.opptjentFerie)}</td>
                 </tr>
               )}
               {slip.gruppelivspremie > 0 && (
                 <tr>
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">
-                    Gruppelivspremie
-                  </td>
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">
-                    {fmtNOK(slip.gruppelivspremie)}
-                  </td>
+                  <td className="px-4 py-1.5 text-xs text-muted-foreground">Gruppelivspremie</td>
+                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.gruppelivspremie)}</td>
                   <td />
                 </tr>
               )}
@@ -468,12 +554,7 @@ function StatCard({ label, value, positive }: { label: string; value: number; po
     <Card>
       <CardContent className="py-3 px-4">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p
-          className={cn(
-            'text-base font-semibold font-mono mt-0.5',
-            positive === true ? 'text-green-500' : positive === false ? 'text-red-400' : ''
-          )}
-        >
+        <p className={cn('text-base font-semibold font-mono mt-0.5', positive === true ? 'text-green-500' : positive === false ? 'text-red-400' : '')}>
           {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
         </p>
       </CardContent>
@@ -481,28 +562,17 @@ function StatCard({ label, value, positive }: { label: string; value: number; po
   )
 }
 
-function EmptyState({
-  message,
-  action,
-  onAction,
-}: {
-  message: string
-  action: string
-  onAction: () => void
-}) {
+function EmptyState({ message, action, onAction }: { message: string; action: string; onAction: () => void }) {
   return (
     <div className="text-center py-2">
       <p className="text-xs text-muted-foreground mb-2">{message}</p>
-      <Button variant="outline" size="sm" onClick={onAction}>
-        {action}
-      </Button>
+      <Button variant="outline" size="sm" onClick={onAction}>{action}</Button>
     </div>
   )
 }
 
-
 // ------------------------------------------------------------
-// FERIEPENGE-SAMMENDRAG (kompakt, lenker til feriepengefanen)
+// FERIEPENGE-SAMMENDRAG
 // ------------------------------------------------------------
 
 function FeriepengeSummaryCard({
@@ -520,10 +590,6 @@ function FeriepengeSummaryCard({
 }) {
   const forecast = forecastJune(currentYear, monthHistory, profile, atfEntries)
   if (!forecast) return null
-
-  function fmtNOK(n: number) {
-    return Math.round(n).toLocaleString('no-NO') + ' kr'
-  }
 
   return (
     <Card>
