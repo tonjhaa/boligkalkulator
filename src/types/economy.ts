@@ -119,7 +119,6 @@ export interface VacationPeriod {
   label: string             // f.eks. "Sommerferie", "Juleferie"
   lastWorkDayBefore: string // ISO — siste arbeidsdag, nedtelling hit
   firstWorkDayAfter: string // ISO — første arbeidsdag tilbake
-  daysUsed: number          // feriedager som forbrukes
 }
 
 // ------------------------------------------------------------
