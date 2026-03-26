@@ -11,7 +11,6 @@ import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
-import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 import type { ParsetLonnsslipp } from '@/types/economy'
@@ -148,13 +147,10 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
 
-      {/* ── Topprad: dato + importer ── */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {MONTH_NAMES[currentMonth]} {currentYear}
-        </p>
-        <PayslipImporter compact />
-      </div>
+      {/* ── Topprad: dato ── */}
+      <p className="text-sm text-muted-foreground">
+        {MONTH_NAMES[currentMonth]} {currentYear}
+      </p>
 
       {/* ── KPI-strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
