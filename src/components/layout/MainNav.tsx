@@ -12,8 +12,7 @@ export function MainNav() {
   const setCurrentView = useAppStore((s) => s.setCurrentView)
 
   return (
-    <nav className="flex items-center border-b border-border bg-card px-4 shrink-0 gap-2">
-      <span className="text-sm font-semibold text-primary mr-2 hidden sm:inline">Lommeboka</span>
+    <nav className="flex items-center border-b border-border bg-card px-4 shrink-0">
       {NAV_ITEMS.map(({ view, label, Icon }) => (
         <button
           key={view}
