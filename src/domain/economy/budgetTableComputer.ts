@@ -210,10 +210,14 @@ export function computeBudgetTable(
       )))
     }
 
-    // Feriepenger (June only)
+    // Feriepenger og ferietrekk (June only) — begge hører til inntektsområdet
     if (juneHoliday) {
       inntekterRows.push(mkRow('feriepenger', 'Feriepenger (juni)', uniform12(
         (m) => budgetVal('feriepenger', m, m === 6 ? juneHoliday.holidayPay : 0),
+        () => null,
+      )))
+      inntekterRows.push(mkRow('ferietrekk', 'Ferietrekk (25 dager)', uniform12(
+        (m) => budgetVal('ferietrekk', m, m === 6 ? -juneHoliday.holidayLeaveDeduction : 0),
         () => null,
       )))
     }
@@ -356,13 +360,6 @@ export function computeBudgetTable(
       )))
     }
 
-    // Ferietrekk (June only)
-    if (juneHoliday) {
-      trekkRows.push(mkRow('ferietrekk', 'Ferietrekk (25 dager)', uniform12(
-        (m) => budgetVal('ferietrekk', m, m === 6 ? -juneHoliday.holidayLeaveDeduction : 0),
-        () => null,
-      )))
-    }
   }
 
   // ================================================================
