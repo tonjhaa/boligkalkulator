@@ -1,6 +1,6 @@
-import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -157,7 +157,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       </div>
 
       {/* ── KPI-strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <KpiCard
           label="Netto formue"
           value={nettoFormue}
@@ -186,45 +186,66 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
       {/* ── Inntektstrend-chart ── */}
       {trendData.length >= 2 && (
-        <Card>
-          <CardHeader className="pb-1">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Nettoinntekt siste {trendData.length} måneder</CardTitle>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {trendDir === 'opp' && <TrendingUp className="h-3.5 w-3.5 text-green-500" />}
-                {trendDir === 'ned' && <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
-                {trendDir === 'flat' && <Minus className="h-3.5 w-3.5" />}
-                <span>Snitt {fmtNOK(trendAvg)}</span>
-              </div>
+        <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm px-4 pt-3 pb-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Nettoinntekt</span>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              {trendDir === 'opp' && <TrendingUp className="h-3.5 w-3.5 text-green-500" />}
+              {trendDir === 'ned' && <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
+              {trendDir === 'flat' && <Minus className="h-3.5 w-3.5" />}
+              <span>snitt {fmtNOK(trendAvg)}</span>
             </div>
-          </CardHeader>
-          <CardContent className="pt-0 pb-3">
-            <ResponsiveContainer width="100%" height={110}>
-              <BarChart data={trendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                <XAxis dataKey="mnd" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis hide domain={['auto', 'auto']} />
-                <Tooltip
-                  formatter={(v) => [fmtNOK(Number(v)), 'Netto']}
-                  contentStyle={{ fontSize: 12, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 6 }}
-                />
-                <ReferenceLine y={trendAvg} stroke="var(--muted-foreground)" strokeDasharray="3 3" strokeOpacity={0.5} />
-                <Bar dataKey="netto" fill="#22c55e" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-
-            {/* Innsiktstekst */}
-            {innsikt.length > 0 && (
-              <div className="mt-2 space-y-0.5">
-                {innsikt.map((t, i) => (
-                  <p key={i} className="text-xs text-muted-foreground">
-                    <span className="text-primary mr-1">·</span>{t}
-                  </p>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+          <ResponsiveContainer width="100%" height={100}>
+            <AreaChart data={trendData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
+              <defs>
+                <linearGradient id="nettoGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="mnd" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+              <YAxis hide domain={['auto', 'auto']} />
+              <Tooltip
+                formatter={(v) => [fmtNOK(Number(v)), 'Netto']}
+                contentStyle={{
+                  fontSize: 11,
+                  background: 'hsl(240 10% 10%)',
+                  border: '1px solid hsl(240 5% 20%)',
+                  borderRadius: 8,
+                  color: '#e2e8f0',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                }}
+                labelStyle={{ color: '#94a3b8' }}
+                cursor={{ stroke: 'hsl(240 5% 30%)', strokeWidth: 1 }}
+              />
+              <ReferenceLine y={trendAvg} stroke="hsl(240 5% 40%)" strokeDasharray="4 3" strokeOpacity={0.6} />
+              <Area
+                type="monotone"
+                dataKey="netto"
+                stroke="#22c55e"
+                strokeWidth={1.5}
+                fill="url(#nettoGrad)"
+                dot={false}
+                activeDot={{ r: 3, fill: '#22c55e', strokeWidth: 0 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       )}
+
+      {/* ── Pengepuls ── */}
+      <PengePuls
+        trendData={trendData}
+        trendAvg={trendAvg}
+        nettoInn={nettoInn}
+        fasteUt={fasteUt}
+        juneForecast={juneForecast}
+        savingsGoals={savingsGoals}
+        savingsAccounts={savingsAccounts}
+        atfSum={atfSum}
+        absenceDays={absenceDays}
+      />
 
       {/* ── Månedsstatus (disponibelt) — vises kun ved ingen trend-data ── */}
       {trendData.length < 2 && currentMonthRecord && (
@@ -432,15 +453,119 @@ function KpiCard({
   }[color]
 
   return (
-    <Card>
-      <CardContent className="py-3 px-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={cn('text-base font-semibold font-mono mt-0.5 tabular-nums', colorClass)}>
-          {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
-        </p>
-        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-border/40 bg-card/50 px-3 py-2.5">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className={cn('text-sm font-semibold font-mono mt-0.5 tabular-nums', colorClass)}>
+        {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
+      </p>
+      {sub && <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</p>}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// PENGEPULS
+// ------------------------------------------------------------
+
+function PengePuls({
+  trendData,
+  trendAvg,
+  nettoInn,
+  fasteUt,
+  juneForecast,
+  savingsGoals,
+  savingsAccounts,
+  atfSum,
+  absenceDays,
+}: {
+  trendData: { mnd: string; netto: number }[]
+  trendAvg: number
+  nettoInn: number
+  fasteUt: number
+  juneForecast: ReturnType<typeof forecastJune>
+  savingsGoals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
+  savingsAccounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
+  atfSum: number
+  absenceDays: number
+}) {
+  const chips: { icon: string; text: string; accent?: string }[] = []
+
+  // Sparerate
+  if (nettoInn > 0 && fasteUt > 0) {
+    const sparerate = Math.round(((nettoInn - fasteUt) / nettoInn) * 100)
+    chips.push({
+      icon: '💰',
+      text: `Sparerate: ${sparerate}% av netto`,
+      accent: sparerate >= 20 ? 'green' : sparerate >= 10 ? 'yellow' : 'red',
+    })
+  } else if (trendAvg > 0) {
+    chips.push({ icon: '📈', text: `Snitt netto: ${Math.round(trendAvg).toLocaleString('no-NO')} kr/mnd` })
+  }
+
+  // Dager til feriepenger
+  if (juneForecast) {
+    const now = new Date()
+    const juneFirst = new Date(now.getFullYear(), 5, 24)
+    if (juneFirst < now) juneFirst.setFullYear(now.getFullYear() + 1)
+    const days = Math.ceil((juneFirst.getTime() - now.getTime()) / 86400000)
+    chips.push({
+      icon: '🏖️',
+      text: `${days} dager til feriepenger (${Math.round(juneForecast.nettoJuni).toLocaleString('no-NO')} kr)`,
+    })
+  }
+
+  // Sparemål ETA
+  if (savingsGoals.length > 0) {
+    const goal = savingsGoals[0]
+    const prog = calculateGoalProgress(goal, savingsAccounts)
+    const remaining = prog.targetAmount - prog.currentTotal
+    if (remaining > 0 && nettoInn > 0) {
+      const monthsLeft = Math.ceil(remaining / (nettoInn * 0.2))
+      chips.push({
+        icon: '🎯',
+        text: `«${goal.label}» nås om ca. ${monthsLeft} mnd ved 20% sparerate`,
+      })
+    } else if (remaining <= 0) {
+      chips.push({ icon: '✅', text: `«${goal.label}» er nådd!`, accent: 'green' })
+    }
+  }
+
+  // ATF bonus
+  if (atfSum > 0) {
+    chips.push({ icon: '🎖️', text: `ATF-bonus i år: ${Math.round(atfSum).toLocaleString('no-NO')} kr` })
+  }
+
+  // Egenmelding
+  if (absenceDays >= 16) {
+    chips.push({ icon: '⚠️', text: `${absenceDays}/24 egenmeldingsdager brukt`, accent: 'red' })
+  }
+
+  if (chips.length === 0) return null
+
+  return (
+    <div className="rounded-xl border border-border/40 bg-card/40 px-4 py-3">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <Zap className="h-3.5 w-3.5 text-violet-400" />
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pengepuls</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {chips.map((chip, i) => (
+          <span
+            key={i}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border',
+              chip.accent === 'green' && 'bg-green-500/10 border-green-500/20 text-green-400',
+              chip.accent === 'yellow' && 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
+              chip.accent === 'red' && 'bg-red-500/10 border-red-500/20 text-red-400',
+              !chip.accent && 'bg-muted/40 border-border/40 text-muted-foreground',
+            )}
+          >
+            <span>{chip.icon}</span>
+            <span>{chip.text}</span>
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
