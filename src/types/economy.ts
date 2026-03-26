@@ -108,6 +108,12 @@ export interface EmploymentProfile {
   lastKnownTableTaxPercent?: number
   /** Trekktabellnummer fra siste importerte slipp (f.eks. 8010) */
   tabellnummer?: number
+  /** Skatteprognose for inneværende år — meldt til skatteetaten */
+  taxForecast?: {
+    year: number
+    expectedIncome: number  // forventet pensjonsgivende inntekt
+    expectedTax: number     // forventet skatt å betale totalt
+  }
   /** Ferieperioder for året */
   vacationPeriods?: VacationPeriod[]
   /** Antall feriedager per kalenderår (standard 25) */

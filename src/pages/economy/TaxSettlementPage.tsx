@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import { TrendingDown, TrendingUp } from 'lucide-react'
+import { TrendingDown, TrendingUp, CheckCircle2, AlertTriangle, Info } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
+import { NumberInput } from '@/components/ui/number-input'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
+import { cn } from '@/lib/utils'
 import type { TaxSettlementRecord } from '@/types/economy'
 
 function fmtNOK(n: number) {
@@ -22,6 +25,7 @@ export function TaxSettlementPage() {
     removeTaxSettlement,
     profile,
     setProfile,
+    monthHistory,
   } = useEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -44,6 +48,36 @@ export function TaxSettlementPage() {
     setProfile({ ...profile, extraTaxWithholding: newExtra })
   }
 
+  const currentYear = new Date().getFullYear()
+  const taxForecast = profile?.taxForecast?.year === currentYear ? profile.taxForecast : null
+
+  // Siste slipp dette året med YTD-tall
+  const latestSlipThisYear = [...monthHistory]
+    .filter((m) => m.year === currentYear && m.slipData != null)
+    .sort((a, b) => b.month - a.month)[0]
+  const slip = latestSlipThisYear?.slipData
+
+  // YTD-beregning
+  const withheldYTD = slip?.hittilForskuddstrekk ?? 0
+  const grossYTD = slip?.hittilBrutto ?? 0
+  const slipMonth = slip?.periode.month ?? 0
+
+  // Prognose for hele året (lineær ekstrapolering)
+  const projectedWithheld = slipMonth > 0 ? Math.round((withheldYTD / slipMonth) * 12) : 0
+  const projectedIncome = slipMonth > 0 ? Math.round((grossYTD / slipMonth) * 12) : 0
+
+  // Avvik mot meldt skatt
+  const expectedTax = taxForecast?.expectedTax ?? 0
+  const deficit = expectedTax > 0 ? expectedTax - projectedWithheld : null
+  const monthsRemaining = 12 - slipMonth
+  const monthlyAdjustment = deficit !== null && monthsRemaining > 0
+    ? Math.round(deficit / monthsRemaining)
+    : null
+
+  const onTrack = deficit !== null && Math.abs(deficit) < 2000
+  const overPaying = deficit !== null && deficit < -2000
+  const underPaying = deficit !== null && deficit > 2000
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <div className="flex items-center justify-between">
@@ -52,6 +86,29 @@ export function TaxSettlementPage() {
           + Legg til
         </Button>
       </div>
+
+      {/* ── Prognose for inneværende år ── */}
+      <TaxForecastSection
+        currentYear={currentYear}
+        taxForecast={taxForecast}
+        withheldYTD={withheldYTD}
+        projectedWithheld={projectedWithheld}
+        projectedIncome={projectedIncome}
+        slipMonth={slipMonth}
+        deficit={deficit}
+        monthlyAdjustment={monthlyAdjustment}
+        onTrack={onTrack}
+        overPaying={overPaying}
+        underPaying={underPaying}
+        onSaveForecast={(expectedIncome, expectedTax) => {
+          if (!profile) return
+          setProfile({ ...profile, taxForecast: { year: currentYear, expectedIncome, expectedTax } })
+        }}
+        onClearForecast={() => {
+          if (!profile) return
+          setProfile({ ...profile, taxForecast: undefined })
+        }}
+      />
 
       {/* Anbefaling */}
       {analysis.recommendation !== 'keep' && taxSettlements.length >= 2 && (
@@ -197,6 +254,186 @@ export function TaxSettlementPage() {
         </Card>
       )}
     </div>
+  )
+}
+
+// ------------------------------------------------------------
+// SKATTEPROGNOSE
+// ------------------------------------------------------------
+
+function TaxForecastSection({
+  currentYear,
+  taxForecast,
+  withheldYTD,
+  projectedWithheld,
+  projectedIncome,
+  slipMonth,
+  deficit,
+  monthlyAdjustment,
+  onTrack,
+  overPaying,
+  underPaying,
+  onSaveForecast,
+  onClearForecast,
+}: {
+  currentYear: number
+  taxForecast: { year: number; expectedIncome: number; expectedTax: number } | null
+  withheldYTD: number
+  projectedWithheld: number
+  projectedIncome: number
+  slipMonth: number
+  deficit: number | null
+  monthlyAdjustment: number | null
+  onTrack: boolean
+  overPaying: boolean
+  underPaying: boolean
+  onSaveForecast: (income: number, tax: number) => void
+  onClearForecast: () => void
+}) {
+  const [editing, setEditing] = useState(!taxForecast)
+  const [income, setIncome] = useState(taxForecast?.expectedIncome ?? 0)
+  const [tax, setTax] = useState(taxForecast?.expectedTax ?? 0)
+
+  function handleSave() {
+    if (income > 0 && tax > 0) {
+      onSaveForecast(income, tax)
+      setEditing(false)
+    }
+  }
+
+  const progressPct = taxForecast ? Math.min(100, (projectedWithheld / taxForecast.expectedTax) * 100) : 0
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm">Prognose {currentYear}</CardTitle>
+          {taxForecast && !editing && (
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => { setIncome(taxForecast.expectedIncome); setTax(taxForecast.expectedTax); setEditing(true) }}>
+                Endre
+              </Button>
+              <Button variant="ghost" size="sm" className="text-xs h-6 px-2 text-muted-foreground" onClick={onClearForecast}>
+                Fjern
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Inntasting av meldt skatt */}
+        {editing && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Hent tallene fra skattemeldingen / skattekortet du har sendt inn for {currentYear}.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Forventet inntekt</Label>
+                <NumberInput value={income} onChange={setIncome} suffix="kr" step={10000} min={0} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Forventet skatt å betale</Label>
+                <NumberInput value={tax} onChange={setTax} suffix="kr" step={1000} min={0} />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSave} disabled={income <= 0 || tax <= 0}>Lagre</Button>
+              {taxForecast && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Avbryt</Button>}
+            </div>
+          </div>
+        )}
+
+        {/* Prognose-resultater */}
+        {taxForecast && !editing && (
+          <div className="space-y-4">
+            {/* Status-banner */}
+            {slipMonth === 0 ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground rounded-md bg-muted/30 px-3 py-2">
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                Ingen slipper lastet for {currentYear} ennå — last opp for å se prognose.
+              </div>
+            ) : onTrack ? (
+              <div className="flex items-center gap-2 text-xs text-green-400 rounded-md bg-green-500/10 border border-green-500/20 px-3 py-2">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                Du er på skiva! Prognosen treffer forventet skatt innenfor ±2 000 kr.
+              </div>
+            ) : overPaying ? (
+              <div className="flex items-center gap-2 text-xs text-yellow-400 rounded-md bg-yellow-500/10 border border-yellow-500/20 px-3 py-2">
+                <TrendingDown className="h-3.5 w-3.5 shrink-0" />
+                Du betaler for mye. Prognosen tilsier {fmtNOK(Math.abs(deficit!))} til gode ved oppgjør.
+                {monthlyAdjustment !== null && monthlyAdjustment < 0 && (
+                  <span> Du kan redusere trekk med ca. {fmtNOK(Math.abs(monthlyAdjustment))}/mnd.</span>
+                )}
+              </div>
+            ) : underPaying ? (
+              <div className="flex items-center gap-2 text-xs text-red-400 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Du risikerer restskatt på ~{fmtNOK(deficit!)} ved årets slutt.
+                {monthlyAdjustment !== null && monthlyAdjustment > 0 && (
+                  <span> Øk trekk med ca. {fmtNOK(monthlyAdjustment)}/mnd.</span>
+                )}
+              </div>
+            ) : null}
+
+            {/* Fremgangsbar */}
+            {slipMonth > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Innbetalt trekk (prognose hele år)</span>
+                  <span className={cn(
+                    'font-mono font-medium',
+                    onTrack ? 'text-green-400' : underPaying ? 'text-red-400' : 'text-yellow-400'
+                  )}>
+                    {fmtNOK(projectedWithheld)} / {fmtNOK(taxForecast.expectedTax)}
+                  </span>
+                </div>
+                <Progress
+                  value={progressPct}
+                  className={cn(
+                    'h-2',
+                    onTrack ? '[&>div]:bg-green-500' : underPaying ? '[&>div]:bg-red-500' : '[&>div]:bg-yellow-500'
+                  )}
+                />
+              </div>
+            )}
+
+            {/* Detaljert tabell */}
+            {slipMonth > 0 && (
+              <div className="text-xs space-y-1.5 border-t border-border pt-3">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Trekk hittil ({slipMonth} mnd)</span>
+                  <span className="font-mono">{fmtNOK(withheldYTD)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Prognose hele år (12 mnd)</span>
+                  <span className="font-mono">{fmtNOK(projectedWithheld)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Forventet skatt (meldt)</span>
+                  <span className="font-mono">{fmtNOK(taxForecast.expectedTax)}</span>
+                </div>
+                <div className="flex justify-between font-medium border-t border-border pt-1.5">
+                  <span>Avvik</span>
+                  <span className={cn(
+                    'font-mono',
+                    onTrack ? 'text-green-400' : underPaying ? 'text-red-400' : 'text-yellow-400'
+                  )}>
+                    {deficit! >= 0 ? '+' : ''}{fmtNOK(deficit!)}
+                  </span>
+                </div>
+                {projectedIncome > 0 && (
+                  <div className="flex justify-between text-muted-foreground pt-1">
+                    <span>Prognose bruttoinntekt</span>
+                    <span className="font-mono">{fmtNOK(projectedIncome)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
