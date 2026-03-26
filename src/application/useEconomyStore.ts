@@ -138,6 +138,7 @@ interface EconomyState {
 
   updateBudgetTemplate: (template: Partial<BudgetTemplate>) => void
   addBudgetLine: (line: BudgetLine) => void
+  updateBudgetLine: (id: string, updates: Partial<BudgetLine>) => void
   removeBudgetLine: (id: string) => void
 
   budgetOverrides: Record<string, number>  // key: "${year}:${month}:${rowId}"
@@ -641,6 +642,14 @@ export const useEconomyStore = create<EconomyState>()(
           budgetTemplate: {
             ...s.budgetTemplate,
             lines: [...s.budgetTemplate.lines, line],
+            lastUpdated: new Date().toISOString().split('T')[0],
+          },
+        })),
+      updateBudgetLine: (id, updates) =>
+        set((s) => ({
+          budgetTemplate: {
+            ...s.budgetTemplate,
+            lines: s.budgetTemplate.lines.map((l) => l.id === id ? { ...l, ...updates } : l),
             lastUpdated: new Date().toISOString().split('T')[0],
           },
         })),

@@ -11,6 +11,8 @@ import {
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
+import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
+import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { cn } from '@/lib/utils'
 import type { TaxSettlementRecord } from '@/types/economy'
 
@@ -26,6 +28,15 @@ export function TaxSettlementPage() {
     profile,
     setProfile,
     monthHistory,
+    budgetTemplate,
+    atfEntries,
+    savingsAccounts,
+    debts,
+    subscriptions,
+    insurances,
+    temporaryPayEntries,
+    ivfTransactions,
+    budgetOverrides,
   } = useEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -51,20 +62,39 @@ export function TaxSettlementPage() {
   const currentYear = new Date().getFullYear()
   const taxForecast = profile?.taxForecast?.year === currentYear ? profile.taxForecast : null
 
-  // Siste slipp dette året med YTD-tall
-  const latestSlipThisYear = [...monthHistory]
+  // Summer faktisk skatt per måned fra alle slipper dette året (matcher budsjettfanen)
+  const slipsThisYear = monthHistory
     .filter((m) => m.year === currentYear && m.slipData != null)
-    .sort((a, b) => b.month - a.month)[0]
-  const slip = latestSlipThisYear?.slipData
+    .sort((a, b) => a.month - b.month)
 
-  // YTD-beregning
-  const withheldYTD = slip?.hittilForskuddstrekk ?? 0
-  const grossYTD = slip?.hittilBrutto ?? 0
-  const slipMonth = slip?.periode.month ?? 0
+  const skattetrekkYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.skattetrekk ?? 0), 0)
+  const ekstraTrekkYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.ekstraTrekk ?? 0), 0)
+  const withheldYTD = skattetrekkYTD + ekstraTrekkYTD
+  const grossYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.bruttoSum ?? 0), 0)
+  const slipMonth = slipsThisYear.length > 0
+    ? Math.max(...slipsThisYear.map((m) => m.month))
+    : 0
 
-  // Prognose for hele året (lineær ekstrapolering)
-  const projectedWithheld = slipMonth > 0 ? Math.round((withheldYTD / slipMonth) * 12) : 0
-  const projectedIncome = slipMonth > 0 ? Math.round((grossYTD / slipMonth) * 12) : 0
+  // Prognose: hent direkte fra budsjettabellen, identisk med hva budsjettfanen viser
+  const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
+  const yearOverrides: Record<string, number> = {}
+  for (const [k, v] of Object.entries(budgetOverrides)) {
+    const prefix = `${currentYear}:`
+    if (k.startsWith(prefix)) yearOverrides[k.slice(prefix.length)] = v
+  }
+  const budgetTable = profile
+    ? computeBudgetTable(currentYear, profile, budgetTemplate, monthHistory, atfEntries, savingsAccounts, debts, subscriptions, insurances, yearOverrides, temporaryPayEntries, juneForecast ?? undefined)
+    : null
+  const allRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
+  const skattRow = allRows.find((r) => r.id === 'skatt')
+  const ekstraRow = allRows.find((r) => r.id === 'ekstra')
+  const bruttoRow = allRows.find((r) => r.id === 'brutto')
+  const projectedWithheld = skattRow && ekstraRow
+    ? Math.abs(skattRow.annualActual) + Math.abs(ekstraRow.annualActual)
+    : slipMonth > 0 ? Math.round((withheldYTD / slipMonth) * 12) : 0
+  const projectedIncome = bruttoRow
+    ? Math.abs(bruttoRow.annualActual)
+    : slipMonth > 0 ? Math.round((grossYTD / slipMonth) * 12) : 0
 
   // Avvik mot meldt skatt
   const expectedTax = taxForecast?.expectedTax ?? 0
@@ -91,6 +121,8 @@ export function TaxSettlementPage() {
       <TaxForecastSection
         currentYear={currentYear}
         taxForecast={taxForecast}
+        skattetrekkYTD={skattetrekkYTD}
+        ekstraTrekkYTD={ekstraTrekkYTD}
         withheldYTD={withheldYTD}
         projectedWithheld={projectedWithheld}
         projectedIncome={projectedIncome}
@@ -264,6 +296,8 @@ export function TaxSettlementPage() {
 function TaxForecastSection({
   currentYear,
   taxForecast,
+  skattetrekkYTD,
+  ekstraTrekkYTD,
   withheldYTD,
   projectedWithheld,
   projectedIncome,
@@ -278,6 +312,8 @@ function TaxForecastSection({
 }: {
   currentYear: number
   taxForecast: { year: number; expectedIncome: number; expectedTax: number } | null
+  skattetrekkYTD: number
+  ekstraTrekkYTD: number
   withheldYTD: number
   projectedWithheld: number
   projectedIncome: number
@@ -402,10 +438,20 @@ function TaxForecastSection({
             {slipMonth > 0 && (
               <div className="text-xs space-y-1.5 border-t border-border pt-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Trekk hittil ({slipMonth} mnd)</span>
+                  <span className="text-muted-foreground">Skattetrekk (/440) hittil ({slipMonth} mnd)</span>
+                  <span className="font-mono">{fmtNOK(skattetrekkYTD)}</span>
+                </div>
+                {ekstraTrekkYTD > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Ekstra forskuddstrekk (1620) hittil</span>
+                    <span className="font-mono">{fmtNOK(ekstraTrekkYTD)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-medium">
+                  <span className="text-muted-foreground">Sum trekk hittil</span>
                   <span className="font-mono">{fmtNOK(withheldYTD)}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between border-t border-border/50 pt-1.5">
                   <span className="text-muted-foreground">Prognose hele år (12 mnd)</span>
                   <span className="font-mono">{fmtNOK(projectedWithheld)}</span>
                 </div>

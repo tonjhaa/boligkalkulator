@@ -63,9 +63,11 @@ export function BudgetPage() {
     subscriptions,
     insurances,
     temporaryPayEntries,
+    ivfTransactions,
     lockMonth,
     unlockMonth,
     addBudgetLine,
+    updateBudgetLine,
     budgetOverrides,
     setBudgetOverride,
     clearBudgetOverride,
@@ -76,6 +78,7 @@ export function BudgetPage() {
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
+  const [hideTemporary, setHideTemporary] = useState(false)
 
   const yearOverrides = useMemo(() => {
     const prefix = `${activeYear}:`
@@ -103,9 +106,35 @@ export function BudgetPage() {
     yearOverrides,
     temporaryPayEntries,
     juneForecast ?? undefined,
+    hideTemporary,
+    ivfTransactions,
   )
 
   const { metas, sections, estimatedAnnualGrowthRate } = tableData
+
+  // T-merking for manuelle budsjettlinjer (ikke tillegg/husleie — de er auto-styrt av toggle)
+  const EXPENSE_CATS_SET = new Set([
+    'bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk',
+  ])
+  const SAVINGS_CATS_SET = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
+  const temporaryMap = useMemo(() => {
+    const map: Record<string, { isTemporary: boolean; onToggle: () => void }> = {}
+    for (const line of budgetTemplate.lines) {
+      let rowId: string
+      if (line.category === 'annen_inntekt') rowId = `income-${line.id}`
+      else if (EXPENSE_CATS_SET.has(line.category) && !line.isVariable) rowId = `exp-${line.id}`
+      else if (EXPENSE_CATS_SET.has(line.category) && line.isVariable) rowId = `var-${line.id}`
+      else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
+      else continue
+      const lineId = line.id
+      map[rowId] = {
+        isTemporary: !!line.isTemporary,
+        onToggle: () => updateBudgetLine(lineId, { isTemporary: !line.isTemporary }),
+      }
+    }
+    return map
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetTemplate.lines])
 
   function handleOverride(rowId: string, month: number, value: number | null) {
     if (value === null) clearBudgetOverride(activeYear, month, rowId)
@@ -145,7 +174,16 @@ export function BudgetPage() {
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant={hideTemporary ? 'default' : 'outline'}
+            size="sm"
+            className="text-xs h-7 gap-1"
+            onClick={() => setHideTemporary(!hideTemporary)}
+            title="Skjul tidsbegrensede tillegg (husleiekomp, husleietrekk, flyttebonus osv.)"
+          >
+            {hideTemporary ? 'Uten tillegg' : 'Med tillegg'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -277,6 +315,7 @@ export function BudgetPage() {
                       yearOverrides={yearOverrides}
                       onOverride={(month, value) => handleOverride(row.id, month, value)}
                       highlightedMonth={highlightedMonth}
+                      temporaryInfo={temporaryMap[row.id]}
                     />
                   ))}
                 </>
@@ -336,6 +375,7 @@ function DataRow({
   yearOverrides,
   onOverride,
   highlightedMonth,
+  temporaryInfo,
 }: {
   row: BudgetRow
   metas: MonthMeta[]
@@ -344,6 +384,7 @@ function DataRow({
   yearOverrides?: Record<string, number>
   onOverride?: (month: number, value: number | null) => void
   highlightedMonth?: number | null
+  temporaryInfo?: { isTemporary: boolean; onToggle: () => void }
 }) {
   const [editingMonth, setEditingMonth] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -419,18 +460,34 @@ function DataRow({
   }
 
   const isGrunnlag = row.id === 'brutto-inntekt' || row.id === 'skattepliktig'
+  const isHidden = !!row.isHidden
 
   return (
     <tr className={cn(
-      'border-b hover:bg-muted/10',
+      'border-b hover:bg-muted/10 group/row',
       row.isBold ? 'border-border/60 bg-muted/20' : 'border-border/20',
+      isHidden && 'opacity-40',
     )}>
       <td className={cn(
-        'sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate',
+        'sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px]',
         row.isBold ? 'font-bold bg-muted/20 text-[11px] uppercase tracking-wide' : '',
         isGrunnlag && 'text-muted-foreground italic',
       )}>
-        {row.label}
+        <span className={cn('flex items-center gap-1 min-w-0', isHidden && 'line-through')}>
+          <span className="truncate">{row.label}</span>
+          {temporaryInfo && !isHidden && (
+            <button
+              onClick={(e) => { e.stopPropagation(); temporaryInfo.onToggle() }}
+              className={cn(
+                'shrink-0 text-[9px] px-1 py-0.5 rounded leading-none transition-colors',
+                temporaryInfo.isTemporary
+                  ? 'bg-amber-500/20 text-amber-400 hover:bg-red-500/20 hover:text-red-400'
+                  : 'opacity-0 group-hover/row:opacity-100 bg-muted/40 text-muted-foreground hover:text-amber-400',
+              )}
+              title={temporaryInfo.isTemporary ? 'Fjern tidsbegrenset-merke' : 'Merk som tidsbegrenset'}
+            >T</button>
+          )}
+        </span>
       </td>
 
       {metas.map((meta) => {
@@ -444,7 +501,8 @@ function DataRow({
               colSpan={2}
               className={cn(
                 'px-2 py-1.5 text-right border-r border-border/40 tabular-nums',
-                cell.budget === 0 ? 'text-muted-foreground' : cell.budget < 0 ? 'text-red-400' : 'text-foreground',
+                isHidden ? 'line-through text-muted-foreground/50' :
+                  cell.budget === 0 ? 'text-muted-foreground' : cell.budget < 0 ? 'text-red-400' : 'text-foreground',
                 hl && 'bg-sky-500/15',
               )}
             >
@@ -455,14 +513,15 @@ function DataRow({
 
         if (meta.hasSlip || cell.actual !== null) {
           const actual = cell.actual ?? 0
-          const deviation = actual !== 0 && cell.budget !== 0 ? actual - cell.budget : null
+          const deviation = !isHidden && actual !== 0 && cell.budget !== 0 ? actual - cell.budget : null
           return (
             <td
               key={`${meta.month}-fak`}
               colSpan={2}
               className={cn(
                 'px-2 py-1.5 text-right border-r border-border/40 font-medium tabular-nums',
-                actual < 0 ? 'text-red-400' : actual > 0 ? 'text-foreground' : 'text-muted-foreground',
+                isHidden ? 'line-through text-muted-foreground/50' :
+                  actual < 0 ? 'text-red-400' : actual > 0 ? 'text-foreground' : 'text-muted-foreground',
                 deviation !== null && Math.abs(deviation) > Math.abs(cell.budget) * 0.1 && 'underline decoration-dotted',
                 hl && 'bg-sky-500/15',
               )}
@@ -499,11 +558,13 @@ function DataRow({
             colSpan={2}
             className={cn(
               'px-2 py-1.5 text-right border-r border-border/40 tabular-nums group/cell',
-              !meta.isLocked && !hasOverride && 'italic text-muted-foreground',
-              meta.isLocked && displayVal < 0 && 'text-red-400',
-              meta.isLocked && displayVal > 0 && 'text-foreground',
-              hasOverride && 'text-amber-400 not-italic',
-              isEditable && !meta.isLocked && 'cursor-text hover:bg-muted/20',
+              isHidden ? 'italic line-through text-muted-foreground/50' : [
+                !meta.isLocked && !hasOverride && 'italic text-muted-foreground',
+                meta.isLocked && displayVal < 0 && 'text-red-400',
+                meta.isLocked && displayVal > 0 && 'text-foreground',
+                hasOverride && 'text-amber-400 not-italic',
+              ],
+              !isHidden && isEditable && !meta.isLocked && 'cursor-text hover:bg-muted/20',
               hl && 'bg-sky-500/15',
             )}
             onClick={() => isEditable && !meta.isLocked && startEdit(meta.month, displayVal)}
@@ -554,6 +615,7 @@ function AddBudgetLineModal({
   const [amount, setAmount] = useState('')
   const [isRecurring, setIsRecurring] = useState(true)
   const [isVariable, setIsVariable] = useState(false)
+  const [isTemporary, setIsTemporary] = useState(false)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -606,6 +668,10 @@ function AddBudgetLineModal({
               <input type="checkbox" checked={isVariable} onChange={(e) => setIsVariable(e.target.checked)} className="h-3 w-3" />
               Variabelt beløp
             </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={isTemporary} onChange={(e) => setIsTemporary(e.target.checked)} className="h-3 w-3" />
+              <span>Tidsbegrenset <span className="text-muted-foreground">(skjules med «Uten tillegg»)</span></span>
+            </label>
           </div>
         </div>
 
@@ -624,6 +690,7 @@ function AddBudgetLineModal({
                 source: 'manual',
                 isLocked: false,
                 isVariable,
+                isTemporary: isTemporary || undefined,
               })
             }
           >

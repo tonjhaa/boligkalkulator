@@ -29,6 +29,8 @@ export interface BudgetLine {
   isLocked: boolean       // true = auto-generert fra slipp, kan ikke slettes
   isVariable: boolean     // true = beløpet varierer (f.eks. Norsk Tipping)
   notes?: string
+  /** Tidsbegrenset tillegg — skjules ved "uten tillegg"-visning */
+  isTemporary?: boolean
 }
 
 export interface BudgetTemplate {
@@ -92,10 +94,14 @@ export interface EmploymentProfile {
     kode: string
     label: string
     amount: number
+    /** Tidsbegrenset tillegg — skjules ved "uten tillegg"-visning */
+    isTemporary?: boolean
   }[]
   lastKnownTaxWithholding: number     // siste kjente skattetrekk
   extraTaxWithholding: number          // ekstra forskuddstrekk (1620)
   housingDeduction: number             // husleietrekk forsvarsbolig (3209)
+  /** Husleietrekk er tidsbegrenset — skjules ved "uten tillegg"-visning */
+  housingDeductionIsTemporary?: boolean
   pensionPercent: number               // SPK-prosent
   unionFee: number                     // fagforeningskontingent
   atfEnabled: boolean

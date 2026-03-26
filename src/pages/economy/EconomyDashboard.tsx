@@ -582,7 +582,7 @@ function KpiCard({
 // ------------------------------------------------------------
 
 function PengePuls({
-  trendData,
+  trendData: _trendData,
   trendAvg,
   nettoInn,
   fasteUt,
@@ -596,7 +596,7 @@ function PengePuls({
   trendAvg: number
   nettoInn: number
   fasteUt: number
-  juneForecast: ReturnType<typeof forecastJune>
+  juneForecast: ReturnType<typeof forecastJune> | null
   savingsGoals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
   savingsAccounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
   atfSum: number

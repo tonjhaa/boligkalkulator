@@ -9,6 +9,7 @@ import type {
   InsuranceEntry,
   TemporaryPayEntry,
   JuneForecast,
+  IVFTransaction,
 } from '@/types/economy'
 import { estimateSalaryTrend, projectMonthlySalary } from './salaryCalculator'
 import { computeMonthContributions } from './savingsCalculator'
@@ -38,6 +39,8 @@ export interface BudgetRow {
   isCumulative?: boolean
   /** true = vises med fet skrift som en summeringsrad */
   isBold?: boolean
+  /** true = rad vises med overstreking/grå i "uten tillegg"-modus, ekskludert fra summer */
+  isHidden?: boolean
 }
 
 export interface BudgetSection {
@@ -104,6 +107,8 @@ export function computeBudgetTable(
   overrides: Record<string, number> = {},
   temporaryPayEntries: TemporaryPayEntry[] = [],
   juneForecast?: JuneForecast,
+  hideTemporary = false,
+  ivfTransactions: IVFTransaction[] = [],
 ): BudgetTableData {
 
   // ---- Month lookup (locked months in this year) ----
@@ -196,18 +201,20 @@ export function computeBudgetTable(
       (m) => monthMap.get(m)?.slipData?.maanedslonn ?? null,
     )))
 
-    // Tillegg — én rad per artskode fra profil (viser som på slippen)
+    // Tillegg — én rad per artskode fra profil (vises som på slippen)
+    // Tillegg merket isTemporary=true vises med overstreking og ekskluderes fra summer
     for (const addition of profile.fixedAdditions) {
       if (addition.amount <= 0) continue
       const rowId = `tillegg-${addition.kode}`
-      inntekterRows.push(mkRow(rowId, `${addition.label} (${addition.kode})`, uniform12(
+      const row = mkRow(rowId, `${addition.label} (${addition.kode})`, uniform12(
         (m) => budgetVal(rowId, m, addition.amount),
         (m) => {
           const slip = monthMap.get(m)?.slipData
           if (!slip) return null
           return slip.fasteTillegg.find((t) => t.artskode === addition.kode)?.belop ?? null
         },
-      )))
+      ))
+      inntekterRows.push(hideTemporary && addition.isTemporary ? { ...row, isHidden: true } : row)
     }
 
     // Feriepenger og ferietrekk (June only) — begge hører til inntektsområdet
@@ -232,7 +239,7 @@ export function computeBudgetTable(
   }
 
   // Template income lines (annen_inntekt)
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && l.category === 'annen_inntekt')) {
+  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && l.category === 'annen_inntekt' && !(hideTemporary && l.isTemporary))) {
     inntekterRows.push(mkRow(`income-${line.id}`, line.label, uniform12((m) => budgetVal(`income-${line.id}`, m, line.amount), () => null)))
   }
 
@@ -247,7 +254,7 @@ export function computeBudgetTable(
   const PENSJONABLE_ARTSKODER = new Set(['1162'])
   const pensjonableTillegg = profile
     ? profile.fixedAdditions
-        .filter((a) => PENSJONABLE_ARTSKODER.has(a.kode))
+        .filter((a) => PENSJONABLE_ARTSKODER.has(a.kode) && !(hideTemporary && a.isTemporary))
         .reduce((s, a) => s + a.amount, 0)
     : 0
 
@@ -260,13 +267,14 @@ export function computeBudgetTable(
     const effectiveTilleggForMonth = (m: number) =>
       profile.fixedAdditions.reduce((s, a) => {
         if (a.amount <= 0) return s
+        if (hideTemporary && a.isTemporary) return s
         return s + budgetVal(`tillegg-${a.kode}`, m, a.amount)
       }, 0)
 
     // ---- Grunnlagsrader (vises mellom INNTEKTER og TREKK) ----
     // Skattepliktig inntekt = lønn + faste tillegg + ATF (/440-grunnlag)
     grunnlagRows.push(mkRow('brutto-inntekt', 'Bruttoinntekt', uniform12(
-      (m) => inntekterRows.reduce((s, r) => s + r.cells[m - 1].budget, 0),
+      (m) => inntekterRows.filter(r => !r.isHidden).reduce((s, r) => s + r.cells[m - 1].budget, 0),
       (m) => monthMap.get(m)?.slipData?.bruttoSum ?? null,
     )))
     grunnlagRows.push(mkRow('skattepliktig', 'Skattepliktig inntekt', uniform12(
@@ -327,15 +335,18 @@ export function computeBudgetTable(
       )))
     }
 
-    // Husleietrekk
+    // Husleietrekk — vises alltid, men markeres isHidden hvis housingDeductionIsTemporary=true
     if (profile.housingDeduction > 0) {
-      trekkRows.push(mkRow('husleie', 'Husleietrekk', uniform12(
+      const husleieRow = mkRow('husleie', 'Husleietrekk', uniform12(
         (m) => budgetVal('husleie', m, -profile.housingDeduction),
         (m) => {
           const slip = monthMap.get(m)?.slipData
           return slip ? -slip.husleietrekk : null
         },
-      )))
+      ))
+      trekkRows.push(hideTemporary && profile.housingDeductionIsTemporary
+        ? { ...husleieRow, isHidden: true }
+        : husleieRow)
     }
 
     // Ekstra forskuddstrekk
@@ -366,15 +377,15 @@ export function computeBudgetTable(
   // NETTO (dualColumn = true)
   // ================================================================
   const nettoCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
-    const inntektBudget = inntekterRows.reduce((s, r) => s + r.cells[i].budget, 0)
-    const trekkBudget = trekkRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    const inntektBudget = inntekterRows.filter(r => !r.isHidden).reduce((s, r) => s + r.cells[i].budget, 0)
+    const trekkBudget = trekkRows.filter(r => !r.isHidden).reduce((s, r) => s + r.cells[i].budget, 0)
     const rec = monthMap.get(i + 1)
     return {
       budget: inntektBudget + trekkBudget,
       actual: rec?.nettoUtbetalt ?? null,
     }
   })
-  const nettoRows: BudgetRow[] = [mkRow('netto', 'Netto utbetalt', nettoCells)]
+
 
   // ================================================================
   // FASTE UTGIFTER (dualColumn = false)
@@ -384,7 +395,7 @@ export function computeBudgetTable(
   ])
   const fasteRows: BudgetRow[] = []
 
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && !l.isVariable)) {
+  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && !l.isVariable && !(hideTemporary && l.isTemporary))) {
     fasteRows.push(mkRow(`exp-${line.id}`, line.label, uniform12((m) => budgetVal(`exp-${line.id}`, m, line.amount), () => null)))
   }
 
@@ -408,7 +419,7 @@ export function computeBudgetTable(
   // VARIABLE UTGIFTER (dualColumn = false)
   // ================================================================
   const variableRows: BudgetRow[] = []
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && l.isVariable)) {
+  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && l.isVariable && !(hideTemporary && l.isTemporary))) {
     variableRows.push(mkRow(`var-${line.id}`, line.label, uniform12((m) => budgetVal(`var-${line.id}`, m, line.amount), () => null)))
   }
 
@@ -439,8 +450,27 @@ export function computeBudgetTable(
     )))
   }
 
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && SAVINGS_CATS.has(l.category))) {
+  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && SAVINGS_CATS.has(l.category) && !(hideTemporary && l.isTemporary))) {
     sparingRows.push(mkRow(`sav-t-${line.id}`, line.label, uniform12((m) => budgetVal(`sav-t-${line.id}`, m, line.amount), () => null)))
+  }
+
+  // IVF "Sparing Tonje" — faktiske beløp per måned fra prosjektfanen
+  const ivfTonjeSparByMonth = new Map<number, number>()
+  for (const tx of ivfTransactions) {
+    if (tx.type !== 'SPARING') continue
+    const lbl = tx.label.toLowerCase()
+    if (!lbl.includes('tonje')) continue
+    if (lbl.includes('mamma') || lbl.includes('bidrag')) continue
+    const d = new Date(tx.date)
+    if (d.getFullYear() !== year) continue
+    const m = d.getMonth() + 1
+    ivfTonjeSparByMonth.set(m, (ivfTonjeSparByMonth.get(m) ?? 0) + tx.amount)
+  }
+  if (ivfTonjeSparByMonth.size > 0) {
+    sparingRows.push(mkRow('ivf-sparing-tonje', 'IVF – Sparing Tonje', uniform12(
+      (m) => budgetVal('ivf-sparing-tonje', m, -(ivfTonjeSparByMonth.get(m) ?? 0)),
+      (m) => ivfTonjeSparByMonth.has(m) ? -(ivfTonjeSparByMonth.get(m)!) : null,
+    )))
   }
 
   // ================================================================
@@ -448,11 +478,20 @@ export function computeBudgetTable(
   // ================================================================
   const allExpenseRows = [...fasteRows, ...variableRows, ...gjeldRows, ...sparingRows]
   const disponibeltCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
-    const expenseSum = allExpenseRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    const expenseBudget = allExpenseRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    // Bruk faktiske utgifter der de finnes (f.eks. BSU-bidrag uten månedlig budsjett)
+    const hasExpenseActual = allExpenseRows.some((r) => r.cells[i].actual !== null)
+    const expenseActual = hasExpenseActual
+      ? allExpenseRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0)
+      : null
     const netto = nettoCells[i]
     return {
-      budget: netto.budget + expenseSum,
-      actual: netto.actual !== null ? netto.actual + expenseSum : null,
+      budget: netto.budget + expenseBudget,
+      actual: netto.actual !== null
+        ? netto.actual + (expenseActual ?? expenseBudget)
+        : expenseActual !== null
+          ? netto.budget + expenseActual
+          : null,
     }
   })
 
@@ -461,23 +500,25 @@ export function computeBudgetTable(
   // ================================================================
   const sections: BudgetSection[] = []
 
-  // BRUTTO-sumrad
+  // BRUTTO-sumrad (ekskluderer isHidden-rader)
   const bruttoSumCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
-    const budget = inntekterRows.reduce((s, r) => s + r.cells[i].budget, 0)
-    const hasActual = inntekterRows.some((r) => r.cells[i].actual !== null)
+    const vis = inntekterRows.filter(r => !r.isHidden)
+    const budget = vis.reduce((s, r) => s + r.cells[i].budget, 0)
+    const hasActual = vis.some((r) => r.cells[i].actual !== null)
     return {
       budget,
-      actual: hasActual ? inntekterRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
+      actual: hasActual ? vis.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
     }
   })
 
-  // SUM TREKK-rad
+  // SUM TREKK-rad (ekskluderer isHidden-rader)
   const trekkSumCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
-    const budget = trekkRows.reduce((s, r) => s + r.cells[i].budget, 0)
-    const hasActual = trekkRows.some((r) => r.cells[i].actual !== null)
+    const vis = trekkRows.filter(r => !r.isHidden)
+    const budget = vis.reduce((s, r) => s + r.cells[i].budget, 0)
+    const hasActual = vis.some((r) => r.cells[i].actual !== null)
     return {
       budget,
-      actual: hasActual ? trekkRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
+      actual: hasActual ? vis.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0) : null,
     }
   })
 
@@ -509,11 +550,17 @@ export function computeBudgetTable(
     sections.push({ key: 'SPARING', label: 'Sparing', colorClass: 'text-purple-400', dualColumn: true, rows: sparingRows })
   }
 
-  // SUM UT = sum av alle utgiftsrader
-  const sumUtCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => ({
-    budget: allExpenseRows.reduce((s, r) => s + r.cells[i].budget, 0),
-    actual: null,
-  }))
+  // SUM UT = sum av alle utgiftsrader (faktisk der tilgjengelig, ellers budsjett)
+  const sumUtCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => {
+    const budget = allExpenseRows.reduce((s, r) => s + r.cells[i].budget, 0)
+    const hasActual = allExpenseRows.some((r) => r.cells[i].actual !== null)
+    return {
+      budget,
+      actual: hasActual
+        ? allExpenseRows.reduce((s, r) => s + (r.cells[i].actual ?? r.cells[i].budget), 0)
+        : null,
+    }
+  })
 
   // OVERSKUDD = NETTO + SUM UT (utgifter er negative, så + gir riktig resultat)
   const overskuddCells: BudgetCell[] = Array.from({ length: 12 }, (_, i) => ({
@@ -534,7 +581,9 @@ export function computeBudgetTable(
   // ÅRSOPPSUMMERING — løpende YTD-totaler (kun når profil er satt)
   // ================================================================
   if (profile) {
-    const allTillegg = profile.fixedAdditions.reduce((s, a) => s + a.amount, 0)
+    const allTillegg = profile.fixedAdditions
+      .filter((a) => !(hideTemporary && a.isTemporary))
+      .reduce((s, a) => s + a.amount, 0)
 
     // YTD brutto: lønn + alle faste tillegg + ATF (samme som hittilBrutto på slippen)
     const ytdBruttoCells: BudgetCell[] = []

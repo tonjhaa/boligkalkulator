@@ -13,6 +13,7 @@ import {
   Palmtree,
   HeartPulse,
   Umbrella,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +53,9 @@ const IVFPage = lazy(() =>
 const VacationPage = lazy(() =>
   import('./VacationPage').then((m) => ({ default: m.VacationPage }))
 )
+const EconomySettingsPage = lazy(() =>
+  import('./EconomySettingsPage').then((m) => ({ default: m.EconomySettingsPage }))
+)
 
 type EconomySubPage =
   | 'dashboard'
@@ -66,6 +70,7 @@ type EconomySubPage =
   | 'feriepenger'
   | 'ivf'
   | 'vacation'
+  | 'settings'
 
 interface NavItem {
   page: EconomySubPage
@@ -86,6 +91,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'subscriptions', label: 'Abo & Fors.', Icon: RefreshCw },
   { page: 'ivf', label: 'Prosjekt', Icon: HeartPulse },
   { page: 'vacation', label: 'Ferie', Icon: Umbrella },
+  { page: 'settings', label: 'Innstillinger', Icon: Settings },
 ]
 
 function PageFallback() {
@@ -168,6 +174,7 @@ export function EconomyPage() {
           {currentPage === 'feriepenger' && <FeriepengePage />}
           {currentPage === 'ivf' && <IVFPage />}
           {currentPage === 'vacation' && <VacationPage />}
+          {currentPage === 'settings' && <EconomySettingsPage />}
         </Suspense>
         </PageErrorBoundary>
       </div>

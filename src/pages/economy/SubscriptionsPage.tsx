@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +40,8 @@ export function SubscriptionsPage() {
 
   const [showAddSub, setShowAddSub] = useState(false)
   const [showAddIns, setShowAddIns] = useState(false)
+  const [editingInsId, setEditingInsId] = useState<string | null>(null)
+  const [expandedInsId, setExpandedInsId] = useState<string | null>(null)
 
   const activeSubscriptions = subscriptions.filter((s) => s.isActive)
   const inactiveSubscriptions = subscriptions.filter((s) => !s.isActive)
@@ -185,37 +187,112 @@ export function SubscriptionsPage() {
               <tbody>
                 {insurances.map((ins) => {
                   const yearlyAmt = ins.yearlyAmounts[currentYear] ?? 0
+                  if (editingInsId === ins.id) {
+                    return (
+                      <tr key={ins.id}>
+                        <td colSpan={4} className="px-3 py-2">
+                          <EditInsuranceForm
+                            ins={ins}
+                            currentYear={currentYear}
+                            onSave={(updates) => { updateInsurance(ins.id, updates); setEditingInsId(null) }}
+                            onCancel={() => setEditingInsId(null)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const allYears = Object.keys(ins.yearlyAmounts).sort()
+                  const prevYear = String(parseInt(currentYear) - 1)
+                  const prevAmt = ins.yearlyAmounts[prevYear]
+                  const diff = prevAmt != null && yearlyAmt > 0 ? yearlyAmt - prevAmt : null
+                  const isExpanded = expandedInsId === ins.id
                   return (
-                    <tr key={ins.id} className={`border-b border-border/50 last:border-0 ${!ins.isActive ? 'opacity-50' : ''}`}>
-                      <td className="px-3 py-2">{ins.type}</td>
-                      <td className="px-3 py-2 text-muted-foreground text-xs">{ins.provider}</td>
-                      <td className="px-3 py-2 text-right font-mono">
-                        {yearlyAmt > 0 ? fmtNOK(yearlyAmt) : '—'}
-                      </td>
-                      <td className="px-2 py-2">
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-muted-foreground"
-                            onClick={() => updateInsurance(ins.id, { isActive: !ins.isActive })}
-                            title={ins.isActive ? 'Deaktiver' : 'Aktiver'}
-                          >
-                            {ins.isActive
-                              ? <ToggleRight className="h-3.5 w-3.5 text-green-500" />
-                              : <ToggleLeft className="h-3.5 w-3.5" />}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
-                            onClick={() => removeInsurance(ins.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                    <>
+                      <tr key={ins.id} className={`border-b border-border/50 ${isExpanded ? '' : 'last:border-0'} ${!ins.isActive ? 'opacity-50' : ''}`}>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            {allYears.length > 1 && (
+                              <button
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() => setExpandedInsId(isExpanded ? null : ins.id)}
+                              >
+                                {isExpanded
+                                  ? <ChevronDown className="h-3 w-3" />
+                                  : <ChevronRight className="h-3 w-3" />}
+                              </button>
+                            )}
+                            {ins.type}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground text-xs">{ins.provider}</td>
+                        <td className="px-3 py-2 text-right font-mono">
+                          <div>
+                            {yearlyAmt > 0 ? fmtNOK(yearlyAmt) : '—'}
+                            {diff !== null && (
+                              <span className={`ml-1.5 text-xs font-normal ${diff > 0 ? 'text-red-400' : diff < 0 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                                {diff > 0 ? '+' : ''}{Math.round(diff).toLocaleString('no-NO')}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => setEditingInsId(ins.id)}
+                              title="Rediger"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground"
+                              onClick={() => updateInsurance(ins.id, { isActive: !ins.isActive })}
+                              title={ins.isActive ? 'Deaktiver' : 'Aktiver'}
+                            >
+                              {ins.isActive
+                                ? <ToggleRight className="h-3.5 w-3.5 text-green-500" />
+                                : <ToggleLeft className="h-3.5 w-3.5" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
+                              onClick={() => removeInsurance(ins.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-border/50 bg-muted/20">
+                          <td colSpan={4} className="px-6 py-2">
+                            <div className="flex gap-6 text-xs">
+                              {allYears.map((yr) => {
+                                const amt = ins.yearlyAmounts[yr]
+                                const prevAmt = ins.yearlyAmounts[String(parseInt(yr) - 1)]
+                                const d = prevAmt != null ? amt - prevAmt : null
+                                return (
+                                  <div key={yr} className="text-center">
+                                    <p className="text-muted-foreground">{yr}</p>
+                                    <p className="font-mono font-medium">{Math.round(amt).toLocaleString('no-NO')}</p>
+                                    {d !== null && (
+                                      <p className={d > 0 ? 'text-red-400' : d < 0 ? 'text-green-500' : 'text-muted-foreground'}>
+                                        {d > 0 ? '+' : ''}{Math.round(d).toLocaleString('no-NO')}
+                                      </p>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   )
                 })}
               </tbody>
@@ -372,6 +449,64 @@ function AddSubscriptionForm({ onSave, onCancel }: { onSave: (s: SubscriptionEnt
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function EditInsuranceForm({
+  ins,
+  currentYear,
+  onSave,
+  onCancel,
+}: {
+  ins: InsuranceEntry
+  currentYear: string
+  onSave: (updates: Partial<InsuranceEntry>) => void
+  onCancel: () => void
+}) {
+  const [form, setForm] = useState({
+    provider: ins.provider,
+    type: ins.type,
+    yearlyAmount: ins.yearlyAmounts[currentYear] ?? 0,
+  })
+
+  return (
+    <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
+      <p className="text-xs font-medium">Rediger forsikring</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Leverandør</Label>
+          <Input value={form.provider} onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Type</Label>
+          <Input value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Årsbeløp {currentYear}</Label>
+          <Input
+            type="number"
+            value={form.yearlyAmount}
+            onChange={(e) => setForm((f) => ({ ...f, yearlyAmount: parseFloat(e.target.value) || 0 }))}
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
+        <Button
+          size="sm"
+          disabled={!form.provider.trim() || !form.type.trim()}
+          onClick={() =>
+            onSave({
+              provider: form.provider.trim(),
+              type: form.type.trim(),
+              yearlyAmounts: { ...ins.yearlyAmounts, [currentYear]: form.yearlyAmount },
+            })
+          }
+        >
+          Lagre
+        </Button>
+      </div>
+    </div>
   )
 }
 
