@@ -1,4 +1,5 @@
-import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react'
+import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap, CalendarDays } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
@@ -39,6 +40,60 @@ function fmtSigned(n: number | null): string {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
 }
 
+// ── Norske helligdager ─────────────────────────────────────
+function getEasterSunday(year: number): Date {
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4), k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month, day)
+}
+
+function getNorwegianHolidays(year: number): Set<string> {
+  const easter = getEasterSunday(year)
+  const addDays = (d: Date, n: number) => {
+    const r = new Date(d); r.setDate(r.getDate() + n); return r
+  }
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  return new Set([
+    `${year}-01-01`, // Nyttår
+    `${year}-05-01`, // 1. mai
+    `${year}-05-17`, // 17. mai
+    `${year}-12-25`, // 1. juledag
+    `${year}-12-26`, // 2. juledag
+    fmt(addDays(easter, -3)),  // Skjærtorsdag
+    fmt(addDays(easter, -2)),  // Langfredag
+    fmt(easter),               // 1. påskedag
+    fmt(addDays(easter, 1)),   // 2. påskedag
+    fmt(addDays(easter, 39)),  // Kristi Himmelfartsdag
+    fmt(addDays(easter, 49)),  // 1. pinsedag
+    fmt(addDays(easter, 50)),  // 2. pinsedag
+  ])
+}
+
+function getNextPayday(from: Date): Date {
+  const tryMonth = (year: number, month: number): Date => {
+    const holidays = getNorwegianHolidays(year)
+    let d = new Date(year, month, 12)
+    // Flytt bakover forbi helg og helligdager
+    while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(d.toISOString().slice(0, 10))) {
+      d.setDate(d.getDate() - 1)
+    }
+    return d
+  }
+  const thisMonthPayday = tryMonth(from.getFullYear(), from.getMonth())
+  // Bruk neste måned hvis lønningsdagen allerede har vært
+  if (thisMonthPayday <= from) {
+    const next = new Date(from.getFullYear(), from.getMonth() + 1, 1)
+    return tryMonth(next.getFullYear(), next.getMonth())
+  }
+  return thisMonthPayday
+}
+
 export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
   const {
     monthHistory,
@@ -53,9 +108,24 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     profile,
   } = useEconomyStore()
 
-  const now = new Date()
+  const [tick, setTick] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setTick(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const now = tick
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
+
+  // ── Nedtellinger ──────────────────────────────────────────
+  const nextPayday = getNextPayday(now)
+  const daysToPayday = Math.ceil((nextPayday.getTime() - now.getTime()) / 86400000)
+
+  const summerStart = profile?.summerVacationStart ? new Date(profile.summerVacationStart) : null
+  const daysToSummer = summerStart
+    ? Math.ceil((summerStart.getTime() - now.getTime()) / 86400000)
+    : null
 
   const currentMonthRecord = monthHistory.find(
     (m) => m.year === currentYear && m.month === currentMonth
@@ -147,10 +217,47 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
 
-      {/* ── Topprad: dato ── */}
-      <p className="text-sm text-muted-foreground">
-        {MONTH_NAMES[currentMonth]} {currentYear}
-      </p>
+      {/* ── Topprad: klokke + nedtellinger ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xl font-semibold tabular-nums text-foreground">
+            {now.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {now.toLocaleDateString('no-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <CountdownChip
+            icon="💰"
+            label="Neste lønning"
+            days={daysToPayday}
+            detail={nextPayday.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
+          />
+          {daysToSummer !== null && daysToSummer > 0 && (
+            <CountdownChip
+              icon="🏖️"
+              label="Sommerferie"
+              days={daysToSummer}
+              detail={summerStart!.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
+            />
+          )}
+          {daysToSummer !== null && daysToSummer <= 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-green-500/10 border border-green-500/20 text-green-400">
+              🏖️ Sommerferie nå!
+            </span>
+          )}
+          {daysToSummer === null && (
+            <button
+              onClick={() => onNavigate('settings')}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <CalendarDays className="h-3 w-3" />
+              Sett sommerferie
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* ── KPI-strip ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -680,6 +787,22 @@ function StatCard({ label, value, positive }: { label: string; value: number; po
         </p>
       </CardContent>
     </Card>
+  )
+}
+
+function CountdownChip({ icon, label, days, detail }: { icon: string; label: string; days: number; detail: string }) {
+  const accent = days <= 3 ? 'green' : days <= 7 ? 'yellow' : undefined
+  return (
+    <div className={cn(
+      'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border',
+      accent === 'green' && 'bg-green-500/10 border-green-500/20 text-green-400',
+      accent === 'yellow' && 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
+      !accent && 'bg-muted/40 border-border/40 text-muted-foreground',
+    )}>
+      <span>{icon}</span>
+      <span className="font-medium">{label}</span>
+      <span className="opacity-70">{days} dager · {detail}</span>
+    </div>
   )
 }
 
