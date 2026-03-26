@@ -260,7 +260,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           })()}
           {daysToSummer === null && (
             <button
-              onClick={() => onNavigate('settings')}
+              onClick={() => onNavigate('vacation')}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
             >
               <CalendarDays className="h-3 w-3" />
