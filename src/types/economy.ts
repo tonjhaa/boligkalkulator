@@ -171,6 +171,10 @@ export interface ATFEntry {
   payoutMonth?: number
   /** År ATF utbetales. Kan avvike fra year hvis øvelsen slutter i desember. */
   payoutYear?: number
+  /** Input-årslønn lagret for forhåndsutfylling ved redigering. */
+  årslønnInput?: number
+  /** Input faste tillegg lagret for forhåndsutfylling ved redigering. */
+  fasteTilleggInput?: number
 }
 
 // ------------------------------------------------------------
@@ -390,6 +394,29 @@ export interface InsuranceEntry {
 export interface PolicyRateEntry {
   year: number
   rate: number            // Norges Banks styringsrente (%)
+}
+
+// ------------------------------------------------------------
+// IVF-PROSJEKT
+// ------------------------------------------------------------
+
+export type IVFTransactionType = 'SPARING' | 'FAKTURA' | 'KJØP' | 'ANNET'
+
+export interface IVFTransaction {
+  id: string
+  date: string                  // "YYYY-MM-DD"
+  label: string
+  type: IVFTransactionType
+  amount: number                // positivt = inn, negativt = ut
+  merknad?: string
+}
+
+export interface IVFSettings {
+  lonTonje: number
+  lonAne: number
+  studielaanTonje: number
+  studielaanAne: number
+  annenEgenkapital: number      // BSU, fond, sparekonto osv. utenom IVF-konto
 }
 
 // ------------------------------------------------------------

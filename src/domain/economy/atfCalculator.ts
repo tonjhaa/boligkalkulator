@@ -158,7 +158,9 @@ export function calculateATF(
  * Summerer ATF-utbetalinger for ett år.
  */
 export function sumATFByYear(entries: ATFEntry[], year: number): number {
-  return entries.filter((e) => e.year === year).reduce((s, e) => s + e.beregnetBeløp, 0)
+  return entries
+    .filter((e) => (e.payoutYear ?? e.year) === year)
+    .reduce((s, e) => s + e.beregnetBeløp, 0)
 }
 
 // ------------------------------------------------------------

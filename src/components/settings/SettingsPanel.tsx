@@ -123,7 +123,7 @@ function GoogleDriveBackupSection() {
       try {
         const parsed = JSON.parse(text)
         if (!parsed.version || !parsed.exportedAt || !parsed.data) {
-          setImportError('Ugyldig fil. Dette ser ikke ut som en Min Økonomi-sikkerhetskopi.')
+          setImportError('Ugyldig fil. Dette ser ikke ut som en Lommeboka-sikkerhetskopi.')
           return
         }
         setPendingData(text)
@@ -279,7 +279,7 @@ function EconomyDataSection() {
         setImportError(null)
         e.target.value = ''
       } catch {
-        setImportError('Ugyldig fil. Sørg for at du laster opp en gyldig Min Økonomi JSON-fil.')
+        setImportError('Ugyldig fil. Sørg for at du laster opp en gyldig Lommeboka JSON-fil.')
       }
     }
     reader.readAsText(file)
@@ -297,7 +297,7 @@ function EconomyDataSection() {
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
-        Min Økonomi — Data
+        Lommeboka — Data
       </h3>
 
       <div className="text-xs text-muted-foreground">

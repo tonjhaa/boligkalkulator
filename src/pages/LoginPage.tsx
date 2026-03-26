@@ -30,7 +30,7 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm p-8 rounded-xl border bg-card shadow-sm">
-        <h1 className="text-2xl font-semibold mb-1">Boligkalkulator</h1>
+        <h1 className="text-2xl font-semibold mb-1">Lommeboka</h1>
         <p className="text-sm text-muted-foreground mb-6">
           {mode === 'login' ? 'Logg inn for å fortsette' : 'Opprett en konto'}
         </p>

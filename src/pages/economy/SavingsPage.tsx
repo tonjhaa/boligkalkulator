@@ -17,6 +17,7 @@ import {
   computeMonthlyContributionEstimate,
   computeYTDContributions,
   computeETA,
+  computeYearlyInterestIncome,
 } from '@/domain/economy/savingsCalculator'
 import type {
   SavingsAccount,
@@ -84,6 +85,10 @@ export function SavingsPage() {
     ? Math.round(Math.min(bsuStatus!.yearlyContributionSoFar, 27500) * 0.1)
     : 0
 
+  const totalInterestIncome = savingsAccounts
+    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
+    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear), 0)
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       {/* Header */}
@@ -128,6 +133,13 @@ export function SavingsPage() {
               label="BSU skattefradrag"
               value={fmtNOK(bsuSkattefradrag)}
               subvalue="10% av innskudd"
+            />
+          )}
+          {totalInterestIncome > 0 && (
+            <SummaryCard
+              label={`Renteinntekter ${currentYear}`}
+              value={fmtNOK(totalInterestIncome)}
+              subvalue="opptjent hittil"
             />
           )}
         </div>
@@ -258,12 +270,16 @@ function AccountCard({
   const currentYear = now.getFullYear()
   const lastBalance = account.balanceHistory.at(-1)
   const currentBalance = lastBalance?.balance ?? account.openingBalance
-  const currentRate = account.rateHistory.length > 0 ? account.rateHistory.at(-1)!.rate : 0
+  const sortedRates = [...account.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
+  const currentRate = sortedRates[0]?.rate ?? 0
   const isBSU = account.type === 'BSU'
   const bsuStatus = isBSU ? checkBSULimits(account, currentYear) : null
   const monthlyEstimate = computeMonthlyContributionEstimate(account)
   const ytdContribs = computeYTDContributions(account, currentYear)
   const eta = isBSU ? computeETA(account, 300000) : null
+  const interestIncome = (account.type !== 'fond' && account.type !== 'krypto')
+    ? computeYearlyInterestIncome(account, currentYear)
+    : 0
 
   // Prognose: neste 24 måneder
   const projections = projectSavingsGrowth(account, {
@@ -309,14 +325,41 @@ function AccountCard({
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <MiniStat label="Saldo" value={fmtNOK(currentBalance)} highlight />
-          <MiniStat label="Rentesats" value={`${currentRate.toFixed(2)} %`} />
-          <MiniStat label="Årets innskudd" value={fmtNOK(ytdContribs || 0)} />
           <MiniStat
-            label="Est. månedsspar"
-            value={fmtNOK(monthlyEstimate)}
-            subvalue={ytdContribs > 0 ? '(snitt 12 mnd)' : '(planlagt)'}
+            label="Rentesats"
+            value={`${currentRate.toFixed(2)} %`}
+            subvalue={isBSU ? 'krediteres 31. des' : 'månedlig kreditering'}
           />
+          <MiniStat label="Årets innskudd" value={fmtNOK(ytdContribs || 0)} />
+          {interestIncome > 0 ? (
+            <MiniStat
+              label={`Renteinntekter ${currentYear}`}
+              value={fmtNOK(interestIncome)}
+              subvalue={isBSU ? 'opptjent (krediteres des)' : 'kreditert hittil'}
+            />
+          ) : (
+            <MiniStat
+              label="Est. månedsspar"
+              value={fmtNOK(monthlyEstimate)}
+              subvalue={ytdContribs > 0 ? '(snitt 12 mnd)' : '(planlagt)'}
+            />
+          )}
         </div>
+
+        {/* Rentehistorikk */}
+        {sortedRates.length > 1 && (
+          <div className="rounded-md border border-border/50 overflow-hidden">
+            <div className="bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground">Rentehistorikk</div>
+            {sortedRates.map((r, i) => (
+              <div key={r.fromDate} className="flex items-center justify-between px-3 py-1.5 text-xs border-t border-border/30">
+                <span className="text-muted-foreground">Fra {fmtDate(r.fromDate)}</span>
+                <span className={i === 0 ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                  {r.rate.toFixed(2)} %
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* BSU-spesifikk */}
         {bsuStatus && (
@@ -615,21 +658,30 @@ function UpdateBalanceForm({ onSave, onCancel }: { onSave: (e: BalanceHistoryEnt
 }
 
 function UpdateRateForm({ onSave, onCancel }: { onSave: (e: RateHistoryEntry) => void; onCancel: () => void }) {
+  const today = new Date().toISOString().split('T')[0]
   const [rate, setRate] = useState(0)
+  const [fromDate, setFromDate] = useState(today)
   return (
-    <div className="flex items-center gap-2 flex-1">
-      <Input
-        type="number"
-        step="0.1"
-        className="h-8 text-xs flex-1"
-        placeholder="Ny rente %"
-        value={rate}
-        onChange={(e) => setRate(parseFloat(e.target.value) || 0)}
-      />
-      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ fromDate: new Date().toISOString().split('T')[0], rate })}>
-        OK
+    <div className="flex flex-wrap items-end gap-2 rounded-md border border-border p-2">
+      <div className="space-y-0.5">
+        <Label className="text-xs">Gyldig fra</Label>
+        <Input type="date" className="h-8 text-xs w-36" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+      </div>
+      <div className="space-y-0.5">
+        <Label className="text-xs">Ny rente %</Label>
+        <Input
+          type="number"
+          step="0.01"
+          className="h-8 text-xs w-24"
+          placeholder="f.eks. 5.25"
+          value={rate || ''}
+          onChange={(e) => setRate(parseFloat(e.target.value) || 0)}
+        />
+      </div>
+      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ fromDate, rate })} disabled={!rate || !fromDate}>
+        Lagre
       </Button>
-      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onCancel}>×</Button>
+      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onCancel}>Avbryt</Button>
     </div>
   )
 }

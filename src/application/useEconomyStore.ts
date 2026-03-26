@@ -23,6 +23,8 @@ import type {
   BudgetLine,
   KnownATFRate,
   TemporaryPayEntry,
+  IVFTransaction,
+  IVFSettings,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -66,6 +68,10 @@ interface EconomyState {
   // Midlertidig lønn (fungering)
   temporaryPayEntries: TemporaryPayEntry[]
 
+  // IVF-prosjekt
+  ivfTransactions: IVFTransaction[]
+  ivfSettings: IVFSettings
+
   // Actions
   setProfile: (profile: EmploymentProfile) => void
 
@@ -107,6 +113,7 @@ interface EconomyState {
   removeAbsenceEvent: (id: string) => void
   setAbsenceHireDate: (date: string | null) => void
   clearAbsenceData: () => void
+  replaceImportedAbsenceEvents: (events: AbsenceEvent[]) => void
 
   addTaxSettlement: (record: TaxSettlementRecord) => void
   updateTaxSettlement: (year: number, updates: Partial<TaxSettlementRecord>) => void
@@ -123,6 +130,11 @@ interface EconomyState {
   addTemporaryPay: (entry: TemporaryPayEntry) => void
   updateTemporaryPay: (id: string, updates: Partial<TemporaryPayEntry>) => void
   removeTemporaryPay: (id: string) => void
+
+  addIvfTransaction: (tx: IVFTransaction) => void
+  updateIvfTransaction: (id: string, updates: Partial<IVFTransaction>) => void
+  removeIvfTransaction: (id: string) => void
+  setIvfSettings: (settings: Partial<IVFSettings>) => void
 
   updateBudgetTemplate: (template: Partial<BudgetTemplate>) => void
   addBudgetLine: (line: BudgetLine) => void
@@ -148,6 +160,60 @@ const DEFAULT_TEMPLATE: BudgetTemplate = {
   lastUpdated: new Date().toISOString().split('T')[0],
 }
 
+const DEFAULT_IVF_SETTINGS: IVFSettings = {
+  lonTonje: 700000,
+  lonAne: 630000,
+  studielaanTonje: 343000,
+  studielaanAne: 304000,
+  annenEgenkapital: 0,
+}
+
+const INITIAL_IVF_TRANSACTIONS: IVFTransaction[] = [
+  { id: 'ivf-1',  date: '2026-01-01', label: 'Startmidler',                   type: 'SPARING',  amount: 7325.03,  merknad: undefined },
+  { id: 'ivf-2',  date: '2026-01-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-3',  date: '2026-01-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-4',  date: '2026-01-30', label: 'Utlegg Ane',                    type: 'ANNET',    amount: 32809,    merknad: 'Fra Ane sin sparekonto, skal tilbakebetales' },
+  { id: 'ivf-5',  date: '2026-01-31', label: 'Faktura donor',                 type: 'FAKTURA',  amount: -32809,   merknad: 'Første faktura' },
+  { id: 'ivf-6',  date: '2026-02-02', label: 'Medisin',                       type: 'KJØP',     amount: -17923.6, merknad: undefined },
+  { id: 'ivf-7',  date: '2026-02-04', label: 'Sparing Tonje (Bidrag Mamma)',  type: 'SPARING',  amount: 13000,    merknad: undefined },
+  { id: 'ivf-8',  date: '2026-02-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-9',  date: '2026-02-11', label: 'Øreavrunding',                  type: 'ANNET',    amount: 8.57,     merknad: undefined },
+  { id: 'ivf-10', date: '2026-02-13', label: 'Medisin',                       type: 'KJØP',     amount: -1403.74, merknad: 'x2 Gonapeptyl og 1x Gonal-f 300IE' },
+  { id: 'ivf-11', date: '2026-02-13', label: 'Medisin',                       type: 'KJØP',     amount: -1999.8,  merknad: 'inkl. Vitaminer' },
+  { id: 'ivf-12', date: '2026-02-16', label: 'Medisin',                       type: 'KJØP',     amount: -442.44,  merknad: undefined },
+  { id: 'ivf-13', date: '2026-02-20', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-14', date: '2026-02-24', label: 'Faktura donor',                 type: 'FAKTURA',  amount: -20509,   merknad: 'Andre faktura - rettelse av feil fra Medicus.' },
+  { id: 'ivf-15', date: '2026-02-28', label: 'GEBYR FAKTURA',                 type: 'ANNET',    amount: -8,       merknad: undefined },
+  { id: 'ivf-16', date: '2026-03-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-17', date: '2026-03-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-18', date: '2026-03-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 1/6' },
+  { id: 'ivf-19', date: '2026-04-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-20', date: '2026-04-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-21', date: '2026-04-30', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 2/6' },
+  { id: 'ivf-22', date: '2026-05-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-23', date: '2026-05-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-24', date: '2026-05-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 3/6' },
+  { id: 'ivf-25', date: '2026-06-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-26', date: '2026-06-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-27', date: '2026-06-30', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 4/6' },
+  { id: 'ivf-28', date: '2026-07-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-29', date: '2026-07-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-30', date: '2026-07-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 5/6' },
+  { id: 'ivf-31', date: '2026-08-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-32', date: '2026-08-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-33', date: '2026-08-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 6/6' },
+  { id: 'ivf-34', date: '2026-09-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-35', date: '2026-09-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-36', date: '2026-10-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-37', date: '2026-10-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-38', date: '2026-11-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-39', date: '2026-11-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-40', date: '2026-12-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-41', date: '2026-12-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
+  { id: 'ivf-42', date: '2026-12-31', label: 'Tilbakebetaling utlegg Ane',    type: 'ANNET',    amount: -32809,   merknad: undefined },
+  { id: 'ivf-43', date: '2026-12-31', label: 'DREAMSKONTO',                   type: 'SPARING',  amount: 18965,    merknad: 'Beløp vil endre seg' },
+]
+
 // ------------------------------------------------------------
 // STORE
 // ------------------------------------------------------------
@@ -172,6 +238,8 @@ export const useEconomyStore = create<EconomyState>()(
       insurances: [],
       policyRateHistory: POLICY_RATE_HISTORY,
       temporaryPayEntries: [],
+      ivfTransactions: INITIAL_IVF_TRANSACTIONS,
+      ivfSettings: DEFAULT_IVF_SETTINGS,
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),
@@ -493,6 +561,13 @@ export const useEconomyStore = create<EconomyState>()(
         set((s) => ({ absenceEvents: s.absenceEvents.filter((e) => e.id !== id) })),
       setAbsenceHireDate: (date) => set({ absenceHireDate: date }),
       clearAbsenceData: () => set({ absenceRecords: [], absenceEvents: [], absenceHireDate: null }),
+      replaceImportedAbsenceEvents: (events) =>
+        set((s) => ({
+          absenceEvents: [
+            ...s.absenceEvents.filter((e) => e.source !== 'imported'),
+            ...events,
+          ],
+        })),
 
       // --- Skatteoppgjør ---
       addTaxSettlement: (record) =>
@@ -528,6 +603,18 @@ export const useEconomyStore = create<EconomyState>()(
         })),
       removeTemporaryPay: (id) =>
         set((s) => ({ temporaryPayEntries: s.temporaryPayEntries.filter((e) => e.id !== id) })),
+
+      // --- IVF ---
+      addIvfTransaction: (tx) =>
+        set((s) => ({ ivfTransactions: [...s.ivfTransactions, tx] })),
+      updateIvfTransaction: (id, updates) =>
+        set((s) => ({
+          ivfTransactions: s.ivfTransactions.map((t) => (t.id === id ? { ...t, ...updates } : t)),
+        })),
+      removeIvfTransaction: (id) =>
+        set((s) => ({ ivfTransactions: s.ivfTransactions.filter((t) => t.id !== id) })),
+      setIvfSettings: (settings) =>
+        set((s) => ({ ivfSettings: { ...s.ivfSettings, ...settings } })),
 
       // --- Forsikring ---
       addInsurance: (ins) => set((s) => ({ insurances: [...s.insurances, ins] })),
@@ -642,6 +729,8 @@ export const useEconomyStore = create<EconomyState>()(
             insurances: data.insurances ?? [],
             policyRateHistory: data.policyRateHistory ?? POLICY_RATE_HISTORY,
             temporaryPayEntries: data.temporaryPayEntries ?? [],
+            ivfTransactions: data.ivfTransactions ?? INITIAL_IVF_TRANSACTIONS,
+            ivfSettings: data.ivfSettings ?? DEFAULT_IVF_SETTINGS,
             budgetOverrides: data.budgetOverrides ?? {},
           })
         } catch {
@@ -671,12 +760,14 @@ export const useEconomyStore = create<EconomyState>()(
           insurances: [],
           policyRateHistory: POLICY_RATE_HISTORY,
           temporaryPayEntries: [],
+          ivfTransactions: INITIAL_IVF_TRANSACTIONS,
+          ivfSettings: DEFAULT_IVF_SETTINGS,
           budgetOverrides: {},
         }),
     }),
     {
       name: 'min-okonomi-v1',
-      version: 2,
+      version: 3,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -692,6 +783,23 @@ export const useEconomyStore = create<EconomyState>()(
               .filter((t) => t.artskode !== '3209')
               .map((t) => ({ kode: t.artskode, label: t.navn, amount: t.belop }))
           }
+        }
+        // v2 → v3: legg til IVF-prosjekt + sikre at alle felt finnes
+        if (fromVersion < 3) {
+          if (!state.ivfTransactions) state.ivfTransactions = INITIAL_IVF_TRANSACTIONS
+          if (!state.ivfSettings) state.ivfSettings = DEFAULT_IVF_SETTINGS
+          // Defensive: sørg for at alle felt som kan ha manglet har fallback-verdi
+          if (!Array.isArray(state.temporaryPayEntries)) state.temporaryPayEntries = []
+          if (!Array.isArray(state.atfEntries)) state.atfEntries = []
+          if (!Array.isArray(state.savingsAccounts)) state.savingsAccounts = []
+          if (!Array.isArray(state.savingsGoals)) state.savingsGoals = []
+          if (!Array.isArray(state.debts)) state.debts = []
+          if (!Array.isArray(state.absenceRecords)) state.absenceRecords = []
+          if (!Array.isArray(state.absenceEvents)) state.absenceEvents = []
+          if (!Array.isArray(state.taxSettlements)) state.taxSettlements = []
+          if (!Array.isArray(state.subscriptions)) state.subscriptions = []
+          if (!Array.isArray(state.insurances)) state.insurances = []
+          if (!state.budgetOverrides || typeof state.budgetOverrides !== 'object') state.budgetOverrides = {}
         }
         return state
       },
@@ -712,6 +820,8 @@ export const useEconomyStore = create<EconomyState>()(
         insurances: state.insurances,
         policyRateHistory: state.policyRateHistory,
         temporaryPayEntries: state.temporaryPayEntries,
+        ivfTransactions: state.ivfTransactions,
+        ivfSettings: state.ivfSettings,
         budgetOverrides: state.budgetOverrides,
       }),
     }

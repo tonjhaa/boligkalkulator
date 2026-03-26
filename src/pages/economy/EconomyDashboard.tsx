@@ -79,7 +79,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     .sort((a, b) => b.month - a.month)[0]
 
   const atfSum = sumATFByYear(atfEntries, currentYear)
-  const yearATF = atfEntries.filter((e) => e.year === currentYear)
+  const yearATF = atfEntries.filter((e) => (e.payoutYear ?? e.year) === currentYear)
 
   const absenceDays = absenceEvents.length > 0 ? getDaysUsedFromEvents(absenceEvents) : getDaysUsedLast12Months(absenceRecords)
   const absenceStatus = absenceEvents.length > 0 ? getAbsenceStatusFromEvents(absenceEvents) : getAbsenceStatus(absenceRecords)
@@ -97,7 +97,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold">MIN ØKONOMI</h1>
+          <h1 className="text-lg font-semibold">LOMMEBOKA</h1>
           <p className="text-sm text-muted-foreground">
             {MONTH_NAMES[currentMonth]} {currentYear}
           </p>

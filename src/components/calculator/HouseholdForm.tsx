@@ -90,7 +90,7 @@ export function HouseholdForm({ scenario }: Props) {
   function handleUseProfile() {
     const partial = extractLoanInputFromEconomy()
     if (!partial.household) {
-      setBridgeSummary(['Ingen lønnsprofil registrert i Min Økonomi.'])
+      setBridgeSummary(['Ingen lønnsprofil registrert i Lommeboka.'])
       return
     }
     update(scenario.id, {
@@ -114,7 +114,7 @@ export function HouseholdForm({ scenario }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground">
-            Hent tall fra Min Økonomi automatisk
+            Hent tall fra Lommeboka automatisk
           </p>
         </div>
         <Button variant="outline" size="sm" className="text-xs" onClick={handleUseProfile}>

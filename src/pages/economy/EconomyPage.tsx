@@ -11,6 +11,7 @@ import {
   FileText,
   RefreshCw,
   Palmtree,
+  HeartPulse,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +45,9 @@ const SubscriptionsPage = lazy(() =>
 const FeriepengePage = lazy(() =>
   import('./FeriepengePage').then((m) => ({ default: m.FeriepengePage }))
 )
+const IVFPage = lazy(() =>
+  import('./IVFPage').then((m) => ({ default: m.IVFPage }))
+)
 
 type EconomySubPage =
   | 'dashboard'
@@ -56,6 +60,7 @@ type EconomySubPage =
   | 'tax'
   | 'subscriptions'
   | 'feriepenger'
+  | 'ivf'
 
 interface NavItem {
   page: EconomySubPage
@@ -74,6 +79,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'absence', label: 'Fravær', Icon: FileText },
   { page: 'tax', label: 'Skatt', Icon: TrendingUp },
   { page: 'subscriptions', label: 'Abo & Fors.', Icon: RefreshCw },
+  { page: 'ivf', label: 'Prosjekt', Icon: HeartPulse },
 ]
 
 function PageFallback() {
@@ -154,6 +160,7 @@ export function EconomyPage() {
           {currentPage === 'tax' && <TaxSettlementPage />}
           {currentPage === 'subscriptions' && <SubscriptionsPage />}
           {currentPage === 'feriepenger' && <FeriepengePage />}
+          {currentPage === 'ivf' && <IVFPage />}
         </Suspense>
         </PageErrorBoundary>
       </div>

@@ -19,7 +19,7 @@ import {
   evaluateEligibility,
 } from '@/domain/economy/absenceCalculator'
 import { EGENMELDING_KVOTE } from '@/config/economy.config'
-import type { AbsenceEvent } from '@/types/economy'
+import type { AbsenceEvent, AbsenceRecord } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
 const MONTH_NAMES = [
@@ -41,6 +41,7 @@ export function AbsencePage() {
     absenceRecords, addAbsenceRecord, removeAbsenceRecord,
     absenceEvents, addAbsenceEvent, removeAbsenceEvent,
     absenceHireDate, setAbsenceHireDate, clearAbsenceData,
+    replaceImportedAbsenceEvents,
   } = useEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -61,7 +62,8 @@ export function AbsencePage() {
     try {
       const { records, events, antallRader, ukjenteTyper } = await parseAbsenceExcel(file)
       records.forEach((r) => addAbsenceRecord(r))
-      events.forEach((ev) => addAbsenceEvent(ev))
+      // Erstatt alle tidligere importerte hendelser med det nye settet
+      replaceImportedAbsenceEvents(events)
       const ukjentTekst = ukjenteTyper.length > 0 ? ` (ukjente typer ignorert: ${ukjenteTyper.join(', ')})` : ''
       setImportMsg({ type: 'ok', text: `Importerte ${events.length} hendelser fra ${antallRader} rader.${ukjentTekst}` })
     } catch (err) {
@@ -242,49 +244,16 @@ export function AbsencePage() {
             <CardTitle className="text-sm">Fraværslogg</CardTitle>
           </CardHeader>
           <CardContent>
-            <AbsenceEventLog events={sortedEvents} onRemove={removeAbsenceEvent} />
+            <AbsenceEventLog events={sortedEvents} onRemove={removeAbsenceEvent} hireDate={hireDate} />
           </CardContent>
         </Card>
       ) : absenceRecords.length > 0 ? (
-        // Fallback: vis gamle månedsposter dersom ingen events ennå
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Fraværslogg (månedsoversikt)</CardTitle>
+            <CardTitle className="text-sm">Fraværslogg</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50 border-b border-border">
-                    <th className="text-left px-3 py-2 font-medium text-xs">Måned</th>
-                    <th className="text-right px-3 py-2 font-medium text-xs">Egenmelding</th>
-                    <th className="text-right px-3 py-2 font-medium text-xs">Sykemelding</th>
-                    <th className="text-right px-3 py-2 font-medium text-xs"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...absenceRecords].sort((a, b) => b.period.localeCompare(a.period)).map((r) => {
-                    const d = new Date(r.period)
-                    return (
-                      <tr key={r.period} className="border-b border-border last:border-0">
-                        <td className="px-3 py-2 text-xs">{MONTH_NAMES[d.getMonth() + 1]} {d.getFullYear()}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs">
-                          {r.selfCertDays > 0 ? <span className="text-yellow-400">{r.selfCertDays} dager</span> : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-xs">
-                          {r.sickLeaveDays > 0 ? <span className="text-muted-foreground">{r.sickLeaveDays} dager</span> : <span className="text-muted-foreground">—</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400" onClick={() => removeAbsenceRecord(r.period)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <AbsenceRecordLog records={absenceRecords} onRemove={removeAbsenceRecord} hireDate={hireDate} />
           </CardContent>
         </Card>
       ) : !showAddForm ? (
@@ -294,6 +263,112 @@ export function AbsencePage() {
           </CardContent>
         </Card>
       ) : null}
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------
+
+/** Estimert antall arbeidsdager fra tilsetningsdato til i dag (230 dager/år). */
+function workingDaysSince(hireDate: Date): number {
+  const calendarDays = Math.max(0, Math.floor((Date.now() - hireDate.getTime()) / 86_400_000))
+  return Math.round(calendarDays * (230 / 365))
+}
+
+// ----------------------------------------------------------------
+// AbsenceRecordLog — absenceRecords gruppert per år, ekspanderbart
+// ----------------------------------------------------------------
+
+function AbsenceRecordLog({
+  records,
+  onRemove,
+  hireDate,
+}: {
+  records: AbsenceRecord[]
+  onRemove: (period: string) => void
+  hireDate?: Date | null
+}) {
+  const [openYears, setOpenYears] = useState<Record<string, boolean>>({})
+
+  // Grupper per år
+  const byYear = new Map<string, AbsenceRecord[]>()
+  for (const r of records) {
+    const year = r.period.slice(0, 4)
+    byYear.set(year, [...(byYear.get(year) ?? []), r])
+  }
+  const sortedYears = [...byYear.keys()].sort((a, b) => b.localeCompare(a))
+
+  const totalEgen = records.reduce((s, r) => s + r.selfCertDays, 0)
+  const totalSyk = records.reduce((s, r) => s + r.sickLeaveDays, 0)
+  const totalDays = totalEgen + totalSyk
+  const workingDays = hireDate ? workingDaysSince(hireDate) : null
+  const pct = workingDays && workingDays > 0 ? ((totalDays / workingDays) * 100).toFixed(1) : null
+
+  return (
+    <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+      {/* Totalsum */}
+      <div className="flex items-center gap-2 px-3 py-2 text-xs bg-muted/50 font-semibold">
+        <span>Totalt</span>
+        <span className="ml-auto flex items-center gap-3">
+          {totalEgen > 0 && <span className="text-yellow-400">{totalEgen} egenmeldingsdager</span>}
+          {totalSyk > 0 && <span className="text-muted-foreground">{totalSyk} sykemeldingsdager</span>}
+          <span className="text-foreground">{totalDays} dager totalt</span>
+          {pct !== null && (
+            <span className="text-muted-foreground font-normal">({pct}% av {workingDays} arbeidsdager)</span>
+          )}
+        </span>
+      </div>
+
+      {sortedYears.map((year) => {
+        const recs = byYear.get(year)!.sort((a, b) => b.period.localeCompare(a.period))
+        const yearEgen = recs.reduce((s, r) => s + r.selfCertDays, 0)
+        const yearSyk = recs.reduce((s, r) => s + r.sickLeaveDays, 0)
+        const yearOpen = !!openYears[year]
+
+        return (
+          <div key={year}>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/20 bg-muted/30 text-left"
+              onClick={() => setOpenYears((p) => ({ ...p, [year]: !p[year] }))}
+            >
+              <ChevronRight className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', yearOpen && 'rotate-90')} />
+              <span className="font-semibold">{year}</span>
+              <span className="ml-auto flex items-center gap-3">
+                {yearEgen > 0 && <span className="text-yellow-400">{yearEgen} egenmeldingsdager</span>}
+                {yearSyk > 0 && <span className="text-muted-foreground">{yearSyk} sykemeldingsdager</span>}
+              </span>
+            </button>
+
+            {yearOpen && (
+              <div className="divide-y divide-border/50">
+                {recs.map((r) => {
+                  const d = new Date(r.period)
+                  const monthLabel = MONTH_NAMES[d.getMonth() + 1]
+                  return (
+                    <div key={r.period} className="flex items-center gap-3 pl-8 pr-3 py-2 text-xs hover:bg-muted/10">
+                      <span className="w-28 font-medium">{monthLabel}</span>
+                      <span className="flex items-center gap-3 ml-auto">
+                        {r.selfCertDays > 0
+                          ? <span className="text-yellow-400">{r.selfCertDays} egenmelding</span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                        {r.sickLeaveDays > 0
+                          ? <span className="text-muted-foreground">{r.sickLeaveDays} sykemelding</span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </span>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400" onClick={() => onRemove(r.period)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -310,22 +385,31 @@ function formatWithWeekday(iso: string): string {
   return `${WEEKDAYS[d.getDay()]} ${day}.${m}.${y}`
 }
 
+function isValidISODate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)
+}
+
 function eventDays(ev: AbsenceEvent): number {
-  return Math.round(
-    (new Date(ev.endDate).getTime() - new Date(ev.startDate).getTime()) / 86_400_000
-  ) + 1
+  if (!isValidISODate(ev.startDate) || !isValidISODate(ev.endDate)) return 0
+  const diff = new Date(ev.endDate + 'T00:00:00Z').getTime() - new Date(ev.startDate + 'T00:00:00Z').getTime()
+  return Math.round(diff / 86_400_000) + 1
 }
 
 function AbsenceEventLog({
   events,
   onRemove,
+  hireDate,
 }: {
   events: AbsenceEvent[]
   onRemove: (id: string) => void
+  hireDate?: Date | null
 }) {
-  // Group by year, then by month
+  const [openYears, setOpenYears] = useState<Record<string, boolean>>({})
+  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({})
+
+  // Group by year, then by month (filtrer ut hendelser med ugyldige datoer)
   const byYear = new Map<string, Map<string, AbsenceEvent[]>>()
-  for (const ev of events) {
+  for (const ev of events.filter((e) => isValidISODate(e.startDate))) {
     const year = ev.startDate.slice(0, 4)
     const month = ev.startDate.slice(0, 7)
     if (!byYear.has(year)) byYear.set(year, new Map())
@@ -336,80 +420,120 @@ function AbsenceEventLog({
   }
   const sortedYears = [...byYear.keys()].sort((a, b) => b.localeCompare(a))
 
+  function toggleYear(year: string) {
+    setOpenYears((prev) => ({ ...prev, [year]: !prev[year] }))
+  }
+
+  function toggleMonth(key: string) {
+    setOpenMonths((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  const totalEgen = events.filter((ev) => ev.type === 'egenmelding').reduce((s, ev) => s + eventDays(ev), 0)
+  const totalSyk = events.filter((ev) => ev.type === 'sykmelding').reduce((s, ev) => s + eventDays(ev), 0)
+  const totalDays = totalEgen + totalSyk
+  const workingDays = hireDate ? workingDaysSince(hireDate) : null
+  const pct = workingDays && workingDays > 0 ? ((totalDays / workingDays) * 100).toFixed(1) : null
+
   return (
     <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
+      {/* Totalsum */}
+      <div className="flex items-center gap-2 px-3 py-2 text-xs bg-muted/50 font-semibold">
+        <span>Totalt</span>
+        <span className="ml-auto flex items-center gap-3">
+          {totalEgen > 0 && <span className="text-yellow-400">{totalEgen} egenmeldingsdager</span>}
+          {totalSyk > 0 && <span className="text-muted-foreground">{totalSyk} sykemeldingsdager</span>}
+          <span className="text-foreground">{totalDays} dager totalt</span>
+          {pct !== null && (
+            <span className="text-muted-foreground font-normal">({pct}% av {workingDays} arbeidsdager)</span>
+          )}
+        </span>
+      </div>
       {sortedYears.map((year) => {
         const monthMap = byYear.get(year)!
         const sortedMonthKeys = [...monthMap.keys()].sort((a, b) => b.localeCompare(a))
         const yearEgen = events.filter((ev) => ev.startDate.startsWith(year) && ev.type === 'egenmelding').reduce((s, ev) => s + eventDays(ev), 0)
         const yearSyk = events.filter((ev) => ev.startDate.startsWith(year) && ev.type === 'sykmelding').reduce((s, ev) => s + eventDays(ev), 0)
+        const yearOpen = !!openYears[year]
 
         return (
-          <details key={year} className="group">
-            <summary className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer hover:bg-muted/20 list-none select-none bg-muted/30">
-              <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+          <div key={year}>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/20 bg-muted/30 text-left"
+              onClick={() => toggleYear(year)}
+            >
+              <ChevronRight className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', yearOpen && 'rotate-90')} />
               <span className="font-semibold">{year}</span>
               <span className="ml-auto flex items-center gap-3">
                 {yearEgen > 0 && <span className="text-yellow-400">{yearEgen} egenmeldingsdager</span>}
                 {yearSyk > 0 && <span className="text-muted-foreground">{yearSyk} sykemeldingsdager</span>}
               </span>
-            </summary>
+            </button>
 
-            <div className="divide-y divide-border/50">
-              {sortedMonthKeys.map((key) => {
-                const evs = monthMap.get(key)!
-                const m = key.slice(5, 7)
-                const monthLabel = `${MONTH_NAMES[parseInt(m)]}`
-                const totalDays = evs.reduce((s, ev) => s + eventDays(ev), 0)
-                const hasEgen = evs.some((ev) => ev.type === 'egenmelding')
-                const hasSyk = evs.some((ev) => ev.type === 'sykmelding')
+            {yearOpen && (
+              <div className="divide-y divide-border/50">
+                {sortedMonthKeys.map((key) => {
+                  const evs = monthMap.get(key)!
+                  const m = key.slice(5, 7)
+                  const monthLabel = MONTH_NAMES[parseInt(m)]
+                  const totalDays = evs.reduce((s, ev) => s + eventDays(ev), 0)
+                  const egenDays = evs.filter((ev) => ev.type === 'egenmelding').reduce((s, ev) => s + eventDays(ev), 0)
+                  const sykDays = evs.filter((ev) => ev.type === 'sykmelding').reduce((s, ev) => s + eventDays(ev), 0)
+                  const monthOpen = !!openMonths[key]
 
-                return (
-                  <details key={key} className="group/month">
-                    <summary className="flex items-center gap-2 pl-7 pr-3 py-2 text-xs cursor-pointer hover:bg-muted/20 list-none select-none">
-                      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/month:rotate-90" />
-                      <span className="font-medium w-24">{monthLabel}</span>
-                      <span className="text-muted-foreground">{totalDays} dag{totalDays !== 1 ? 'er' : ''}</span>
-                      <span className="ml-auto flex gap-1">
-                        {hasEgen && <span className="px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 font-medium">Egenmelding</span>}
-                        {hasSyk && <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Sykemelding</span>}
-                      </span>
-                    </summary>
+                  return (
+                    <div key={key}>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 pl-7 pr-3 py-2 text-xs hover:bg-muted/20 text-left"
+                        onClick={() => toggleMonth(key)}
+                      >
+                        <ChevronRight className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', monthOpen && 'rotate-90')} />
+                        <span className="font-medium w-24">{monthLabel}</span>
+                        <span className="text-muted-foreground">{totalDays} dag{totalDays !== 1 ? 'er' : ''}</span>
+                        <span className="ml-auto flex items-center gap-3 text-[10px]">
+                          {egenDays > 0 && <span className="text-yellow-400">{egenDays} egenmelding</span>}
+                          {sykDays > 0 && <span className="text-muted-foreground">{sykDays} sykemelding</span>}
+                        </span>
+                      </button>
 
-            <div className="bg-muted/10 border-t border-border/50 divide-y divide-border/30">
-              {evs.map((ev) => {
-                const days = eventDays(ev)
-                const singleDay = ev.startDate === ev.endDate
-                return (
-                  <div key={ev.id} className="flex items-center gap-3 px-6 py-2 text-xs">
-                    <div className="flex-1 space-y-0.5">
-                      {singleDay ? (
-                        <span className="font-mono">{formatWithWeekday(ev.startDate)}</span>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <div className="font-mono">Fra <span className="font-medium">{formatWithWeekday(ev.startDate)}</span></div>
-                          <div className="font-mono">Til <span className="font-medium">{formatWithWeekday(ev.endDate)}</span></div>
+                      {monthOpen && (
+                        <div className="bg-muted/10 border-t border-border/50 divide-y divide-border/30">
+                          {evs.map((ev) => {
+                            const days = eventDays(ev)
+                            const singleDay = ev.startDate === ev.endDate
+                            return (
+                              <div key={ev.id} className="flex items-center gap-3 px-6 py-2 text-xs">
+                                <div className="flex-1 space-y-0.5">
+                                  {singleDay ? (
+                                    <span className="font-mono">{formatWithWeekday(ev.startDate)}</span>
+                                  ) : (
+                                    <div className="space-y-0.5">
+                                      <div className="font-mono">Fra <span className="font-medium">{formatWithWeekday(ev.startDate)}</span></div>
+                                      <div className="font-mono">Til <span className="font-medium">{formatWithWeekday(ev.endDate)}</span></div>
+                                    </div>
+                                  )}
+                                </div>
+                                <span className={cn('px-1.5 py-0.5 rounded font-medium',
+                                  ev.type === 'egenmelding' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-muted text-muted-foreground'
+                                )}>
+                                  {ev.type === 'egenmelding' ? 'Egenmelding' : 'Sykemelding'}
+                                </span>
+                                <span className="font-mono text-muted-foreground w-8 text-right">{days} d</span>
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400" onClick={() => onRemove(ev.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                    <span className={cn('px-1.5 py-0.5 rounded font-medium',
-                      ev.type === 'egenmelding' ? 'bg-yellow-500/15 text-yellow-400' : 'bg-muted text-muted-foreground'
-                    )}>
-                      {ev.type === 'egenmelding' ? 'Egenmelding' : 'Sykemelding'}
-                    </span>
-                    <span className="font-mono text-muted-foreground w-8 text-right">{days} d</span>
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-red-400" onClick={() => onRemove(ev.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )
-              })}
-            </div>
-          </details>
-                )
-              })}
-            </div>
-          </details>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         )
       })}
     </div>

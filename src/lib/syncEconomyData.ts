@@ -46,10 +46,16 @@ export async function saveToSupabase(): Promise<void> {
     savingsGoals: state.savingsGoals,
     debts: state.debts,
     absenceRecords: state.absenceRecords,
+    absenceEvents: state.absenceEvents,
+    absenceHireDate: state.absenceHireDate,
     taxSettlements: state.taxSettlements,
     subscriptions: state.subscriptions,
     insurances: state.insurances,
     policyRateHistory: state.policyRateHistory,
+    temporaryPayEntries: state.temporaryPayEntries,
+    ivfTransactions: state.ivfTransactions,
+    ivfSettings: state.ivfSettings,
+    budgetOverrides: state.budgetOverrides,
   }
 
   await supabase.from('user_data').upsert({

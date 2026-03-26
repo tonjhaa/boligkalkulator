@@ -14,6 +14,31 @@ function excelDateToDate(serial: number): Date {
 }
 
 /**
+ * Prøver å parse en datoverdi fra Excel-cellen — enten som:
+ * - Excel-serienummer (tall)
+ * - Norsk tekstformat "DD.MM.YYYY"
+ * - ISO-format "YYYY-MM-DD"
+ * Returnerer null hvis ingen format matcher.
+ */
+function parseExcelDate(raw: unknown): Date | null {
+  if (typeof raw === 'number') {
+    const d = excelDateToDate(raw)
+    return isNaN(d.getTime()) ? null : d
+  }
+  if (typeof raw === 'string') {
+    const noMatch = raw.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+    if (noMatch) {
+      return new Date(Date.UTC(parseInt(noMatch[3]), parseInt(noMatch[2]) - 1, parseInt(noMatch[1])))
+    }
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (isoMatch) {
+      return new Date(Date.UTC(parseInt(isoMatch[1]), parseInt(isoMatch[2]) - 1, parseInt(isoMatch[3])))
+    }
+  }
+  return null
+}
+
+/**
  * Returnerer "YYYY-MM-01" for en gitt dato (brukt som period-nøkkel).
  */
 function toPeriodKey(date: Date): string {
@@ -92,11 +117,12 @@ export function parseAbsenceExcel(file: File): Promise<AbsenceImportResult> {
           const startSerial = row[idxStart] as number
           const fravDager = Number(row[idxDager] ?? 0)
 
-          if (!tekst || !startSerial || fravDager <= 0) continue
+          if (!tekst || fravDager <= 0) continue
           antallRader++
 
           const kode = parseKode(tekst)
-          const startDate = excelDateToDate(startSerial)
+          const startDate = parseExcelDate(row[idxStart])
+          if (!startDate) continue
           const period = toPeriodKey(startDate)
 
           if (!monthMap.has(period)) {

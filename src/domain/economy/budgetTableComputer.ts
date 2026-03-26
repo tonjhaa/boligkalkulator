@@ -233,6 +233,7 @@ export function computeBudgetTable(
   // TREKK (dualColumn = true)
   // ================================================================
   const trekkRows: BudgetRow[] = []
+  const grunnlagRows: BudgetRow[] = []
 
   // Pensjonerbare artskoder fra SPK-regelverket (1162 = HTA-tillegg)
   // 10P2 (fungering) er variabel og ikke inkludert i budsjettbasen
@@ -254,6 +255,21 @@ export function computeBudgetTable(
         if (a.amount <= 0) return s
         return s + budgetVal(`tillegg-${a.kode}`, m, a.amount)
       }, 0)
+
+    // ---- Grunnlagsrader (vises mellom INNTEKTER og TREKK) ----
+    // Skattepliktig inntekt = lønn + faste tillegg + ATF (/440-grunnlag)
+    grunnlagRows.push(mkRow('brutto-inntekt', 'Bruttoinntekt', uniform12(
+      (m) => inntekterRows.reduce((s, r) => s + r.cells[m - 1].budget, 0),
+      (m) => monthMap.get(m)?.slipData?.bruttoSum ?? null,
+    )))
+    grunnlagRows.push(mkRow('skattepliktig', 'Skattepliktig inntekt', uniform12(
+      (m) => effectiveSalaryForMonth(m) + effectiveTilleggForMonth(m) + (atfByMonth.get(m) ?? 0),
+      (m) => {
+        const slip = monthMap.get(m)?.slipData
+        if (!slip) return null
+        return slip.maanedslonn + slip.fasteTillegg.reduce((s, t) => s + t.belop, 0) + (atfByMonth.get(m) ?? 0)
+      },
+    )))
 
     // Effektivt /440-grunnlag = lønn + tillegg (samme som slippen)
     // Fallback-rate: bruker tabelltrekkBelop/tabelltrekkGrunnlag direkte fra siste slipp
@@ -447,6 +463,9 @@ export function computeBudgetTable(
 
   if (inntekterRows.length > 0) {
     sections.push({ key: 'INNTEKTER', label: 'Inntekter', colorClass: 'text-green-400', dualColumn: true, rows: inntekterRows })
+  }
+  if (grunnlagRows.length > 0) {
+    sections.push({ key: 'GRUNNLAG', label: 'Grunnlag', colorClass: 'text-sky-400', dualColumn: true, rows: grunnlagRows })
   }
   if (trekkRows.length > 0) {
     sections.push({ key: 'TREKK', label: 'Trekk', colorClass: 'text-red-400', dualColumn: true, rows: trekkRows })

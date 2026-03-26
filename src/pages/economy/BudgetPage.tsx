@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Lock, LockOpen, Upload, Plus, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { Lock, LockOpen, Upload, Plus, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,7 +9,7 @@ import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import type { BudgetRow, MonthMeta } from '@/domain/economy/budgetTableComputer'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
-import type { BudgetCategory, BudgetLine, TemporaryPayEntry } from '@/types/economy'
+import type { BudgetCategory, BudgetLine } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
 // ----------------------------------------------------------------
@@ -69,15 +69,12 @@ export function BudgetPage() {
     budgetOverrides,
     setBudgetOverride,
     clearBudgetOverride,
-    addTemporaryPay,
-    removeTemporaryPay,
   } = useEconomyStore()
 
   const now = new Date()
   const [activeYear, setActiveYear] = useState(now.getFullYear())
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
-  const [showFungering, setShowFungering] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
 
@@ -160,14 +157,6 @@ export function BudgetPage() {
 
         <div className="flex gap-2">
           <Button
-            variant={showFungering ? 'default' : 'outline'}
-            size="sm"
-            className="text-xs h-7 gap-1"
-            onClick={() => setShowFungering((v) => !v)}
-          >
-            Fungering
-          </Button>
-          <Button
             variant="outline"
             size="sm"
             className="text-xs h-7 gap-1"
@@ -185,15 +174,6 @@ export function BudgetPage() {
           </Button>
         </div>
       </div>
-
-      {/* ---- Fungering panel ---- */}
-      {showFungering && (
-        <FungeringPanel
-          entries={temporaryPayEntries}
-          onAdd={addTemporaryPay}
-          onRemove={removeTemporaryPay}
-        />
-      )}
 
       {/* ---- Table ---- */}
       <div className="overflow-auto flex-1">
@@ -542,7 +522,7 @@ function DataRow({
           )
         }
 
-        if (meta.hasSlip) {
+        if (meta.hasSlip || cell.actual !== null) {
           const actual = cell.actual ?? 0
           const deviation = actual !== 0 && cell.budget !== 0 ? actual - cell.budget : null
           return (
@@ -724,106 +704,3 @@ function AddBudgetLineModal({
   )
 }
 
-// ----------------------------------------------------------------
-// FungeringPanel
-// ----------------------------------------------------------------
-
-function FungeringPanel({
-  entries,
-  onAdd,
-  onRemove,
-}: {
-  entries: TemporaryPayEntry[]
-  onAdd: (e: TemporaryPayEntry) => void
-  onRemove: (id: string) => void
-}) {
-  const today = new Date().toISOString().split('T')[0]
-  const [form, setForm] = useState({ label: '', fromDate: today, toDate: today, aarslonn: 0 })
-  const [adding, setAdding] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-
-  function handleSave() {
-    if (!form.label.trim()) { setSaveError('Beskrivelse mangler'); return }
-    if (!form.fromDate || !form.toDate) { setSaveError('Datoer mangler'); return }
-    if (form.toDate < form.fromDate) { setSaveError('Til-dato må være etter fra-dato'); return }
-    if (form.aarslonn <= 0) { setSaveError('Årslønn må være større enn 0'); return }
-    setSaveError(null)
-    onAdd({ id: crypto.randomUUID(), label: form.label.trim(), fromDate: form.fromDate, toDate: form.toDate, maanedslonn: Math.round(form.aarslonn / 12) })
-    setForm({ label: '', fromDate: today, toDate: today, aarslonn: 0 })
-    setAdding(false)
-  }
-
-  return (
-    <div className="px-4 py-3 border-b border-border bg-muted/20 shrink-0 space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-foreground">Midlertidig lønn (fungering)</p>
-        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setAdding((v) => !v)}>
-          <Plus className="h-3 w-3" /> Legg til
-        </Button>
-      </div>
-
-      {adding && (
-        <><div className="flex flex-wrap items-end gap-2 text-xs">
-          <div className="space-y-0.5">
-            <Label className="text-xs">Beskrivelse</Label>
-            <Input
-              className="h-7 text-xs w-48"
-              placeholder="f.eks. Fungering som major"
-              value={form.label}
-              onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
-            />
-          </div>
-          <div className="space-y-0.5">
-            <Label className="text-xs">Fra dato</Label>
-            <Input type="date" className="h-7 text-xs w-36" value={form.fromDate} onChange={(e) => setForm((f) => ({ ...f, fromDate: e.target.value }))} />
-          </div>
-          <div className="space-y-0.5">
-            <Label className="text-xs">Til dato</Label>
-            <Input type="date" className="h-7 text-xs w-36" value={form.toDate} onChange={(e) => setForm((f) => ({ ...f, toDate: e.target.value }))} />
-          </div>
-          <div className="space-y-0.5">
-            <Label className="text-xs">Årslønn (kr)</Label>
-            <Input
-              type="number"
-              className="h-7 text-xs w-36"
-              placeholder="f.eks. 700000"
-              value={form.aarslonn || ''}
-              onChange={(e) => setForm((f) => ({ ...f, aarslonn: parseFloat(e.target.value) || 0 }))}
-            />
-          </div>
-          {form.aarslonn > 0 && (
-            <div className="space-y-0.5 self-end pb-1.5">
-              <p className="text-muted-foreground text-xs">= {Math.round(form.aarslonn / 12).toLocaleString('no-NO')} kr/mnd</p>
-            </div>
-          )}
-          <Button size="sm" className="h-7 text-xs" onClick={handleSave}>Lagre</Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setAdding(false); setSaveError(null) }}>Avbryt</Button>
-        </div>
-        {saveError && <p className="text-xs text-red-400">{saveError}</p>}
-        </>
-      )}
-
-      {entries.length > 0 && (
-        <div className="space-y-1">
-          {entries.map((e) => (
-            <div key={e.id} className="flex items-center justify-between gap-3 text-xs rounded border border-border/50 px-2 py-1.5">
-              <span className="font-medium">{e.label}</span>
-              <span className="text-muted-foreground">{e.fromDate} → {e.toDate}</span>
-              <span className="font-mono text-green-500">{Math.round(e.maanedslonn * 12).toLocaleString('no-NO')} kr/år <span className="text-muted-foreground font-normal">({Math.round(e.maanedslonn).toLocaleString('no-NO')} kr/mnd)</span></span>
-              <button
-                className="text-muted-foreground hover:text-red-400 transition-colors ml-2"
-                onClick={() => onRemove(e.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {entries.length === 0 && !adding && (
-        <p className="text-xs text-muted-foreground">Ingen fungeringsperioder registrert.</p>
-      )}
-    </div>
-  )
-}

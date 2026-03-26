@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -85,11 +85,13 @@ function BreakdownTable({
   annualSalary,
   taxPercent,
   taxPercentSource,
+  payoutMonth,
 }: {
   rows: ATFDatoRad[]
   annualSalary: number
   taxPercent?: number
   taxPercentSource?: 'slipp' | 'fallback'
+  payoutMonth?: number
 }) {
   const effectivePct = taxPercent ?? DEFAULT_TAX_PCT
   const brutto = sumATFDatoRader(rows)
@@ -164,9 +166,15 @@ function BreakdownTable({
             <span className="font-mono">{tidskompensasjon} timer</span>
           </div>
         )}
-        <p className="text-yellow-500/90 pt-0.5">
-          ⚠ Faktisk skattetrekk kan være høyere ved stor ATF-utbetaling (tabelltrekket er progressivt).
-        </p>
+        {payoutMonth === 12 ? (
+          <p className="text-blue-400/90 pt-0.5">
+            🎄 Desember-utbetaling: halvskatt-tabell brukes noen år (historisk 25–27% effektiv sats), men ikke alltid — sjekk faktisk slipp.
+          </p>
+        ) : (
+          <p className="text-yellow-500/90 pt-0.5">
+            ⚠ Faktisk skattetrekk kan være høyere ved stor ATF-utbetaling (tabelltrekket er progressivt).
+          </p>
+        )}
       </div>
     </div>
   )
@@ -229,6 +237,7 @@ function NyØvelseModal({
   year,
   knownATFRates,
   tableTaxPercent,
+  initialEntry,
   onSave,
   onCancel,
 }: {
@@ -236,18 +245,26 @@ function NyØvelseModal({
   year: number
   knownATFRates?: Record<string, KnownATFRate>
   tableTaxPercent?: number
+  initialEntry?: ATFEntry
   onSave: (entry: ATFEntry) => void
   onCancel: () => void
 }) {
-  const [navn, setNavn] = useState('')
-  const [øvelsestype, setØvelsestype] = useState<'døgn' | 'time'>('døgn')
-  const [fraDato, setFraDato] = useState('')
-  const [fraTid, setFraTid] = useState('07:30')
-  const [tilDato, setTilDato] = useState('')
-  const [tilTid, setTilTid] = useState('15:30')
-  const [årslønn, setÅrslønn] = useState(defaultAnnualSalary > 0 ? String(Math.round(defaultAnnualSalary)) : '')
-  const [fasteTillegg, setFasteTillegg] = useState('0')
-  const [notat, setNotat] = useState('')
+  const editing = !!initialEntry
+  const [navn, setNavn] = useState(initialEntry?.øvelsesnavn ?? '')
+  const [øvelsestype, setØvelsestype] = useState<'døgn' | 'time'>(initialEntry?.øvelsestype ?? 'døgn')
+  const [fraDato, setFraDato] = useState(initialEntry?.fraDateISO?.slice(0, 10) ?? '')
+  const [fraTid, setFraTid] = useState(initialEntry?.fraDateISO?.slice(11, 16) ?? '07:30')
+  const [tilDato, setTilDato] = useState(initialEntry?.tilDateISO?.slice(0, 10) ?? '')
+  const [tilTid, setTilTid] = useState(initialEntry?.tilDateISO?.slice(11, 16) ?? '15:30')
+  const [årslønn, setÅrslønn] = useState(
+    initialEntry?.årslønnInput
+      ? String(initialEntry.årslønnInput)
+      : defaultAnnualSalary > 0 ? String(Math.round(defaultAnnualSalary)) : ''
+  )
+  const [fasteTillegg, setFasteTillegg] = useState(
+    initialEntry?.fasteTilleggInput != null ? String(initialEntry.fasteTilleggInput) : '0'
+  )
+  const [notat, setNotat] = useState(initialEntry?.notat ?? '')
   const [showBreakdown, setShowBreakdown] = useState(false)
 
   // Parse dates
@@ -256,8 +273,12 @@ function NyØvelseModal({
   const fra = fraISO ? new Date(fraISO) : null
   const til = tilISO ? new Date(tilISO) : null
 
+
   const parsedSalary = parseFloat(årslønn.replace(/\s/g, '')) || 0
   const parsedTillegg = parseFloat(fasteTillegg.replace(/\s/g, '')) || 0
+
+  // Utbetalingsmåned = måneden etter øvelsens slutt
+  const payoutMonth = til ? new Date(til.getFullYear(), til.getMonth() + 1, 1).getMonth() + 1 : undefined
 
   // Validation
   const datesValid = fra && til && til > fra
@@ -292,7 +313,7 @@ function NyØvelseModal({
     const payoutMonth = payoutDate.getMonth() + 1
     const payoutYear = payoutDate.getFullYear()
     onSave({
-      id: crypto.randomUUID(),
+      id: initialEntry?.id ?? crypto.randomUUID(),
       year,
       øvelsesnavn: navn.trim(),
       perioder: [],
@@ -305,6 +326,8 @@ function NyØvelseModal({
       datoRader: rows.length > 0 ? rows : undefined,
       payoutMonth,
       payoutYear,
+      årslønnInput: parsedSalary || undefined,
+      fasteTilleggInput: parsedTillegg || undefined,
     })
   }
 
@@ -312,7 +335,7 @@ function NyØvelseModal({
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center overflow-y-auto py-8 px-4">
       <div className="bg-background rounded-lg shadow-xl w-full max-w-2xl">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h2 className="font-semibold text-base">Ny øvelse</h2>
+          <h2 className="font-semibold text-base">{editing ? 'Rediger øvelse' : 'Ny øvelse'}</h2>
           <Button variant="ghost" size="sm" onClick={onCancel}>✕</Button>
         </div>
 
@@ -440,6 +463,7 @@ function NyØvelseModal({
                   annualSalary={parsedSalary}
                   taxPercent={tableTaxPercent}
                   taxPercentSource={tableTaxPercent ? 'slipp' : 'fallback'}
+                  payoutMonth={payoutMonth}
                 />
               )}
             </div>
@@ -458,7 +482,7 @@ function NyØvelseModal({
           {/* Buttons */}
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
-            <Button size="sm" onClick={handleSave} disabled={!isValid}>Lagre øvelse</Button>
+            <Button size="sm" onClick={handleSave} disabled={!isValid}>{editing ? 'Lagre endringer' : 'Lagre øvelse'}</Button>
           </div>
         </div>
       </div>
@@ -471,9 +495,10 @@ function NyØvelseModal({
 // ------------------------------------------------------------
 
 export function ATFPage() {
-  const { atfEntries, addATFEntry, removeATFEntry, profile, monthHistory } = useEconomyStore()
+  const { atfEntries, addATFEntry, updateATFEntry, removeATFEntry, profile, monthHistory } = useEconomyStore()
   const [activeYear, setActiveYear] = useState(CURRENT_YEAR)
   const [showModal, setShowModal] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<ATFEntry | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   // Bruk fremskrevet lønn for fremtidige år (lønnsoppgjør skjer typisk mai)
@@ -487,7 +512,7 @@ export function ATFPage() {
   const knownATFRates = profile?.knownATFRates
   const tableTaxPercent = profile?.lastKnownTableTaxPercent
 
-  const yearEntries = atfEntries.filter((e) => e.year === activeYear)
+  const yearEntries = atfEntries.filter((e) => (e.payoutYear ?? e.year) === activeYear)
   const yearSum = sumATFByYear(atfEntries, activeYear)
   const prevYearSum = sumATFByYear(atfEntries, activeYear - 1)
 
@@ -521,18 +546,24 @@ export function ATFPage() {
         <SatsCard annualSalary={annualSalary} fixedAdditions={fixedAdditions} knownATFRates={knownATFRates} />
       )}
 
-      {/* Modal */}
-      {showModal && (
+      {/* Modal — ny eller rediger */}
+      {(showModal || editingEntry) && (
         <NyØvelseModal
           defaultAnnualSalary={annualSalary}
           year={activeYear}
           knownATFRates={knownATFRates}
           tableTaxPercent={tableTaxPercent}
+          initialEntry={editingEntry ?? undefined}
           onSave={(entry) => {
-            addATFEntry(entry)
+            if (editingEntry) {
+              updateATFEntry(entry.id, entry)
+            } else {
+              addATFEntry(entry)
+            }
             setShowModal(false)
+            setEditingEntry(null)
           }}
-          onCancel={() => setShowModal(false)}
+          onCancel={() => { setShowModal(false); setEditingEntry(null) }}
         />
       )}
 
@@ -582,10 +613,21 @@ export function ATFPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono font-semibold text-green-500 text-sm">
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono font-semibold text-green-500 text-sm mr-2">
                         {fmtNOK(entry.beregnetBeløp)}
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingEntry(entry)
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -608,6 +650,7 @@ export function ATFPage() {
                           annualSalary={annualSalary}
                           taxPercent={tableTaxPercent}
                           taxPercentSource={tableTaxPercent ? 'slipp' : 'fallback'}
+                          payoutMonth={entry.payoutMonth}
                         />
                       ) : oldResult ? (
                         <div className="space-y-2">

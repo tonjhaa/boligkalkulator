@@ -25,9 +25,9 @@ export function Header() {
 
       <div className="flex items-center gap-2 flex-1">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-          <span className="text-xs font-bold text-primary-foreground">ØD</span>
+          <span className="text-xs font-bold text-primary-foreground">LB</span>
         </div>
-        <span className="font-semibold text-foreground">ØkonomiDashboard</span>
+        <span className="font-semibold text-foreground">Lommeboka</span>
       </div>
 
       <Button variant="ghost" size="icon" onClick={toggleTheme}>

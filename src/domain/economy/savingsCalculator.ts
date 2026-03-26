@@ -244,6 +244,67 @@ export function calculateGoalProgress(
 }
 
 // ------------------------------------------------------------
+// RENTEINNTEKTER FOR ET ÅR
+// ------------------------------------------------------------
+
+/**
+ * Beregner renteinntekter for en sparekonto i et gitt år.
+ *
+ * - BSU: renter akkumuleres månedlig, krediteres 31. desember (eller vises opptjent for inneværende år)
+ * - Andre kontoer: renter krediteres og legges til saldo månedlig
+ *
+ * Bruker rateHistory for riktig rente per periode.
+ */
+export function computeYearlyInterestIncome(account: SavingsAccount, year: number): number {
+  // Startbalanse: siste kjente saldo FØR dette året
+  const prevEntry = [...account.balanceHistory]
+    .filter((b) => b.year < year || (b.year === year && b.month === 0))
+    .sort((a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month))[0]
+  let balance = prevEntry?.balance ?? account.openingBalance
+
+  const now = new Date()
+  const toMonth = year < now.getFullYear() ? 12 : now.getMonth() + 1
+
+  let totalInterest = 0
+  let yearlyAccrued = 0
+
+  for (let m = 1; m <= toMonth; m++) {
+    // For fond/krypto: bruk faktisk saldo fra historikk hvis tilgjengelig
+    if (account.type === 'fond' || account.type === 'krypto') {
+      const entry = account.balanceHistory.find((b) => b.year === year && b.month === m)
+      if (entry) { balance = entry.balance; continue }
+    }
+
+    // Legg til innskudd denne måneden
+    const contrib = computeMonthContributions(account, year, m)
+    balance += contrib
+
+    const date = new Date(year, m - 1, 1)
+    const rate = getCurrentRateForDate(account.rateHistory, date)
+    const monthlyInterest = balance * (rate / 100 / 12)
+
+    if (account.interestCreditFrequency === 'yearly') {
+      yearlyAccrued += monthlyInterest
+      if (m === 12) {
+        totalInterest += yearlyAccrued
+        balance += yearlyAccrued
+        yearlyAccrued = 0
+      }
+    } else {
+      totalInterest += monthlyInterest
+      balance += monthlyInterest
+    }
+  }
+
+  // Inneværende år med BSU: returner opptjent (ikke kreditert ennå)
+  if (account.interestCreditFrequency === 'yearly' && year === now.getFullYear()) {
+    return Math.round(yearlyAccrued)
+  }
+
+  return Math.round(totalInterest)
+}
+
+// ------------------------------------------------------------
 // BSU-KONTROLL
 // ------------------------------------------------------------
 
