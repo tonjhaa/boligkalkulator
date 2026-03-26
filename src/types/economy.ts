@@ -108,9 +108,9 @@ export interface EmploymentProfile {
   lastKnownTableTaxPercent?: number
   /** Trekktabellnummer fra siste importerte slipp (f.eks. 8010) */
   tabellnummer?: number
-  /** Sommerferie start-dato (ISO, f.eks. "2026-06-22") */
+  /** Siste arbeidsdag før sommerferie (ISO, f.eks. "2026-06-19") */
   summerVacationStart?: string
-  /** Sommerferie slutt-dato (ISO, f.eks. "2026-08-02") */
+  /** Første arbeidsdag etter sommerferie (ISO, f.eks. "2026-08-03") */
   summerVacationEnd?: string
 }
 

@@ -237,16 +237,27 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           {daysToSummer !== null && daysToSummer > 0 && (
             <CountdownChip
               icon="🏖️"
-              label="Sommerferie"
+              label="Siste arbeidsdag"
               days={daysToSummer}
               detail={summerStart!.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
             />
           )}
-          {daysToSummer !== null && daysToSummer <= 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-green-500/10 border border-green-500/20 text-green-400">
-              🏖️ Sommerferie nå!
-            </span>
-          )}
+          {daysToSummer !== null && daysToSummer <= 0 && (() => {
+            const summerEnd = profile?.summerVacationEnd ? new Date(profile.summerVacationEnd) : null
+            const daysBack = summerEnd ? Math.ceil((summerEnd.getTime() - now.getTime()) / 86400000) : null
+            return daysBack !== null && daysBack > 0 ? (
+              <CountdownChip
+                icon="🏖️"
+                label="Tilbake på jobb"
+                days={daysBack}
+                detail={summerEnd!.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
+              />
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-green-500/10 border border-green-500/20 text-green-400">
+                🏖️ Sommerferie nå!
+              </span>
+            )
+          })()}
           {daysToSummer === null && (
             <button
               onClick={() => onNavigate('settings')}

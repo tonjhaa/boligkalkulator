@@ -23,7 +23,7 @@ export function EconomySettingsPage() {
       <div>
         <h2 className="text-lg font-semibold text-foreground">Økonomi-innstillinger</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Personlige innstillinger for dashbordet.
+          Personlige innstillinger for dashbordet. Oppdater hvert år.
         </p>
       </div>
 
@@ -31,28 +31,29 @@ export function EconomySettingsPage() {
         <h3 className="text-sm font-semibold text-foreground border-b border-border pb-2">
           Sommerferie
         </h3>
-        <p className="text-xs text-muted-foreground">
-          Brukes til nedtelling på dashbordet. Oppdater hvert år.
-        </p>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs">Første feriedag</Label>
-          <Input
-            type="date"
-            value={profile.summerVacationStart ?? ''}
-            onChange={(e) => update({ summerVacationStart: e.target.value || undefined })}
-            className="w-48 text-sm"
-          />
-        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Siste arbeidsdag før ferie</Label>
+            <Input
+              type="date"
+              value={profile.summerVacationStart ?? ''}
+              onChange={(e) => update({ summerVacationStart: e.target.value || undefined })}
+              className="text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground">Nedtelling på dashbordet</p>
+          </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs">Siste feriedag</Label>
-          <Input
-            type="date"
-            value={profile.summerVacationEnd ?? ''}
-            onChange={(e) => update({ summerVacationEnd: e.target.value || undefined })}
-            className="w-48 text-sm"
-          />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Første arbeidsdag etter ferie</Label>
+            <Input
+              type="date"
+              value={profile.summerVacationEnd ?? ''}
+              onChange={(e) => update({ summerVacationEnd: e.target.value || undefined })}
+              className="text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground">Vises under ferien</p>
+          </div>
         </div>
       </div>
     </div>
