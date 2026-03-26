@@ -151,7 +151,7 @@ export function computeBudgetTable(
   // ---- ATF: summer per utbetalingsmåned ----
   // Prioritet: 1) eksplisitt payoutMonth/payoutYear, 2) tilDateISO + 1 mnd, 3) desember fallback
   const atfByMonth = new Map<number, number>()
-  for (const entry of atfEntries) {
+  for (const entry of atfEntries.filter((e) => !e.excludeFromBudget)) {
     let payoutYear: number
     let payoutMonth: number
     if (entry.payoutMonth !== undefined && entry.payoutYear !== undefined) {

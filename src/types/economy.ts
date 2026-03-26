@@ -192,6 +192,8 @@ export interface ATFEntry {
   årslønnInput?: number
   /** Input faste tillegg lagret for forhåndsutfylling ved redigering. */
   fasteTilleggInput?: number
+  /** Skjul denne øvelsens ATF-sum fra budsjettberegninger */
+  excludeFromBudget?: boolean
 }
 
 // ------------------------------------------------------------

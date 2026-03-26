@@ -265,6 +265,7 @@ function NyØvelseModal({
     initialEntry?.fasteTilleggInput != null ? String(initialEntry.fasteTilleggInput) : '0'
   )
   const [notat, setNotat] = useState(initialEntry?.notat ?? '')
+  const [excludeFromBudget, setExcludeFromBudget] = useState(initialEntry?.excludeFromBudget ?? false)
   const [showBreakdown, setShowBreakdown] = useState(false)
 
   // Parse dates
@@ -328,6 +329,7 @@ function NyØvelseModal({
       payoutYear,
       årslønnInput: parsedSalary || undefined,
       fasteTilleggInput: parsedTillegg || undefined,
+      excludeFromBudget: excludeFromBudget || undefined,
     })
   }
 
@@ -479,6 +481,17 @@ function NyØvelseModal({
             />
           </div>
 
+          {/* Skjul fra budsjett */}
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={excludeFromBudget}
+              onChange={e => setExcludeFromBudget(e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-primary"
+            />
+            <span className="text-xs text-muted-foreground">Skjul fra budsjett (ATF-summen telles ikke med i budsjettprognosen)</span>
+          </label>
+
           {/* Buttons */}
           <div className="flex gap-3 justify-end pt-1">
             <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
@@ -614,9 +627,19 @@ export function ATFPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="font-mono font-semibold text-green-500 text-sm mr-2">
+                      <span className={cn('font-mono font-semibold text-sm mr-1', entry.excludeFromBudget ? 'text-muted-foreground line-through' : 'text-green-500')}>
                         {fmtNOK(entry.beregnetBeløp)}
                       </span>
+                      <button
+                        title={entry.excludeFromBudget ? 'Inkluder i budsjett' : 'Skjul fra budsjett'}
+                        className={cn('text-[10px] px-1.5 py-0.5 rounded border transition-colors mr-1', entry.excludeFromBudget ? 'border-muted-foreground/30 text-muted-foreground' : 'border-green-500/30 text-green-400')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          updateATFEntry(entry.id, { ...entry, excludeFromBudget: !entry.excludeFromBudget || undefined })
+                        }}
+                      >
+                        {entry.excludeFromBudget ? 'budsjett av' : 'budsjett på'}
+                      </button>
                       <Button
                         variant="ghost"
                         size="sm"
