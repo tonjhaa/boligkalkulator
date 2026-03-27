@@ -185,6 +185,92 @@ const DEFAULT_FOND_PORTFOLIO: FondPortfolio = {
   ],
 }
 
+const LAANEKASSEN_DEBT: DebtAccount = {
+  id: 'laanekassen-studielaan',
+  creditor: 'Lånekassen',
+  type: 'studielaan',
+  loanSubtype: 'Omgjøringslån',
+  originalAmount: 400000,
+  currentBalance: 343207,
+  monthlyPayment: 2586,
+  termFee: 0,
+  startDate: '2022-02-01',
+  effectiveRate: 4.765,
+  rateHistory: [
+    { fromDate: '2022-02-01', nominalRate: 3.19 },
+    { fromDate: '2022-05-01', nominalRate: 3.29 },
+    { fromDate: '2022-07-01', nominalRate: 3.69 },
+    { fromDate: '2022-09-01', nominalRate: 4.24 },
+    { fromDate: '2022-11-01', nominalRate: 4.69 },
+    { fromDate: '2023-03-01', nominalRate: 5.24 },
+    { fromDate: '2023-05-01', nominalRate: 5.49 },
+    { fromDate: '2023-07-01', nominalRate: 5.74 },
+    { fromDate: '2023-09-01', nominalRate: 5.99 },
+    { fromDate: '2023-11-01', nominalRate: 6.24 },
+    { fromDate: '2024-01-01', nominalRate: 6.50 },
+    { fromDate: '2024-05-01', nominalRate: 6.25 },
+    { fromDate: '2024-09-01', nominalRate: 6.00 },
+    { fromDate: '2025-01-01', nominalRate: 5.75 },
+    { fromDate: '2025-03-01', nominalRate: 5.50 },
+    { fromDate: '2025-07-01', nominalRate: 5.25 },
+    { fromDate: '2025-09-01', nominalRate: 5.00 },
+    { fromDate: '2025-11-01', nominalRate: 4.75 },
+    { fromDate: '2026-01-01', nominalRate: 4.671 },
+    { fromDate: '2026-03-01', nominalRate: 4.621 },
+    { fromDate: '2026-05-01', nominalRate: 4.611 },
+  ],
+  paymentHistory: [
+    { date: '2022-02-15', amount: 1974 },
+    { date: '2022-03-15', amount: 1974 },
+    { date: '2022-04-15', amount: 2037 },
+    { date: '2022-05-15', amount: 2037 },
+    { date: '2022-06-15', amount: 2065 },
+    { date: '2022-07-15', amount: 2064 },
+    { date: '2022-08-15', amount: 2056 },
+    { date: '2022-09-15', amount: 2056 },
+    { date: '2022-10-15', amount: 2118 },
+    { date: '2022-11-15', amount: 2118 },
+    { date: '2022-12-15', amount: 2240 },
+    { date: '2023-01-15', amount: 2240 },
+    { date: '2023-02-15', amount: 2307 },
+    { date: '2023-03-15', amount: 2307 },
+    { date: '2023-04-15', amount: 2307 },
+    { date: '2023-05-15', amount: 2344 },
+    { date: '2023-06-15', amount: 2369 },
+    { date: '2023-07-15', amount: 2369 },
+    { date: '2023-08-15', amount: 2422 },
+    { date: '2023-09-15', amount: 2422 },
+    { date: '2023-10-15', amount: 2511 },
+    { date: '2024-01-15', amount: 2607 },
+    { date: '2024-02-15', amount: 2659 },
+    { date: '2024-03-15', amount: 2659 },
+    { date: '2024-04-15', amount: 2678 },
+    { date: '2024-05-15', amount: 2678 },
+    { date: '2024-06-15', amount: 2695 },
+    { date: '2024-07-15', amount: 2695 },
+    { date: '2024-08-15', amount: 2701 },
+    { date: '2024-09-15', amount: 2701 },
+    { date: '2024-10-15', amount: 2699 },
+    { date: '2024-11-15', amount: 2699 },
+    { date: '2024-12-15', amount: 2695 },
+    { date: '2025-01-15', amount: 2695 },
+    { date: '2025-02-15', amount: 2688 },
+    { date: '2025-03-15', amount: 2688 },
+    { date: '2025-04-15', amount: 2684 },
+    { date: '2025-05-15', amount: 2684 },
+    { date: '2025-06-15', amount: 2674 },
+    { date: '2025-07-15', amount: 2674 },
+    { date: '2025-08-15', amount: 2656 },
+    { date: '2025-09-15', amount: 2656 },
+    { date: '2025-10-15', amount: 2627 },
+    { date: '2025-11-15', amount: 2627 },
+    { date: '2025-12-15', amount: 2601 },
+    { date: '2026-01-15', amount: 2601 },
+    { date: '2026-02-15', amount: 2588 },
+    { date: '2026-03-15', amount: 2588 },
+  ],
+}
+
 const DEFAULT_IVF_SETTINGS: IVFSettings = {
   lonTonje: 700000,
   lonAne: 630000,
@@ -254,7 +340,7 @@ export const useEconomyStore = create<EconomyState>()(
       atfEntries: [],
       savingsAccounts: [],
       savingsGoals: [],
-      debts: [],
+      debts: [LAANEKASSEN_DEBT],
       absenceRecords: [],
       absenceEvents: [],
       absenceHireDate: null,
@@ -850,6 +936,16 @@ export const useEconomyStore = create<EconomyState>()(
           if (!Array.isArray(state.savingsAccounts)) state.savingsAccounts = []
           if (!Array.isArray(state.savingsGoals)) state.savingsGoals = []
           if (!Array.isArray(state.debts)) state.debts = []
+          // Legg til Lånekassen-lån om det ikke finnes fra før
+          if (!state.debts.some((d) => d.id === 'laanekassen-studielaan')) {
+            state.debts = [LAANEKASSEN_DEBT, ...state.debts]
+          }
+          // Oppdater paymentHistory og rateHistory om ny data foreligger
+          state.debts = state.debts.map((d) =>
+            d.id === 'laanekassen-studielaan'
+              ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
+              : d
+          )
           if (!Array.isArray(state.absenceRecords)) state.absenceRecords = []
           if (!Array.isArray(state.absenceEvents)) state.absenceEvents = []
           if (!Array.isArray(state.taxSettlements)) state.taxSettlements = []

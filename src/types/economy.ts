@@ -300,6 +300,9 @@ export interface DebtAccount {
   termFee: number
   startDate: string
   expectedPayoffDate?: string
+  effectiveRate?: number
+  loanSubtype?: string                            // f.eks. "Omgjøringslån"
+  paymentHistory?: { date: string; amount: number }[]  // fakturaarkiv
 }
 
 export interface RepaymentRow {

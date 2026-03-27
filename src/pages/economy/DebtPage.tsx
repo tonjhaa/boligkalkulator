@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area,
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import {
@@ -32,6 +33,7 @@ export function DebtPage() {
   const { debts, addDebt, removeDebt, updateDebtRate } = useEconomyStore()
   const [showAddForm, setShowAddForm] = useState(false)
   const [updatingRateFor, setUpdatingRateFor] = useState<string | null>(null)
+  const [showAmortFor, setShowAmortFor] = useState<string | null>(null)
 
   const totalMonthly = calculateTotalMonthlyDebtCost(debts)
   const totalBalance = debts.reduce((s, d) => s + d.currentBalance, 0)
@@ -185,6 +187,85 @@ export function DebtPage() {
                   <p className="text-xs text-muted-foreground">
                     Total rentekostnad: {fmtNOK(plan.totalInterestCost)}
                   </p>
+
+                  {/* Ekstra info for Lånekassen */}
+                  {debt.effectiveRate && (
+                    <p className="text-xs text-muted-foreground">
+                      Effektiv rente: {debt.effectiveRate.toFixed(3)}%
+                      {debt.loanSubtype && ` · ${debt.loanSubtype}`}
+                    </p>
+                  )}
+
+                  {/* Betalingshistorikk */}
+                  {debt.paymentHistory && debt.paymentHistory.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Betalingshistorikk</p>
+                      <ResponsiveContainer width="100%" height={80}>
+                        <AreaChart
+                          data={debt.paymentHistory.map((p) => ({
+                            label: p.date.slice(0, 7),
+                            beløp: p.amount,
+                          }))}
+                          margin={{ top: 2, right: 2, left: 0, bottom: 0 }}
+                        >
+                          <defs>
+                            <linearGradient id="payGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={5} />
+                          <YAxis hide domain={['auto', 'auto']} />
+                          <Tooltip
+                            contentStyle={{ fontSize: 11, background: 'var(--card)', border: '1px solid var(--border)' }}
+                            formatter={(v) => [fmtNOK(Number(v)), 'Terminbeløp']}
+                          />
+                          <Area type="monotone" dataKey="beløp" stroke="#f97316" strokeWidth={1.5} fill="url(#payGrad)" dot={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+
+                  {/* Fremtidig amortisering */}
+                  <button
+                    className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors"
+                    onClick={() => setShowAmortFor(showAmortFor === debt.id ? null : debt.id)}
+                  >
+                    {showAmortFor === debt.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    Vis nedbetalingsplan
+                  </button>
+
+                  {showAmortFor === debt.id && (
+                    <div className="rounded-md border border-border overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/30">
+                            <th className="px-2 py-1.5 text-left font-medium text-muted-foreground">Mnd</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Terminbeløp</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Renter</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Avdrag</th>
+                            <th className="px-2 py-1.5 text-right font-medium text-muted-foreground">Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {plan.rows.slice(0, 24).map((row, i) => {
+                            const d = new Date()
+                            d.setMonth(d.getMonth() + i + 1)
+                            const label = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+                            return (
+                              <tr key={i} className="border-b border-border/40 last:border-0">
+                                <td className="px-2 py-1 text-muted-foreground">{label}</td>
+                                <td className="px-2 py-1 text-right font-mono">{fmtNOK(row.payment)}</td>
+                                <td className="px-2 py-1 text-right font-mono text-red-400">{fmtNOK(row.interest)}</td>
+                                <td className="px-2 py-1 text-right font-mono text-green-400">{fmtNOK(row.principal)}</td>
+                                <td className="px-2 py-1 text-right font-mono">{fmtNOK(row.balance)}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )
