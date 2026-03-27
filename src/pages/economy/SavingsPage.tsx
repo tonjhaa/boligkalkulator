@@ -64,7 +64,12 @@ export function SavingsPage() {
     removeWithdrawal,
     addSavingsGoal,
     removeSavingsGoal,
+    fondPortfolio,
   } = useEconomyStore()
+
+  const sortedFondSnapshots = [...fondPortfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
+  const fondCurrentValue = sortedFondSnapshots[0]?.totalValue ?? 0
+  const fondMonthlyDeposit = fondPortfolio.monthlyDeposit
 
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -184,6 +189,7 @@ export function SavingsPage() {
       {showAddGoal && (
         <AddGoalForm
           accounts={savingsAccounts}
+          fondMonthlyDeposit={fondMonthlyDeposit}
           onSave={(g) => { addSavingsGoal(g); setShowAddGoal(false) }}
           onCancel={() => setShowAddGoal(false)}
         />
@@ -198,7 +204,7 @@ export function SavingsPage() {
       ) : (
         <div className="space-y-3">
           {savingsGoals.map((goal) => {
-            const progress = calculateGoalProgress(goal, savingsAccounts)
+            const progress = calculateGoalProgress(goal, savingsAccounts, fondCurrentValue, fondMonthlyDeposit)
             return (
               <Card key={goal.id}>
                 <CardContent className="py-3 space-y-2">
@@ -221,6 +227,9 @@ export function SavingsPage() {
                     <span>{fmtNOK(progress.currentTotal)} / {fmtNOK(progress.targetAmount)}</span>
                     <span>{Math.round(progress.percent)}%</span>
                   </div>
+                  {goal.includeFond && (
+                    <p className="text-xs text-muted-foreground">Inkl. KRON Fond</p>
+                  )}
                   {progress.monthsRemaining !== null && progress.monthsRemaining > 0 && (
                     <p className="text-xs text-muted-foreground">
                       Mangler {fmtNOK(progress.targetAmount - progress.currentTotal)} —
@@ -779,14 +788,19 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
 
 function AddGoalForm({
   accounts,
+  fondMonthlyDeposit,
   onSave,
   onCancel,
 }: {
   accounts: SavingsAccount[]
+  fondMonthlyDeposit: number
   onSave: (g: SavingsGoal) => void
   onCancel: () => void
 }) {
-  const [form, setForm] = useState({ label: '', icon: '🏠', targetAmount: 0, linkedAccountIds: [] as string[] })
+  const [form, setForm] = useState({
+    label: '', icon: '🏠', targetAmount: 0,
+    linkedAccountIds: [] as string[], includeFond: false,
+  })
 
   function toggleAccount(id: string) {
     setForm((f) => ({
@@ -838,6 +852,18 @@ function AddGoalForm({
               ))}
             </div>
           </div>
+        )}
+        {fondMonthlyDeposit > 0 && (
+          <button
+            onClick={() => setForm((f) => ({ ...f, includeFond: !f.includeFond }))}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              form.includeFond
+                ? 'border-primary text-primary bg-primary/10'
+                : 'border-border text-muted-foreground hover:border-border/80'
+            }`}
+          >
+            📈 KRON Fond ({fondMonthlyDeposit.toLocaleString('no-NO')} kr/mnd)
+          </button>
         )}
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>

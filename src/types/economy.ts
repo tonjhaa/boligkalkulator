@@ -259,6 +259,7 @@ export interface SavingsGoal {
   targetAmount: number
   targetDate?: string      // ISO-dato
   linkedAccountIds: string[]
+  includeFond?: boolean    // inkluder KRON-portefølje i fremgangen
   notes?: string
 }
 

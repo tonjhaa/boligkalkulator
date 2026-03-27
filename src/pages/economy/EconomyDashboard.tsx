@@ -12,6 +12,7 @@ import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
+import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 import type { ParsetLonnsslipp } from '@/types/economy'
@@ -107,6 +108,11 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     budgetTemplate,
     profile,
     fondPortfolio,
+    subscriptions,
+    insurances,
+    temporaryPayEntries,
+    budgetOverrides,
+    ivfTransactions,
   } = useEconomyStore()
 
   const [tick, setTick] = useState(() => new Date())
@@ -226,6 +232,30 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   }
 
   const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
+
+  // ── Budsjettabell (samme motor som Budsjett-fanen) ─────────
+  const yearOverrides = Object.fromEntries(
+    Object.entries(budgetOverrides)
+      .filter(([k]) => k.startsWith(`${currentYear}:`))
+      .map(([k, v]) => [k.slice(String(currentYear).length + 1), v])
+  )
+  const budgetTable = profile
+    ? computeBudgetTable(
+        currentYear, profile, budgetTemplate, monthHistory, atfEntries,
+        savingsAccounts, debts, subscriptions, insurances,
+        yearOverrides, temporaryPayEntries, juneForecast ?? undefined,
+        false, ivfTransactions, fondPortfolio,
+      )
+    : null
+
+  const allBudgetRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
+  const nettoRow = allBudgetRows.find((r) => r.id === 'netto')
+  const overskuddRow = allBudgetRows.find((r) => r.id === 'overskudd')
+  const monthIdx = currentMonth - 1
+  const nettoCell = nettoRow?.cells[monthIdx]
+  const overskuddCell = overskuddRow?.cells[monthIdx]
+  const nettoFraBudsjett = nettoCell ? (nettoCell.actual ?? nettoCell.budget) : 0
+  const overskuddFraBudsjett = overskuddCell ? (overskuddCell.actual ?? overskuddCell.budget) : null
 
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
@@ -365,8 +395,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       <PengePuls
         trendData={trendData}
         trendAvg={trendAvg}
-        nettoInn={nettoInn}
-        fasteUt={fasteUt}
+        nettoInn={nettoFraBudsjett}
+        overskudd={overskuddFraBudsjett}
         juneForecast={juneForecast}
         savingsGoals={savingsGoals}
         savingsAccounts={savingsAccounts}
@@ -413,7 +443,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
               <EmptyState message="Ingen sparemål registrert" action="Legg til mål" onAction={() => onNavigate('savings')} />
             ) : (
               savingsGoals.slice(0, 3).map((goal) => {
-                const progress = calculateGoalProgress(goal, savingsAccounts)
+                const progress = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio.monthlyDeposit)
                 return (
                   <div key={goal.id} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
@@ -598,7 +628,7 @@ function PengePuls({
   trendData: _trendData,
   trendAvg,
   nettoInn,
-  fasteUt,
+  overskudd,
   juneForecast,
   savingsGoals,
   savingsAccounts,
@@ -608,7 +638,7 @@ function PengePuls({
   trendData: { mnd: string; netto: number }[]
   trendAvg: number
   nettoInn: number
-  fasteUt: number
+  overskudd: number | null
   juneForecast: ReturnType<typeof forecastJune> | null
   savingsGoals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
   savingsAccounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
@@ -617,9 +647,9 @@ function PengePuls({
 }) {
   const chips: { icon: string; text: string; accent?: string }[] = []
 
-  // Sparerate
-  if (nettoInn > 0 && fasteUt > 0) {
-    const sparerate = Math.round(((nettoInn - fasteUt) / nettoInn) * 100)
+  // Sparerate — basert på budsjettmotoren (inkl. sparing, gjeld, abonnementer)
+  if (nettoInn > 0 && overskudd !== null) {
+    const sparerate = Math.round((overskudd / nettoInn) * 100)
     chips.push({
       icon: '💰',
       text: `Sparerate: ${sparerate}% av netto`,
@@ -641,19 +671,17 @@ function PengePuls({
     })
   }
 
-  // Sparemål ETA
+  // Sparemål ETA — basert på faktisk månedlig sparing på tilknyttede kontoer
   if (savingsGoals.length > 0) {
     const goal = savingsGoals[0]
-    const prog = calculateGoalProgress(goal, savingsAccounts)
-    const remaining = prog.targetAmount - prog.currentTotal
-    if (remaining > 0 && nettoInn > 0) {
-      const monthsLeft = Math.ceil(remaining / (nettoInn * 0.2))
+    const prog = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio.monthlyDeposit)
+    if (prog.percent >= 100) {
+      chips.push({ icon: '✅', text: `«${goal.label}» er nådd!`, accent: 'green' })
+    } else if (prog.monthsRemaining !== null && prog.monthsRemaining > 0) {
       chips.push({
         icon: '🎯',
-        text: `«${goal.label}» nås om ca. ${monthsLeft} mnd ved 20% sparerate`,
+        text: `«${goal.label}» nås om ca. ${prog.monthsRemaining} mnd`,
       })
-    } else if (remaining <= 0) {
-      chips.push({ icon: '✅', text: `«${goal.label}» er nådd!`, accent: 'green' })
     }
   }
 

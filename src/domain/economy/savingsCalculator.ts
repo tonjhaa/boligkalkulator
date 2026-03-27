@@ -207,15 +207,19 @@ export function projectSavingsGrowth(
 
 export function calculateGoalProgress(
   goal: SavingsGoal,
-  accounts: SavingsAccount[]
+  accounts: SavingsAccount[],
+  fondCurrentValue = 0,
+  fondMonthlyDeposit = 0,
 ): GoalProgress {
   const linked = accounts.filter((a) => goal.linkedAccountIds.includes(a.id))
 
-  const currentTotal = linked.reduce((s, a) => {
+  const accountsTotal = linked.reduce((s, a) => {
     const last = a.balanceHistory.at(-1)
     if (last) return s + last.balance
     return s + a.openingBalance
   }, 0)
+
+  const currentTotal = accountsTotal + (goal.includeFond ? fondCurrentValue : 0)
 
   const percent = Math.min(100, (currentTotal / goal.targetAmount) * 100)
   const remaining = goal.targetAmount - currentTotal
@@ -224,7 +228,9 @@ export function calculateGoalProgress(
     return { currentTotal, targetAmount: goal.targetAmount, percent: 100, monthsRemaining: 0, monthlyNeeded: 0 }
   }
 
-  const totalMonthlyContrib = linked.reduce((s, a) => s + a.monthlyContribution, 0)
+  const totalMonthlyContrib =
+    linked.reduce((s, a) => s + a.monthlyContribution, 0) +
+    (goal.includeFond ? fondMonthlyDeposit : 0)
 
   let monthsRemaining: number | null = null
   let monthlyNeeded: number | null = null
