@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronUp, Settings2 } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Plus, Trash2, ChevronDown, ChevronUp, Settings2, RefreshCw } from 'lucide-react'
+import { fetchAllFondPrices, type LivePrice } from '@/domain/economy/fondPriceService'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,22 +62,20 @@ interface TickerItem {
   isPositive: boolean | null
 }
 
-function Ticker({ funds }: { funds: FondEntry[] }) {
-  const items: TickerItem[] = funds.map((f) => ({
-    name: f.name,
-    label:
-      f.returnPercent !== undefined
-        ? `${f.returnPercent >= 0 ? '+' : ''}${f.returnPercent.toFixed(1)}%`
+function Ticker({ funds, livePrices }: { funds: FondEntry[]; livePrices: Record<string, LivePrice> }) {
+  const items: TickerItem[] = funds.map((f) => {
+    const live = livePrices[f.id]
+    const pct = live?.dayChangePercent ?? f.returnPercent
+    return {
+      name: f.name,
+      label: pct !== undefined && pct !== null
+        ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`
         : `${f.allocationPercent.toFixed(1)}%`,
-    isPositive:
-      f.returnPercent !== undefined
-        ? f.returnPercent > 0
-          ? true
-          : f.returnPercent < 0
-          ? false
-          : null
+      isPositive: pct !== undefined && pct !== null
+        ? pct > 0 ? true : pct < 0 ? false : null
         : null,
-  }))
+    }
+  })
 
   const content = [...items, ...items] // duplicate for seamless loop
 
@@ -275,7 +274,7 @@ function DevelopmentChart({ portfolio, now }: { portfolio: FondPortfolio; now: D
 // DONUT + FUND LIST
 // ------------------------------------------------------------
 
-function AllocationSection({ portfolio, latestValue }: { portfolio: FondPortfolio; latestValue: number | null }) {
+function AllocationSection({ portfolio, latestValue, livePrices }: { portfolio: FondPortfolio; latestValue: number | null; livePrices: Record<string, LivePrice> }) {
   if (portfolio.funds.length === 0) {
     return (
       <p className="text-xs text-muted-foreground text-center py-4">
@@ -320,6 +319,8 @@ function AllocationSection({ portfolio, latestValue }: { portfolio: FondPortfoli
       <div className="flex-1 space-y-2 min-w-0">
         {portfolio.funds.map((fund) => {
           const fundValue = latestValue !== null ? (fund.allocationPercent / 100) * latestValue : null
+          const live = livePrices[fund.id]
+          const dayPct = live?.dayChangePercent
           return (
             <div
               key={fund.id}
@@ -331,22 +332,27 @@ function AllocationSection({ portfolio, latestValue }: { portfolio: FondPortfoli
               />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{fund.name}</p>
-                <p className="text-xs text-muted-foreground">{FUND_TYPE_LABELS[fund.type]}</p>
+                <p className="text-xs text-muted-foreground">
+                  {FUND_TYPE_LABELS[fund.type]}
+                  {live && (
+                    <span className="ml-1 text-zinc-500">· NAV {live.nav.toLocaleString('no-NO', { maximumFractionDigits: 2 })} ({live.navDate})</span>
+                  )}
+                </p>
               </div>
               <div className="text-right shrink-0">
                 <p className="text-xs font-bold font-mono">{fund.allocationPercent.toFixed(1)}%</p>
                 {fundValue !== null && (
                   <p className="text-xs text-muted-foreground font-mono">{fmtNOK(fundValue)}</p>
                 )}
-                {fund.returnPercent !== undefined && (
-                  <p
-                    className={`text-xs font-mono font-medium ${
-                      fund.returnPercent > 0 ? 'text-green-400' : fund.returnPercent < 0 ? 'text-red-400' : 'text-muted-foreground'
-                    }`}
-                  >
+                {dayPct !== undefined && dayPct !== null ? (
+                  <p className={`text-xs font-mono font-medium ${dayPct > 0 ? 'text-green-400' : dayPct < 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                    {dayPct >= 0 ? '+' : ''}{dayPct.toFixed(2)}% i dag
+                  </p>
+                ) : fund.returnPercent !== undefined ? (
+                  <p className={`text-xs font-mono font-medium ${fund.returnPercent > 0 ? 'text-green-400' : fund.returnPercent < 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
                     {fund.returnPercent >= 0 ? '+' : ''}{fund.returnPercent.toFixed(1)}%
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
           )
@@ -502,6 +508,8 @@ function PortfolioSettings({
   const [newFundType, setNewFundType] = useState<FondEntry['type']>('aktivt')
   const [newFundAlloc, setNewFundAlloc] = useState('')
   const [newFundColor, setNewFundColor] = useState('#6366f1')
+  const [newFundIsin, setNewFundIsin] = useState('')
+  const [newFundYahoo, setNewFundYahoo] = useState('')
 
   const isDirty =
     monthlyDeposit !== String(portfolio.monthlyDeposit) ||
@@ -526,10 +534,14 @@ function PortfolioSettings({
       type: newFundType,
       allocationPercent: alloc,
       color: newFundColor,
+      ...(newFundIsin.trim() ? { isin: newFundIsin.trim().toUpperCase() } : {}),
+      ...(newFundYahoo.trim() ? { yahooTicker: newFundYahoo.trim() } : {}),
     }
     setFunds((prev) => [...prev, newFund])
     setNewFundName('')
     setNewFundAlloc('')
+    setNewFundIsin('')
+    setNewFundYahoo('')
   }
 
   function handleRemoveFund(id: string) {
@@ -634,6 +646,24 @@ function PortfolioSettings({
               onChange={(e) => setNewFundAlloc(e.target.value)}
             />
           </div>
+          <div className="space-y-1 w-36">
+            <Label className="text-xs">ISIN (norske fond)</Label>
+            <Input
+              className="h-8 text-xs"
+              placeholder="NO0010140502"
+              value={newFundIsin}
+              onChange={(e) => setNewFundIsin(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1 w-28">
+            <Label className="text-xs">Yahoo ticker (ETF)</Label>
+            <Input
+              className="h-8 text-xs"
+              placeholder="DFNS.AS"
+              value={newFundYahoo}
+              onChange={(e) => setNewFundYahoo(e.target.value)}
+            />
+          </div>
           <div className="space-y-1">
             <Label className="text-xs">Farge</Label>
             <input
@@ -674,7 +704,28 @@ export function FondPage() {
   const { fondPortfolio, setFondPortfolio, addFondSnapshot, removeFondSnapshot } = useEconomyStore()
 
   const [showSettings, setShowSettings] = useState(false)
+  const [livePrices, setLivePrices] = useState<Record<string, LivePrice>>({})
+  const [isFetching, setIsFetching] = useState(false)
+  const [lastFetched, setLastFetched] = useState<Date | null>(null)
   const now = useRef(new Date()).current
+
+  const fetchPrices = useCallback(async () => {
+    const fundsWith = fondPortfolio.funds.filter((f) => f.isin || f.yahooTicker)
+    if (fundsWith.length === 0) return
+    setIsFetching(true)
+    try {
+      const prices = await fetchAllFondPrices(fundsWith)
+      setLivePrices(prices)
+      setLastFetched(new Date())
+    } finally {
+      setIsFetching(false)
+    }
+  }, [fondPortfolio.funds])
+
+  // Hent ved oppstart
+  useEffect(() => {
+    fetchPrices()
+  }, [fetchPrices])
 
   const months = monthsBetween(fondPortfolio.startDate, now)
 
@@ -690,7 +741,7 @@ export function FondPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Animated ticker */}
-      {fondPortfolio.funds.length > 0 && <Ticker funds={fondPortfolio.funds} />}
+      {fondPortfolio.funds.length > 0 && <Ticker funds={fondPortfolio.funds} livePrices={livePrices} />}
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -703,15 +754,26 @@ export function FondPage() {
               {fmtDate(fondPortfolio.startDate)} · {months} mnd
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowSettings((v) => !v)}
-          >
-            <Settings2 className="h-4 w-4 mr-1" />
-            Innstillinger
-            {showSettings ? <ChevronUp className="h-3.5 w-3.5 ml-1" /> : <ChevronDown className="h-3.5 w-3.5 ml-1" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchPrices}
+              disabled={isFetching}
+              title={lastFetched ? `Sist hentet: ${lastFetched.toLocaleTimeString('no-NO')}` : 'Hent live kurser'}
+            >
+              <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              <Settings2 className="h-4 w-4 mr-1" />
+              Innstillinger
+              {showSettings ? <ChevronUp className="h-3.5 w-3.5 ml-1" /> : <ChevronDown className="h-3.5 w-3.5 ml-1" />}
+            </Button>
+          </div>
         </div>
 
         {/* Summary cards */}
@@ -753,12 +815,20 @@ export function FondPage() {
         {/* Allocation donut + fund list */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Fordeling</CardTitle>
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>Fordeling</span>
+              {lastFetched && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  Live kurs {lastFetched.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <AllocationSection
               portfolio={fondPortfolio}
               latestValue={latestSnapshot?.totalValue ?? null}
+              livePrices={livePrices}
             />
           </CardContent>
         </Card>

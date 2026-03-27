@@ -425,9 +425,10 @@ export interface FondEntry {
   name: string
   type: 'aktivt' | 'indeks' | 'rente' | 'annet'
   allocationPercent: number
-  ticker?: string  // Yahoo Finance ticker for live data
   color: string
   returnPercent?: number  // siste kjente avkastning %
+  isin?: string           // ISIN for norske fond (Morningstar)
+  yahooTicker?: string    // Yahoo Finance ticker for ETFer (f.eks. DFNS.AS)
 }
 
 export interface FondPortfolioSnapshot {
