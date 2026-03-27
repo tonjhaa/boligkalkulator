@@ -67,9 +67,9 @@ export function SavingsPage() {
     fondPortfolio,
   } = useEconomyStore()
 
-  const sortedFondSnapshots = [...fondPortfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
+  const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondCurrentValue = sortedFondSnapshots[0]?.totalValue ?? 0
-  const fondMonthlyDeposit = fondPortfolio.monthlyDeposit
+  const fondMonthlyDeposit = fondPortfolio?.monthlyDeposit ?? 0
 
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [showImport, setShowImport] = useState(false)

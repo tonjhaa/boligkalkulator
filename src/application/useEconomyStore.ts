@@ -853,6 +853,16 @@ export const useEconomyStore = create<EconomyState>()(
       importData: (json) => {
         try {
           const data = JSON.parse(json)
+          // Migration: legg til Lånekassen og fond om de mangler
+          const importedDebts: DebtAccount[] = data.debts ?? []
+          const hasLaanekassen = importedDebts.some((d) => d.id === 'laanekassen-studielaan')
+          const mergedDebts = hasLaanekassen
+            ? importedDebts.map((d) =>
+                d.id === 'laanekassen-studielaan'
+                  ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
+                  : d
+              )
+            : [LAANEKASSEN_DEBT, ...importedDebts]
           set({
             profile: data.profile ?? null,
             budgetTemplate: data.budgetTemplate ?? DEFAULT_TEMPLATE,
@@ -860,7 +870,7 @@ export const useEconomyStore = create<EconomyState>()(
             atfEntries: data.atfEntries ?? [],
             savingsAccounts: data.savingsAccounts ?? [],
             savingsGoals: data.savingsGoals ?? [],
-            debts: data.debts ?? [],
+            debts: mergedDebts,
             absenceRecords: data.absenceRecords ?? [],
             absenceEvents: data.absenceEvents ?? [],
             absenceHireDate: data.absenceHireDate ?? null,
@@ -952,6 +962,19 @@ export const useEconomyStore = create<EconomyState>()(
           if (!Array.isArray(state.subscriptions)) state.subscriptions = []
           if (!Array.isArray(state.insurances)) state.insurances = []
           if (!state.budgetOverrides || typeof state.budgetOverrides !== 'object') state.budgetOverrides = {}
+          if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
+        }
+        // Alltid: sørg for fond og lånekassen uavhengig av versjon
+        if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
+        if (Array.isArray(state.debts) && !state.debts.some((d: DebtAccount) => d.id === 'laanekassen-studielaan')) {
+          state.debts = [LAANEKASSEN_DEBT, ...state.debts]
+        }
+        if (Array.isArray(state.debts)) {
+          state.debts = state.debts.map((d: DebtAccount) =>
+            d.id === 'laanekassen-studielaan'
+              ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
+              : d
+          )
         }
         return state
       },

@@ -308,8 +308,12 @@ export function computeBudgetTable(
           }
         }
         // /440-grunnlag = lønn + faste tillegg + ATF (speiler slippen nøyaktig)
-        const grunnlag = effectiveSalaryForMonth(m) + effectiveTilleggForMonth(m) + atfAmount
-        return budgetVal('skatt', m, -Math.round(grunnlag * effectiveTaxRate))
+        // Desember: halvskatt for tabelltrekk (lønn+tillegg), ATF trekkes fullt
+        const grunnlagLonnTillegg = effectiveSalaryForMonth(m) + effectiveTilleggForMonth(m)
+        const desemberFaktor = m === 12 ? 0.5 : 1
+        const skattLonnTillegg = Math.round(grunnlagLonnTillegg * effectiveTaxRate * desemberFaktor)
+        const skattATF = Math.round(atfAmount * effectiveTaxRate)
+        return budgetVal('skatt', m, -(skattLonnTillegg + skattATF))
       },
       (m) => {
         const slip = monthMap.get(m)?.slipData

@@ -184,7 +184,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     return s + (sorted[0]?.balance ?? a.openingBalance)
   }, 0)
 
-  const sortedFondSnapshots = [...fondPortfolio.snapshots].sort((a, b) => b.date.localeCompare(a.date))
+  const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondVerdi = sortedFondSnapshots[0]?.totalValue ?? 0
 
   const totalSparing = sparingKontoer + fondVerdi
@@ -402,6 +402,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         savingsAccounts={savingsAccounts}
         atfSum={atfSum}
         absenceDays={absenceDays}
+        fondVerdi={fondVerdi}
+        fondMonthlyDeposit={fondPortfolio?.monthlyDeposit ?? 0}
       />
 
       {/* ── Månedsstatus (disponibelt) — vises kun ved ingen trend-data ── */}
@@ -443,7 +445,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
               <EmptyState message="Ingen sparemål registrert" action="Legg til mål" onAction={() => onNavigate('savings')} />
             ) : (
               savingsGoals.slice(0, 3).map((goal) => {
-                const progress = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio.monthlyDeposit)
+                const progress = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio?.monthlyDeposit ?? 0)
                 return (
                   <div key={goal.id} className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
@@ -634,6 +636,8 @@ function PengePuls({
   savingsAccounts,
   atfSum,
   absenceDays,
+  fondVerdi,
+  fondMonthlyDeposit,
 }: {
   trendData: { mnd: string; netto: number }[]
   trendAvg: number
@@ -644,6 +648,8 @@ function PengePuls({
   savingsAccounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
   atfSum: number
   absenceDays: number
+  fondVerdi: number
+  fondMonthlyDeposit: number
 }) {
   const chips: { icon: string; text: string; accent?: string }[] = []
 
@@ -674,7 +680,7 @@ function PengePuls({
   // Sparemål ETA — basert på faktisk månedlig sparing på tilknyttede kontoer
   if (savingsGoals.length > 0) {
     const goal = savingsGoals[0]
-    const prog = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio.monthlyDeposit)
+    const prog = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondMonthlyDeposit)
     if (prog.percent >= 100) {
       chips.push({ icon: '✅', text: `«${goal.label}» er nådd!`, accent: 'green' })
     } else if (prog.monthsRemaining !== null && prog.monthsRemaining > 0) {
