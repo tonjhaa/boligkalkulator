@@ -493,7 +493,7 @@ export function computeBudgetTable(
     ivfTonjeSparByMonth.set(m, (ivfTonjeSparByMonth.get(m) ?? 0) + tx.amount)
   }
   if (ivfTonjeSparByMonth.size > 0) {
-    sparingRows.push(mkRow('ivf-sparing-tonje', 'IVF – Sparing Tonje', uniform12(
+    sparingRows.push(mkRow('ivf-sparing-tonje', 'Annen sparing', uniform12(
       (m) => budgetVal('ivf-sparing-tonje', m, -(ivfTonjeSparByMonth.get(m) ?? 0)),
       (m) => ivfTonjeSparByMonth.has(m) ? -(ivfTonjeSparByMonth.get(m)!) : null,
     )))

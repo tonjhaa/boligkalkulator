@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area,
 } from 'recharts'
+import { Progress } from '@/components/ui/progress'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import {
   buildRepaymentPlan,
@@ -149,6 +150,20 @@ export function DebtPage() {
                     <MiniStat label="Terminbeløp" value={fmtNOK(debt.monthlyPayment)} />
                     <MiniStat label="Innfris" value={`${String(payoffMonth).padStart(2, '0')}/${payoffYear}`} />
                   </div>
+
+                  {/* Nedbetalt progressbar */}
+                  {debt.originalAmount > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Nedbetalt {fmtNOK(debt.originalAmount - debt.currentBalance)}</span>
+                        <span>{Math.round((debt.originalAmount - debt.currentBalance) / debt.originalAmount * 100)}% av {fmtNOK(debt.originalAmount)}</span>
+                      </div>
+                      <Progress
+                        value={(debt.originalAmount - debt.currentBalance) / debt.originalAmount * 100}
+                        className="h-2"
+                      />
+                    </div>
+                  )}
 
                   {/* Rentehistorikk */}
                   {debt.rateHistory.length > 1 && (

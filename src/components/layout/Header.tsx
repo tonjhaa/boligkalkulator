@@ -2,6 +2,7 @@ import { Moon, Sun, Menu } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { Button } from '@/components/ui/button'
 
+
 export function Header() {
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
@@ -23,12 +24,10 @@ export function Header() {
         <Menu className="h-5 w-5" />
       </Button>
 
-      <div className="flex items-center gap-2 flex-1">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-          <span className="text-xs font-bold text-primary-foreground">LB</span>
-        </div>
+      <div className="flex items-center gap-2.5 flex-1">
+        <img src="/lb-logo.svg" alt="LB" className="h-8 w-8" />
         <div>
-          <span className="font-semibold text-foreground">Lommeboka</span>
+          <span className="font-semibold text-foreground leading-tight block">Lommeboka</span>
           <p className="text-xs text-muted-foreground italic leading-none">Oversikt er frihet</p>
         </div>
       </div>

@@ -171,159 +171,21 @@ const DEFAULT_TEMPLATE: BudgetTemplate = {
 }
 
 const DEFAULT_FOND_PORTFOLIO: FondPortfolio = {
-  monthlyDeposit: 2500,
-  startDate: '2023-09-01',
-  funds: [
-    { id: '1', name: 'DNB Telecom A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#6366f1', returnPercent: 8.6 },
-    { id: '2', name: 'VanEck Defense UCITS ETF', type: 'indeks', allocationPercent: 20, ticker: 'DFNS.AS', color: '#f43f5e', returnPercent: 14.4 },
-    { id: '3', name: 'DNB Teknologi A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#f97316', returnPercent: -10.7 },
-    { id: '4', name: 'Borea Nordisk Utbytte N', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#ec4899', returnPercent: -6.8 },
-    { id: '5', name: 'DNB European Defence A', type: 'aktivt', allocationPercent: 20, ticker: undefined, color: '#3b82f6', returnPercent: -0.5 },
-  ],
-  snapshots: [
-    { date: '2026-03-26', totalValue: 80458, totalDeposited: 76343 },
-  ],
-}
-
-const LAANEKASSEN_DEBT: DebtAccount = {
-  id: 'laanekassen-studielaan',
-  creditor: 'Lånekassen',
-  type: 'studielaan',
-  loanSubtype: 'Omgjøringslån',
-  originalAmount: 400000,
-  currentBalance: 343207,
-  monthlyPayment: 2586,
-  termFee: 0,
-  startDate: '2022-02-01',
-  effectiveRate: 4.765,
-  rateHistory: [
-    { fromDate: '2022-02-01', nominalRate: 3.19 },
-    { fromDate: '2022-05-01', nominalRate: 3.29 },
-    { fromDate: '2022-07-01', nominalRate: 3.69 },
-    { fromDate: '2022-09-01', nominalRate: 4.24 },
-    { fromDate: '2022-11-01', nominalRate: 4.69 },
-    { fromDate: '2023-03-01', nominalRate: 5.24 },
-    { fromDate: '2023-05-01', nominalRate: 5.49 },
-    { fromDate: '2023-07-01', nominalRate: 5.74 },
-    { fromDate: '2023-09-01', nominalRate: 5.99 },
-    { fromDate: '2023-11-01', nominalRate: 6.24 },
-    { fromDate: '2024-01-01', nominalRate: 6.50 },
-    { fromDate: '2024-05-01', nominalRate: 6.25 },
-    { fromDate: '2024-09-01', nominalRate: 6.00 },
-    { fromDate: '2025-01-01', nominalRate: 5.75 },
-    { fromDate: '2025-03-01', nominalRate: 5.50 },
-    { fromDate: '2025-07-01', nominalRate: 5.25 },
-    { fromDate: '2025-09-01', nominalRate: 5.00 },
-    { fromDate: '2025-11-01', nominalRate: 4.75 },
-    { fromDate: '2026-01-01', nominalRate: 4.671 },
-    { fromDate: '2026-03-01', nominalRate: 4.621 },
-    { fromDate: '2026-05-01', nominalRate: 4.611 },
-  ],
-  paymentHistory: [
-    { date: '2022-02-15', amount: 1974 },
-    { date: '2022-03-15', amount: 1974 },
-    { date: '2022-04-15', amount: 2037 },
-    { date: '2022-05-15', amount: 2037 },
-    { date: '2022-06-15', amount: 2065 },
-    { date: '2022-07-15', amount: 2064 },
-    { date: '2022-08-15', amount: 2056 },
-    { date: '2022-09-15', amount: 2056 },
-    { date: '2022-10-15', amount: 2118 },
-    { date: '2022-11-15', amount: 2118 },
-    { date: '2022-12-15', amount: 2240 },
-    { date: '2023-01-15', amount: 2240 },
-    { date: '2023-02-15', amount: 2307 },
-    { date: '2023-03-15', amount: 2307 },
-    { date: '2023-04-15', amount: 2307 },
-    { date: '2023-05-15', amount: 2344 },
-    { date: '2023-06-15', amount: 2369 },
-    { date: '2023-07-15', amount: 2369 },
-    { date: '2023-08-15', amount: 2422 },
-    { date: '2023-09-15', amount: 2422 },
-    { date: '2023-10-15', amount: 2511 },
-    { date: '2024-01-15', amount: 2607 },
-    { date: '2024-02-15', amount: 2659 },
-    { date: '2024-03-15', amount: 2659 },
-    { date: '2024-04-15', amount: 2678 },
-    { date: '2024-05-15', amount: 2678 },
-    { date: '2024-06-15', amount: 2695 },
-    { date: '2024-07-15', amount: 2695 },
-    { date: '2024-08-15', amount: 2701 },
-    { date: '2024-09-15', amount: 2701 },
-    { date: '2024-10-15', amount: 2699 },
-    { date: '2024-11-15', amount: 2699 },
-    { date: '2024-12-15', amount: 2695 },
-    { date: '2025-01-15', amount: 2695 },
-    { date: '2025-02-15', amount: 2688 },
-    { date: '2025-03-15', amount: 2688 },
-    { date: '2025-04-15', amount: 2684 },
-    { date: '2025-05-15', amount: 2684 },
-    { date: '2025-06-15', amount: 2674 },
-    { date: '2025-07-15', amount: 2674 },
-    { date: '2025-08-15', amount: 2656 },
-    { date: '2025-09-15', amount: 2656 },
-    { date: '2025-10-15', amount: 2627 },
-    { date: '2025-11-15', amount: 2627 },
-    { date: '2025-12-15', amount: 2601 },
-    { date: '2026-01-15', amount: 2601 },
-    { date: '2026-02-15', amount: 2588 },
-    { date: '2026-03-15', amount: 2588 },
-  ],
+  monthlyDeposit: 0,
+  startDate: '',
+  funds: [],
+  snapshots: [],
 }
 
 const DEFAULT_IVF_SETTINGS: IVFSettings = {
-  lonTonje: 700000,
-  lonAne: 630000,
-  studielaanTonje: 343000,
-  studielaanAne: 304000,
+  lonTonje: 0,
+  lonAne: 0,
+  studielaanTonje: 0,
+  studielaanAne: 0,
   annenEgenkapital: 0,
 }
 
-const INITIAL_IVF_TRANSACTIONS: IVFTransaction[] = [
-  { id: 'ivf-1',  date: '2026-01-01', label: 'Startmidler',                   type: 'SPARING',  amount: 7325.03,  merknad: undefined },
-  { id: 'ivf-2',  date: '2026-01-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-3',  date: '2026-01-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-4',  date: '2026-01-30', label: 'Utlegg Ane',                    type: 'ANNET',    amount: 32809,    merknad: 'Fra Ane sin sparekonto, skal tilbakebetales' },
-  { id: 'ivf-5',  date: '2026-01-31', label: 'Faktura donor',                 type: 'FAKTURA',  amount: -32809,   merknad: 'Første faktura' },
-  { id: 'ivf-6',  date: '2026-02-02', label: 'Medisin',                       type: 'KJØP',     amount: -17923.6, merknad: undefined },
-  { id: 'ivf-7',  date: '2026-02-04', label: 'Sparing Tonje (Bidrag Mamma)',  type: 'SPARING',  amount: 13000,    merknad: undefined },
-  { id: 'ivf-8',  date: '2026-02-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-9',  date: '2026-02-11', label: 'Øreavrunding',                  type: 'ANNET',    amount: 8.57,     merknad: undefined },
-  { id: 'ivf-10', date: '2026-02-13', label: 'Medisin',                       type: 'KJØP',     amount: -1403.74, merknad: 'x2 Gonapeptyl og 1x Gonal-f 300IE' },
-  { id: 'ivf-11', date: '2026-02-13', label: 'Medisin',                       type: 'KJØP',     amount: -1999.8,  merknad: 'inkl. Vitaminer' },
-  { id: 'ivf-12', date: '2026-02-16', label: 'Medisin',                       type: 'KJØP',     amount: -442.44,  merknad: undefined },
-  { id: 'ivf-13', date: '2026-02-20', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-14', date: '2026-02-24', label: 'Faktura donor',                 type: 'FAKTURA',  amount: -20509,   merknad: 'Andre faktura - rettelse av feil fra Medicus.' },
-  { id: 'ivf-15', date: '2026-02-28', label: 'GEBYR FAKTURA',                 type: 'ANNET',    amount: -8,       merknad: undefined },
-  { id: 'ivf-16', date: '2026-03-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-17', date: '2026-03-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-18', date: '2026-03-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 1/6' },
-  { id: 'ivf-19', date: '2026-04-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-20', date: '2026-04-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-21', date: '2026-04-30', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 2/6' },
-  { id: 'ivf-22', date: '2026-05-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-23', date: '2026-05-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-24', date: '2026-05-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 3/6' },
-  { id: 'ivf-25', date: '2026-06-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-26', date: '2026-06-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-27', date: '2026-06-30', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 4/6' },
-  { id: 'ivf-28', date: '2026-07-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-29', date: '2026-07-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-30', date: '2026-07-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 5/6' },
-  { id: 'ivf-31', date: '2026-08-11', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-32', date: '2026-08-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-33', date: '2026-08-31', label: 'FAKTURA DELBETALING',           type: 'FAKTURA',  amount: -15841,   merknad: 'SVEA 6/6' },
-  { id: 'ivf-34', date: '2026-09-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-35', date: '2026-09-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-36', date: '2026-10-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-37', date: '2026-10-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-38', date: '2026-11-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-39', date: '2026-11-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-40', date: '2026-12-09', label: 'Sparing Tonje',                 type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-41', date: '2026-12-19', label: 'Sparing Ane',                   type: 'SPARING',  amount: 10000,    merknad: undefined },
-  { id: 'ivf-42', date: '2026-12-31', label: 'Tilbakebetaling utlegg Ane',    type: 'ANNET',    amount: -32809,   merknad: undefined },
-  { id: 'ivf-43', date: '2026-12-31', label: 'DREAMSKONTO',                   type: 'SPARING',  amount: 18965,    merknad: 'Beløp vil endre seg' },
-]
+const INITIAL_IVF_TRANSACTIONS: IVFTransaction[] = []
 
 // ------------------------------------------------------------
 // STORE
@@ -340,7 +202,7 @@ export const useEconomyStore = create<EconomyState>()(
       atfEntries: [],
       savingsAccounts: [],
       savingsGoals: [],
-      debts: [LAANEKASSEN_DEBT],
+      debts: [],
       absenceRecords: [],
       absenceEvents: [],
       absenceHireDate: null,
@@ -853,16 +715,6 @@ export const useEconomyStore = create<EconomyState>()(
       importData: (json) => {
         try {
           const data = JSON.parse(json)
-          // Migration: legg til Lånekassen og fond om de mangler
-          const importedDebts: DebtAccount[] = data.debts ?? []
-          const hasLaanekassen = importedDebts.some((d) => d.id === 'laanekassen-studielaan')
-          const mergedDebts = hasLaanekassen
-            ? importedDebts.map((d) =>
-                d.id === 'laanekassen-studielaan'
-                  ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
-                  : d
-              )
-            : [LAANEKASSEN_DEBT, ...importedDebts]
           set({
             profile: data.profile ?? null,
             budgetTemplate: data.budgetTemplate ?? DEFAULT_TEMPLATE,
@@ -870,7 +722,7 @@ export const useEconomyStore = create<EconomyState>()(
             atfEntries: data.atfEntries ?? [],
             savingsAccounts: data.savingsAccounts ?? [],
             savingsGoals: data.savingsGoals ?? [],
-            debts: mergedDebts,
+            debts: data.debts ?? [],
             absenceRecords: data.absenceRecords ?? [],
             absenceEvents: data.absenceEvents ?? [],
             absenceHireDate: data.absenceHireDate ?? null,
@@ -946,16 +798,6 @@ export const useEconomyStore = create<EconomyState>()(
           if (!Array.isArray(state.savingsAccounts)) state.savingsAccounts = []
           if (!Array.isArray(state.savingsGoals)) state.savingsGoals = []
           if (!Array.isArray(state.debts)) state.debts = []
-          // Legg til Lånekassen-lån om det ikke finnes fra før
-          if (!state.debts.some((d) => d.id === 'laanekassen-studielaan')) {
-            state.debts = [LAANEKASSEN_DEBT, ...state.debts]
-          }
-          // Oppdater paymentHistory og rateHistory om ny data foreligger
-          state.debts = state.debts.map((d) =>
-            d.id === 'laanekassen-studielaan'
-              ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
-              : d
-          )
           if (!Array.isArray(state.absenceRecords)) state.absenceRecords = []
           if (!Array.isArray(state.absenceEvents)) state.absenceEvents = []
           if (!Array.isArray(state.taxSettlements)) state.taxSettlements = []
@@ -964,18 +806,8 @@ export const useEconomyStore = create<EconomyState>()(
           if (!state.budgetOverrides || typeof state.budgetOverrides !== 'object') state.budgetOverrides = {}
           if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
         }
-        // Alltid: sørg for fond og lånekassen uavhengig av versjon
+        // Alltid: sørg for fond
         if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
-        if (Array.isArray(state.debts) && !state.debts.some((d: DebtAccount) => d.id === 'laanekassen-studielaan')) {
-          state.debts = [LAANEKASSEN_DEBT, ...state.debts]
-        }
-        if (Array.isArray(state.debts)) {
-          state.debts = state.debts.map((d: DebtAccount) =>
-            d.id === 'laanekassen-studielaan'
-              ? { ...LAANEKASSEN_DEBT, currentBalance: d.currentBalance, monthlyPayment: d.monthlyPayment }
-              : d
-          )
-        }
         return state
       },
       partialize: (state) => ({
