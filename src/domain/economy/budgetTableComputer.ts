@@ -84,6 +84,7 @@ function uniform12(budgetFn: (m: number) => number, actualFn: (m: number) => num
 
 function subMonthAmount(sub: SubscriptionEntry, year: number, month: number): number {
   const key = `${year}-${String(month).padStart(2, '0')}`
+  if (sub.activeUntil && key > sub.activeUntil) return 0
   return sub.monthlyAmounts[key] ?? sub.defaultMonthly
 }
 
