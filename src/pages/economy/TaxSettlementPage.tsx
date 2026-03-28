@@ -96,9 +96,27 @@ export function TaxSettlementPage() {
     ? Math.abs(bruttoRow.annualActual)
     : slipMonth > 0 ? Math.round((grossYTD / slipMonth) * 12) : 0
 
-  // Avvik mot meldt skatt
+  // Avvik mot meldt skatt — justert for faktisk inntekt
   const expectedTax = taxForecast?.expectedTax ?? 0
-  const deficit = expectedTax > 0 ? expectedTax - projectedWithheld : null
+  const expectedIncome = taxForecast?.expectedIncome ?? 0
+
+  // Effektiv skattesats fra skattemeldingen
+  const effectiveRate = expectedIncome > 0 && expectedTax > 0
+    ? expectedTax / expectedIncome
+    : null
+
+  // Estimert faktisk skatt basert på prognostisert inntekt
+  const estimatedActualTax = effectiveRate !== null && projectedIncome > 0
+    ? Math.round(projectedIncome * effectiveRate)
+    : expectedTax > 0 ? expectedTax : 0
+
+  // Inntektseffekt: ekstra skatt p.g.a. høyere/lavere inntekt enn antatt
+  const incomeEffect = effectiveRate !== null && projectedIncome > 0 && expectedIncome > 0
+    ? Math.round((projectedIncome - expectedIncome) * effectiveRate)
+    : 0
+
+  // Avvik = estimert faktisk skatt minus prognose innbetalt trekk
+  const deficit = estimatedActualTax > 0 ? estimatedActualTax - projectedWithheld : null
   const monthsRemaining = 12 - slipMonth
   const monthlyAdjustment = deficit !== null && monthsRemaining > 0
     ? Math.round(deficit / monthsRemaining)
@@ -126,6 +144,8 @@ export function TaxSettlementPage() {
         withheldYTD={withheldYTD}
         projectedWithheld={projectedWithheld}
         projectedIncome={projectedIncome}
+        estimatedActualTax={estimatedActualTax}
+        incomeEffect={incomeEffect}
         slipMonth={slipMonth}
         deficit={deficit}
         monthlyAdjustment={monthlyAdjustment}
@@ -301,6 +321,8 @@ function TaxForecastSection({
   withheldYTD,
   projectedWithheld,
   projectedIncome,
+  estimatedActualTax,
+  incomeEffect,
   slipMonth,
   deficit,
   monthlyAdjustment,
@@ -317,6 +339,8 @@ function TaxForecastSection({
   withheldYTD: number
   projectedWithheld: number
   projectedIncome: number
+  estimatedActualTax: number
+  incomeEffect: number
   slipMonth: number
   deficit: number | null
   monthlyAdjustment: number | null
@@ -437,6 +461,8 @@ function TaxForecastSection({
             {/* Detaljert tabell */}
             {slipMonth > 0 && (
               <div className="text-xs space-y-1.5 border-t border-border pt-3">
+
+                {/* Trekk hittil */}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Skattetrekk (/440) hittil ({slipMonth} mnd)</span>
                   <span className="font-mono">{fmtNOK(skattetrekkYTD)}</span>
@@ -451,16 +477,42 @@ function TaxForecastSection({
                   <span className="text-muted-foreground">Sum trekk hittil</span>
                   <span className="font-mono">{fmtNOK(withheldYTD)}</span>
                 </div>
+
+                {/* Inntektsprognose */}
                 <div className="flex justify-between border-t border-border/50 pt-1.5">
-                  <span className="text-muted-foreground">Prognose hele år (12 mnd)</span>
-                  <span className="font-mono">{fmtNOK(projectedWithheld)}</span>
+                  <span className="text-muted-foreground">Inntekt iflg. skattemelding</span>
+                  <span className="font-mono">{fmtNOK(taxForecast.expectedIncome)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Forventet skatt (meldt)</span>
+                  <span className="text-muted-foreground">Prognose faktisk inntekt</span>
+                  <span className="font-mono">{fmtNOK(projectedIncome)}</span>
+                </div>
+                {incomeEffect !== 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">→ Inntektseffekt på skatt</span>
+                    <span className={cn('font-mono', incomeEffect > 0 ? 'text-red-400' : 'text-green-400')}>
+                      {incomeEffect > 0 ? '+' : ''}{fmtNOK(incomeEffect)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Skatteprognose */}
+                <div className="flex justify-between border-t border-border/50 pt-1.5">
+                  <span className="text-muted-foreground">Skatt iflg. skattemelding</span>
                   <span className="font-mono">{fmtNOK(taxForecast.expectedTax)}</span>
                 </div>
+                <div className="flex justify-between font-medium">
+                  <span className="text-muted-foreground">Estimert faktisk skatt</span>
+                  <span className="font-mono">{fmtNOK(estimatedActualTax)}</span>
+                </div>
+                <div className="flex justify-between border-t border-border/50 pt-1.5">
+                  <span className="text-muted-foreground">Prognose innbetalt trekk (12 mnd)</span>
+                  <span className="font-mono">{fmtNOK(projectedWithheld)}</span>
+                </div>
+
+                {/* Avvik */}
                 <div className="flex justify-between font-medium border-t border-border pt-1.5">
-                  <span>Avvik</span>
+                  <span>Estimert restskatt / til gode</span>
                   <span className={cn(
                     'font-mono',
                     onTrack ? 'text-green-400' : underPaying ? 'text-red-400' : 'text-yellow-400'
@@ -468,12 +520,6 @@ function TaxForecastSection({
                     {deficit! >= 0 ? '+' : ''}{fmtNOK(deficit!)}
                   </span>
                 </div>
-                {projectedIncome > 0 && (
-                  <div className="flex justify-between text-muted-foreground pt-1">
-                    <span>Prognose bruttoinntekt</span>
-                    <span className="font-mono">{fmtNOK(projectedIncome)}</span>
-                  </div>
-                )}
               </div>
             )}
           </div>
