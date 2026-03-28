@@ -612,13 +612,19 @@ export function computeBudgetTable(
       .filter((a) => !(hideTemporary && a.isTemporary))
       .reduce((s, a) => s + a.amount, 0)
 
-    // YTD brutto: lønn + alle faste tillegg + ATF (samme som hittilBrutto på slippen)
+    // YTD brutto: akkumulert sum per måned.
+    // For måneder med slipp brukes faktisk bruttoSum (konsistent med brutto-inntekt-raden).
+    // For fremtidige måneder brukes budsjettert inntektssum (inkl. ATF og feriepenger-netto).
     const ytdBruttoCells: BudgetCell[] = []
     let ytdBruttoBudget = 0
     for (let i = 0; i < 12; i++) {
       const m = i + 1
       const slip = monthMap.get(m)?.slipData
-      ytdBruttoBudget += budgetSalary(m) + allTillegg + (atfByMonth.get(m) ?? 0)
+      if (slip) {
+        ytdBruttoBudget += slip.bruttoSum
+      } else {
+        ytdBruttoBudget += inntekterRows.filter(r => !r.isHidden).reduce((s, r) => s + r.cells[i].budget, 0)
+      }
       ytdBruttoCells.push({ budget: ytdBruttoBudget, actual: slip?.hittilBrutto ?? null })
     }
 
