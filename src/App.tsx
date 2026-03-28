@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { MainNav } from '@/components/layout/MainNav'
 import { CalculatorPage } from '@/pages/CalculatorPage'
@@ -12,6 +12,12 @@ import { useEconomyStore } from '@/application/useEconomyStore'
 const EconomyPage = lazy(() =>
   import('@/pages/economy/EconomyPage').then((m) => ({
     default: m.EconomyPage,
+  }))
+)
+
+const TaxCalculatorPage = lazy(() =>
+  import('@/pages/TaxCalculatorPage').then((m) => ({
+    default: m.TaxCalculatorPage as ComponentType,
   }))
 )
 
@@ -34,6 +40,11 @@ function AppContent() {
         {currentView === 'economy' && (
           <Suspense fallback={<PageFallback />}>
             <EconomyPage />
+          </Suspense>
+        )}
+        {currentView === 'skattekalkulator' && (
+          <Suspense fallback={<PageFallback />}>
+            <TaxCalculatorPage />
           </Suspense>
         )}
       </div>

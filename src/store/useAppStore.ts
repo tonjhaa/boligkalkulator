@@ -9,7 +9,7 @@ import type {
 } from '@/types'
 import { defaultConfig } from '@/config/default.config'
 
-export type AppView = 'calculator' | 'comparison' | 'settings' | 'economy'
+export type AppView = 'calculator' | 'comparison' | 'settings' | 'economy' | 'skattekalkulator'
 
 interface AppState {
   config: AppConfig
