@@ -15,6 +15,7 @@ export interface TaxRates {
   trygdeavgiftLonn: number
   trygdeavgiftPensjon: number
   trygdeavgiftNæring: number
+  fagforeningskontingentMaks: number
   formueskattGrense: number
   formueskattKommunal: number   // over grensen
   formueskattStatlig1: number
@@ -41,6 +42,7 @@ export const TAX_RATES_2026: TaxRates = {
   trygdeavgiftLonn:    0.078,
   trygdeavgiftPensjon: 0.051,
   trygdeavgiftNæring:  0.110,
+  fagforeningskontingentMaks: 8_000,
   formueskattGrense:         1_900_000,
   formueskattKommunal:       0.0035,
   formueskattStatlig1:       0.0065,
@@ -60,7 +62,13 @@ export interface TaxInput {
   pensjonsinntekt: number
   næringsInntekt: number
   kapitalInntekt: number     // netto (kapitalinntekt minus kapitalkostnader)
-  andreFradrag: number       // f.eks. rentefradrag, fagforeningskontingent
+  andreFradrag: number           // f.eks. gaver til frivillighet, div. andre fradrag
+  renteutgifter: number          // renter på lån (boliglån, studielån, etc.)
+  arbeidsreiseFradrag: number    // pendlerfradrag over egenandel
+  fagforeningskontingent: number // fradragsberettiget, maks 8 000 kr
+  pensjonspremie: number         // premie til pensjonsordning (SPK/OTP + evt. IPS)
+  utgiftsgodtgjørelse: number    // overskudd fra utgiftsgodtgjørelse (inntekt)
+  bsuSkattefradrag: number       // direkte skattefradrag (10% av BSU-innskudd, maks 2 750 kr)
   // Formue (markedsverdier — vi beregner skattemessig verdi)
   primaerboligVerdi: number  // 25% av markedsverdi brukes
   sekundaerboligVerdi: number
@@ -99,6 +107,12 @@ export interface TaxResult {
   trygdeavgiftNæring: number
   formueskattKommunal: number
   formueskattStatlig: number
+
+  // Capped fradragsbeløp (for visning)
+  fagforeningFradrag: number
+
+  // Direkte kreditter
+  bsuSkattefradragBeløp: number
 
   // Summer
   totalSkatt: number
@@ -151,7 +165,9 @@ function beregnFormueskatt(nettoFormue: number, rates: TaxRates): { kommunal: nu
 }
 
 export function beregnSkatt(input: TaxInput, rates: TaxRates = CURRENT_RATES): TaxResult {
-  const { lonnsInntekt, pensjonsinntekt, næringsInntekt, kapitalInntekt, andreFradrag } = input
+  const { lonnsInntekt, pensjonsinntekt, næringsInntekt, kapitalInntekt, andreFradrag,
+          renteutgifter, arbeidsreiseFradrag, fagforeningskontingent, pensjonspremie,
+          utgiftsgodtgjørelse, bsuSkattefradrag } = input
 
   // Minstefradrag
   const minstefradragLonn = Math.min(
@@ -164,14 +180,18 @@ export function beregnSkatt(input: TaxInput, rates: TaxRates = CURRENT_RATES): T
   )
 
   // Personinntekt (grunnlag for trinnskatt og trygdeavgift)
-  const personinntekt = lonnsInntekt + næringsInntekt
+  const personinntekt = lonnsInntekt + næringsInntekt + utgiftsgodtgjørelse
+
+  // Fagforeningskontingent er begrenset til maks
+  const fagforeningFradrag = Math.min(fagforeningskontingent, rates.fagforeningskontingentMaks)
 
   // Alminnelig inntekt
-  const totalInntekt = lonnsInntekt + pensjonsinntekt + næringsInntekt + kapitalInntekt
+  const totalInntekt = lonnsInntekt + pensjonsinntekt + næringsInntekt + kapitalInntekt + utgiftsgodtgjørelse
+  const samledeFradrag = andreFradrag + renteutgifter + arbeidsreiseFradrag + fagforeningFradrag + pensjonspremie
   const alminneligInntektFørPersF = totalInntekt
     - minstefradragLonn
     - minstefradragPensjon
-    - andreFradrag
+    - samledeFradrag
   const alminneligInntekt = Math.max(0, alminneligInntektFørPersF - rates.personfradrag)
 
   // Skatt på alminnelig inntekt (22%)
@@ -196,10 +216,14 @@ export function beregnSkatt(input: TaxInput, rates: TaxRates = CURRENT_RATES): T
   const skattepliktigFormue = Math.max(0, nettoFormue - rates.formueskattGrense)
   const { kommunal: formueskattKommunal, statlig: formueskattStatlig } = beregnFormueskatt(nettoFormue, rates)
 
+  // BSU skattefradrag (direkte kreditering mot total skatt, maks 2 750 kr)
+  const bsuSkattefradragBeløp = Math.min(Math.round(bsuSkattefradrag), 2_750)
+
   // Total
-  const totalSkatt = skattAlminneligInntekt + trinnskatt
+  const totalSkatt = Math.max(0, skattAlminneligInntekt + trinnskatt
     + trygdeavgiftLonn + trygdeavgiftPensjon + trygdeavgiftNæring
     + formueskattKommunal + formueskattStatlig
+    - bsuSkattefradragBeløp)
 
   const effektivSats = totalInntekt > 0 ? totalSkatt / totalInntekt : 0
 
@@ -217,6 +241,8 @@ export function beregnSkatt(input: TaxInput, rates: TaxRates = CURRENT_RATES): T
     minstefradragPensjon,
     alminneligInntekt,
     personinntekt,
+    fagforeningFradrag,
+    bsuSkattefradragBeløp,
     skattemessigFormue,
     nettoFormue,
     skattepliktigFormue,

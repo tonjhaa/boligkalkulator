@@ -124,6 +124,8 @@ export interface EmploymentProfile {
   vacationPeriods?: VacationPeriod[]
   /** Antall feriedager per kalenderår (standard 25) */
   vacationDaysPerYear?: number
+  /** Etikett brukt i IVF-prosjekttransaksjoner for å identifisere egne bidrag (lagres i Supabase) */
+  ivfOwnerLabel?: string
 }
 
 export interface VacationPeriod {

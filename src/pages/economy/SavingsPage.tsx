@@ -94,6 +94,10 @@ export function SavingsPage() {
     .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
     .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear), 0)
 
+  const totalInterestForecast = savingsAccounts
+    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
+    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear, true), 0)
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       {/* Header */}
@@ -140,11 +144,13 @@ export function SavingsPage() {
               subvalue="10% av innskudd"
             />
           )}
-          {totalInterestIncome > 0 && (
+          {totalInterestForecast > 0 && (
             <SummaryCard
               label={`Renteinntekter ${currentYear}`}
-              value={fmtNOK(totalInterestIncome)}
-              subvalue="opptjent hittil"
+              value={fmtNOK(totalInterestForecast)}
+              subvalue={totalInterestIncome > 0 && totalInterestIncome < totalInterestForecast
+                ? `${fmtNOK(totalInterestIncome)} opptjent hittil`
+                : 'prognose hele året'}
             />
           )}
         </div>
@@ -289,6 +295,9 @@ function AccountCard({
   const interestIncome = (account.type !== 'fond' && account.type !== 'krypto')
     ? computeYearlyInterestIncome(account, currentYear)
     : 0
+  const interestForecast = (account.type !== 'fond' && account.type !== 'krypto')
+    ? computeYearlyInterestIncome(account, currentYear, true)
+    : 0
 
   // Prognose: neste 24 måneder
   const projections = projectSavingsGrowth(account, {
@@ -340,11 +349,17 @@ function AccountCard({
             subvalue={isBSU ? 'krediteres 31. des' : 'månedlig kreditering'}
           />
           <MiniStat label="Årets innskudd" value={fmtNOK(ytdContribs || 0)} />
-          {interestIncome > 0 ? (
+          {interestForecast > 0 ? (
             <MiniStat
               label={`Renteinntekter ${currentYear}`}
-              value={fmtNOK(interestIncome)}
-              subvalue={isBSU ? 'opptjent (krediteres des)' : 'kreditert hittil'}
+              value={fmtNOK(interestForecast)}
+              subvalue={
+                isBSU
+                  ? `${fmtNOK(interestIncome)} opptjent hittil`
+                  : interestIncome < interestForecast
+                    ? `${fmtNOK(interestIncome)} kreditert hittil`
+                    : 'prognose hele året'
+              }
             />
           ) : (
             <MiniStat

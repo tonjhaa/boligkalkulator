@@ -261,7 +261,7 @@ export function calculateGoalProgress(
  *
  * Bruker rateHistory for riktig rente per periode.
  */
-export function computeYearlyInterestIncome(account: SavingsAccount, year: number): number {
+export function computeYearlyInterestIncome(account: SavingsAccount, year: number, forceFullYear = false): number {
   // Startbalanse: siste kjente saldo FØR dette året
   const prevEntry = [...account.balanceHistory]
     .filter((b) => b.year < year || (b.year === year && b.month === 0))
@@ -269,7 +269,7 @@ export function computeYearlyInterestIncome(account: SavingsAccount, year: numbe
   let balance = prevEntry?.balance ?? account.openingBalance
 
   const now = new Date()
-  const toMonth = year < now.getFullYear() ? 12 : now.getMonth() + 1
+  const toMonth = forceFullYear || year < now.getFullYear() ? 12 : now.getMonth() + 1
 
   let totalInterest = 0
   let yearlyAccrued = 0
@@ -303,7 +303,8 @@ export function computeYearlyInterestIncome(account: SavingsAccount, year: numbe
   }
 
   // Inneværende år med BSU: returner opptjent (ikke kreditert ennå)
-  if (account.interestCreditFrequency === 'yearly' && year === now.getFullYear()) {
+  // Ved forceFullYear kjøres til des, så yearlyAccrued er lagt til totalInterest allerede
+  if (account.interestCreditFrequency === 'yearly' && year === now.getFullYear() && !forceFullYear) {
     return Math.round(yearlyAccrued)
   }
 

@@ -112,6 +112,7 @@ export function computeBudgetTable(
   hideTemporary = false,
   ivfTransactions: IVFTransaction[] = [],
   fondPortfolio?: FondPortfolio,
+  ivfSelfLabel?: string,
 ): BudgetTableData {
 
   // ---- Month lookup (locked months in this year) ----
@@ -481,12 +482,12 @@ export function computeBudgetTable(
     sparingRows.push(mkRow(`sav-t-${line.id}`, line.label, uniform12((m) => budgetVal(`sav-t-${line.id}`, m, line.amount), () => null)))
   }
 
-  // IVF "Sparing Tonje" — faktiske beløp per måned fra prosjektfanen
+  // IVF eget sparebidrag — faktiske beløp per måned fra prosjektfanen
   const ivfTonjeSparByMonth = new Map<number, number>()
   for (const tx of ivfTransactions) {
     if (tx.type !== 'SPARING') continue
     const lbl = tx.label.toLowerCase()
-    if (!lbl.includes('tonje')) continue
+    if (ivfSelfLabel && !lbl.includes(ivfSelfLabel.toLowerCase())) continue
     if (lbl.includes('mamma') || lbl.includes('bidrag')) continue
     const d = new Date(tx.date)
     if (d.getFullYear() !== year) continue

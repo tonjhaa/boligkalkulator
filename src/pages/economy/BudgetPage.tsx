@@ -110,6 +110,7 @@ export function BudgetPage() {
     hideTemporary,
     ivfTransactions,
     fondPortfolio,
+    profile?.ivfOwnerLabel,
   )
 
   const { metas, sections, estimatedAnnualGrowthRate } = tableData

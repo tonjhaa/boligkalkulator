@@ -9,6 +9,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { beregnSkatt, CURRENT_RATES, type TaxInput } from '@/domain/economy/norwegianTaxCalc'
+import { computeYearlyInterestIncome } from '@/domain/economy/savingsCalculator'
 import { cn } from '@/lib/utils'
 
 // ------------------------------------------------------------
@@ -29,13 +30,26 @@ const EMPTY_INPUT: TaxInput = {
   pensjonsinntekt: 0,
   næringsInntekt: 0,
   kapitalInntekt: 0,
+  utgiftsgodtgjørelse: 0,
   andreFradrag: 0,
+  renteutgifter: 0,
+  arbeidsreiseFradrag: 0,
+  fagforeningskontingent: 0,
+  pensjonspremie: 0,
+  bsuSkattefradrag: 0,
   primaerboligVerdi: 0,
   sekundaerboligVerdi: 0,
   bankinnskudd: 0,
   aksjerFondVerdi: 0,
   annenFormue: 0,
   gjeld: 0,
+}
+
+// Pendlerfradrag 2026: 1.76 kr/km (alle km), egenandel 14 000 kr
+const PENDLER_KM_SATS = 1.76
+const PENDLER_EGENANDEL = 14_000
+export function beregnPendlerfradrag(kmEnVei: number, arbeidsdager: number): number {
+  return Math.max(0, Math.round(kmEnVei * 2 * arbeidsdager * PENDLER_KM_SATS - PENDLER_EGENANDEL))
 }
 
 // ------------------------------------------------------------
@@ -64,15 +78,56 @@ export function TaxCalculatorPage() {
   const allRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
   const bruttoRow = allRows.find((r) => r.id === 'brutto')
   const projectedIncome = bruttoRow ? Math.abs(bruttoRow.annualActual) : 0
+  const projectedFagforening = Math.abs(allRows.find((r) => r.id === 'fagforening')?.annualActual ?? 0)
+  const projectedPensjon = Math.abs(allRows.find((r) => r.id === 'pensjon')?.annualActual ?? 0)
+
+  const estimatedInterest = useMemo(
+    () => savingsAccounts
+      .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
+      .reduce((sum, a) => sum + computeYearlyInterestIncome(a, currentYear, true), 0),
+    [savingsAccounts, currentYear]
+  )
+
+  // BSU skattefradrag: 10% av årets innskudd, maks 2 750 kr
+  const bsuAccount = savingsAccounts.find((a) => a.type === 'BSU')
+  const bsuYearlyContrib = useMemo(() => {
+    if (!bsuAccount) return 0
+    return (bsuAccount.contributions ?? [])
+      .filter((c) => new Date(c.date).getFullYear() === currentYear)
+      .reduce((s, c) => s + c.amount, 0)
+  }, [bsuAccount, currentYear])
+  const autoBsuFradrag = Math.min(Math.round(bsuYearlyContrib * 0.1), 2_750)
+
+  // Renteutgifter: estimert fra låneregisteret (currentBalance * gjeldende rente)
+  const autoRenteutgifter = useMemo(() => {
+    return debts.reduce((sum, d) => {
+      const sorted = [...d.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
+      const rate = sorted[0]?.nominalRate ?? 0
+      return sum + Math.round(d.currentBalance * rate / 100)
+    }, 0)
+  }, [debts])
 
   const [input, setInput] = useState<TaxInput>(() => ({
     ...EMPTY_INPUT,
     lonnsInntekt: projectedIncome > 0 ? projectedIncome : 0,
+    kapitalInntekt: estimatedInterest > 0 ? Math.round(estimatedInterest) : 0,
+    fagforeningskontingent: projectedFagforening,
+    pensjonspremie: projectedPensjon,
+    bsuSkattefradrag: autoBsuFradrag,
+    renteutgifter: autoRenteutgifter,
   }))
 
   const [showFormue, setShowFormue] = useState(false)
+  const [kmEnVei, setKmEnVei] = useState(0)
+  const [arbeidsdager, setArbeidsdager] = useState(230)
 
-  const result = useMemo(() => beregnSkatt(input, CURRENT_RATES), [input])
+  const pendlerfradrag = beregnPendlerfradrag(kmEnVei, arbeidsdager)
+
+  const effectiveInput = useMemo(
+    () => ({ ...input, arbeidsreiseFradrag: pendlerfradrag }),
+    [input, pendlerfradrag]
+  )
+  const result = useMemo(() => beregnSkatt(effectiveInput, CURRENT_RATES), [effectiveInput])
 
   function set(field: keyof TaxInput, value: number) {
     setInput((prev) => ({ ...prev, [field]: value }))
@@ -137,7 +192,23 @@ export function TaxCalculatorPage() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">Kapitalinntekt (netto)</Label>
+            <Label className="text-xs">Overskudd fra utgiftsgodtgjørelse</Label>
+            <NumberInput value={input.utgiftsgodtgjørelse} onChange={(v) => set('utgiftsgodtgjørelse', v)} suffix="kr" step={500} min={0} />
+            <p className="text-xs text-muted-foreground">F.eks. trekkfri kjøregodtgjørelse som overstiger faktiske kostnader</p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Kapitalinntekt (netto)</Label>
+              {estimatedInterest > 0 && (
+                <button
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => set('kapitalInntekt', Math.round(estimatedInterest))}
+                >
+                  Fyll fra sparing ({fmtNOK(Math.round(estimatedInterest))})
+                </button>
+              )}
+            </div>
             <NumberInput value={input.kapitalInntekt} onChange={(v) => set('kapitalInntekt', v)} suffix="kr" step={1000} />
             <p className="text-xs text-muted-foreground">Renteinntekter, utbytte, gevinster minus tap</p>
           </div>
@@ -162,10 +233,85 @@ export function TaxCalculatorPage() {
               <span className="font-mono">{fmtNOK(CURRENT_RATES.personfradrag)}</span>
             </div>
           </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Renteutgifter på lån</Label>
+              {autoRenteutgifter > 0 && (
+                <button className="text-xs text-primary hover:underline" onClick={() => set('renteutgifter', autoRenteutgifter)}>
+                  Fyll fra lån ({fmtNOK(autoRenteutgifter)})
+                </button>
+              )}
+            </div>
+            <NumberInput value={input.renteutgifter} onChange={(v) => set('renteutgifter', v)} suffix="kr" step={1000} min={0} />
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Fagforeningskontingent</Label>
+              {projectedFagforening > 0 && (
+                <button className="text-xs text-primary hover:underline" onClick={() => set('fagforeningskontingent', projectedFagforening)}>
+                  Fyll fra budsjett ({fmtNOK(projectedFagforening)})
+                </button>
+              )}
+            </div>
+            <NumberInput value={input.fagforeningskontingent} onChange={(v) => set('fagforeningskontingent', v)} suffix="kr" step={100} min={0} />
+            <p className="text-xs text-muted-foreground">Maks {fmtNOK(CURRENT_RATES.fagforeningskontingentMaks)} er fradragsberettiget</p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Premie til pensjonsordning</Label>
+              {projectedPensjon > 0 && (
+                <button className="text-xs text-primary hover:underline" onClick={() => set('pensjonspremie', projectedPensjon)}>
+                  Fyll fra budsjett ({fmtNOK(projectedPensjon)})
+                </button>
+              )}
+            </div>
+            <NumberInput value={input.pensjonspremie} onChange={(v) => set('pensjonspremie', v)} suffix="kr" step={500} min={0} />
+            <p className="text-xs text-muted-foreground">SPK/OTP og evt. IPS — fullt fradragsberettiget</p>
+          </div>
+
+          {/* Arbeidsreise */}
+          <div className="space-y-2">
+            <Label className="text-xs">Arbeidsreisefradrag</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <p className="text-xs text-muted-foreground">Km (én vei)</p>
+                <NumberInput value={kmEnVei} onChange={setKmEnVei} suffix="km" step={1} min={0} />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-xs text-muted-foreground">Arbeidsdager</p>
+                <NumberInput value={arbeidsdager} onChange={setArbeidsdager} step={5} min={0} />
+              </div>
+            </div>
+            {kmEnVei > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {pendlerfradrag > 0
+                  ? `Fradrag: ${fmtNOK(pendlerfradrag)} (${(kmEnVei * 2 * arbeidsdager).toLocaleString('no-NO')} km × 1,76 kr − 14 000 kr egenandel)`
+                  : `Under egenandel på 14 000 kr — ingen fradrag`}
+              </p>
+            )}
+          </div>
+
           <div className="space-y-1">
             <Label className="text-xs">Andre fradrag</Label>
             <NumberInput value={input.andreFradrag} onChange={(v) => set('andreFradrag', v)} suffix="kr" step={1000} min={0} />
-            <p className="text-xs text-muted-foreground">Rentefradrag, pendlerfradrag, gaver til frivillighet m.m.</p>
+            <p className="text-xs text-muted-foreground">Fagforeningskontingent, gaver til frivillighet m.m.</p>
+          </div>
+
+          {/* BSU skattefradrag */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">BSU skattefradrag</Label>
+              {autoBsuFradrag > 0 && (
+                <button className="text-xs text-primary hover:underline" onClick={() => set('bsuSkattefradrag', autoBsuFradrag)}>
+                  Fyll fra BSU ({fmtNOK(autoBsuFradrag)})
+                </button>
+              )}
+            </div>
+            <NumberInput value={input.bsuSkattefradrag} onChange={(v) => set('bsuSkattefradrag', v)} suffix="kr" step={100} min={0} max={2750} />
+            <p className="text-xs text-muted-foreground">10% av årets BSU-innskudd, maks 2 750 kr. Trekkes direkte fra skatten.</p>
           </div>
         </div>
 
@@ -267,12 +413,17 @@ export function TaxCalculatorPage() {
                 <TaxRow label="Lønnsinntekt" value={input.lonnsInntekt} />
                 {input.pensjonsinntekt > 0 && <TaxRow label="Pensjonsinntekt" value={input.pensjonsinntekt} />}
                 {input.næringsInntekt > 0  && <TaxRow label="Næringsinntekt" value={input.næringsInntekt} />}
+                {input.utgiftsgodtgjørelse > 0 && <TaxRow label="Overskudd utgiftsgodtgjørelse" value={input.utgiftsgodtgjørelse} />}
                 {input.kapitalInntekt !== 0 && <TaxRow label="Kapitalinntekt (netto)" value={input.kapitalInntekt} />}
                 <TaxRow label="− Minstefradrag lønn" value={-result.minstefradragLonn} indent />
                 {result.minstefradragPensjon > 0 && (
                   <TaxRow label="− Minstefradrag pensjon" value={-result.minstefradragPensjon} indent />
                 )}
-                {input.andreFradrag > 0 && <TaxRow label="− Andre fradrag" value={-input.andreFradrag} indent />}
+                {effectiveInput.renteutgifter > 0 && <TaxRow label="− Renteutgifter" value={-effectiveInput.renteutgifter} indent />}
+                {result.fagforeningFradrag > 0 && <TaxRow label="− Fagforeningskontingent" value={-result.fagforeningFradrag} indent />}
+                {effectiveInput.pensjonspremie > 0 && <TaxRow label="− Premie til pensjonsordning" value={-effectiveInput.pensjonspremie} indent />}
+                {pendlerfradrag > 0 && <TaxRow label="− Arbeidsreisefradrag" value={-pendlerfradrag} indent />}
+                {effectiveInput.andreFradrag > 0 && <TaxRow label="− Andre fradrag" value={-effectiveInput.andreFradrag} indent />}
                 <TaxRow label="− Personfradrag" value={-CURRENT_RATES.personfradrag} indent />
                 <TaxRow label="= Alminnelig inntekt" value={result.alminneligInntekt} bold />
                 <TaxRow label="Personinntekt (lønn + næring)" value={result.personinntekt} />
@@ -342,6 +493,14 @@ export function TaxCalculatorPage() {
                       />
                     )}
                   </>
+                )}
+
+                {result.bsuSkattefradragBeløp > 0 && (
+                  <TaxRow
+                    label="− BSU skattefradrag (direkte kreditering)"
+                    value={-result.bsuSkattefradragBeløp}
+                    indent
+                  />
                 )}
 
                 <tr className="border-t-2 border-border">
