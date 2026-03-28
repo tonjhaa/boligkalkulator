@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type React from 'react'
 import { Plus, Trash2, ToggleLeft, ToggleRight, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,10 +44,17 @@ export function SubscriptionsPage() {
   const [editingInsId, setEditingInsId] = useState<string | null>(null)
   const [expandedInsId, setExpandedInsId] = useState<string | null>(null)
 
-  const activeSubscriptions = subscriptions.filter((s) => s.isActive)
-  const inactiveSubscriptions = subscriptions.filter((s) => !s.isActive)
+  const now = new Date()
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const currentYear = String(now.getFullYear())
 
-  const currentYear = String(new Date().getFullYear())
+  const activeSubscriptions = subscriptions.filter(
+    (s) => s.isActive && (!s.activeUntil || s.activeUntil >= currentMonthKey)
+  )
+  const expiredSubscriptions = subscriptions.filter(
+    (s) => s.isActive && s.activeUntil && s.activeUntil < currentMonthKey
+  )
+  const inactiveSubscriptions = subscriptions.filter((s) => !s.isActive)
 
   const monthlySubTotal = activeSubscriptions.reduce((s, sub) => s + sub.defaultMonthly, 0)
   const yearlyInsTotal = insurances
@@ -107,6 +115,7 @@ export function SubscriptionsPage() {
                   <SubscriptionRow
                     key={sub.id}
                     sub={sub}
+                    currentMonthKey={currentMonthKey}
                     onToggle={() => updateSubscription(sub.id, { isActive: false })}
                     onRemove={() => removeSubscription(sub.id)}
                   />
@@ -126,6 +135,29 @@ export function SubscriptionsPage() {
         </Card>
       )}
 
+      {expiredSubscriptions.length > 0 && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Utløpte kjøp</p>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm opacity-50">
+                <tbody>
+                  {expiredSubscriptions.map((sub) => (
+                    <SubscriptionRow
+                      key={sub.id}
+                      sub={sub}
+                      currentMonthKey={currentMonthKey}
+                      onToggle={() => updateSubscription(sub.id, { activeUntil: undefined })}
+                      onRemove={() => removeSubscription(sub.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {inactiveSubscriptions.length > 0 && (
         <div>
           <p className="text-xs text-muted-foreground mb-2">Inaktive abonnement</p>
@@ -137,6 +169,7 @@ export function SubscriptionsPage() {
                     <SubscriptionRow
                       key={sub.id}
                       sub={sub}
+                      currentMonthKey={currentMonthKey}
                       onToggle={() => updateSubscription(sub.id, { isActive: true })}
                       onRemove={() => removeSubscription(sub.id)}
                     />
@@ -320,15 +353,37 @@ export function SubscriptionsPage() {
 // SUB-KOMPONENTER
 // ------------------------------------------------------------
 
+function monthsRemaining(activeUntil: string, currentMonthKey: string): number {
+  const [uy, um] = activeUntil.split('-').map(Number)
+  const [cy, cm] = currentMonthKey.split('-').map(Number)
+  return (uy - cy) * 12 + (um - cm)
+}
+
 function SubscriptionRow({
   sub,
+  currentMonthKey,
   onToggle,
   onRemove,
 }: {
   sub: SubscriptionEntry
+  currentMonthKey: string
   onToggle: () => void
   onRemove: () => void
 }) {
+  const remaining = sub.activeUntil ? monthsRemaining(sub.activeUntil, currentMonthKey) : null
+  const isExpired = remaining !== null && remaining < 0
+
+  let badge: React.ReactNode = null
+  if (sub.activeUntil && !isExpired) {
+    if (remaining === 0) {
+      badge = <span className="text-xs text-amber-400 font-medium">Siste måned</span>
+    } else {
+      badge = <span className="text-xs text-muted-foreground">Utløper om {remaining} mnd</span>
+    }
+  } else if (isExpired) {
+    badge = <span className="text-xs text-muted-foreground">Utløpt {sub.activeUntil}</span>
+  }
+
   return (
     <tr className="border-b border-border/50 last:border-0">
       <td className="px-3 py-2">
@@ -337,6 +392,7 @@ function SubscriptionRow({
           <p className="text-xs text-muted-foreground">
             {SUBSCRIPTION_CATEGORY_LABELS[sub.category]} · {BILLING_CYCLE_LABELS[sub.billingCycle]}
           </p>
+          {badge}
         </div>
       </td>
       <td className="px-3 py-2 text-right font-mono">
@@ -370,11 +426,15 @@ function SubscriptionRow({
 }
 
 function AddSubscriptionForm({ onSave, onCancel }: { onSave: (s: SubscriptionEntry) => void; onCancel: () => void }) {
+  const now = new Date()
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
   const [form, setForm] = useState({
     name: '',
     category: 'tjeneste' as SubscriptionEntry['category'],
     defaultMonthly: 0,
     billingCycle: 'monthly' as SubscriptionEntry['billingCycle'],
+    activeUntil: '',   // tom = løpende
   })
 
   return (
@@ -426,6 +486,17 @@ function AddSubscriptionForm({ onSave, onCancel }: { onSave: (s: SubscriptionEnt
               onChange={(e) => setForm((f) => ({ ...f, defaultMonthly: parseFloat(e.target.value) || 0 }))}
             />
           </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Aktiv t.o.m. (valgfritt)</Label>
+            <Input
+              type="month"
+              className="h-8 text-xs"
+              min={currentMonthKey}
+              value={form.activeUntil}
+              onChange={(e) => setForm((f) => ({ ...f, activeUntil: e.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground">La stå tom for løpende abonnement</p>
+          </div>
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
@@ -441,6 +512,7 @@ function AddSubscriptionForm({ onSave, onCancel }: { onSave: (s: SubscriptionEnt
                 monthlyAmounts: {},
                 defaultMonthly: form.defaultMonthly,
                 billingCycle: form.billingCycle,
+                ...(form.activeUntil ? { activeUntil: form.activeUntil } : {}),
               })
             }
           >

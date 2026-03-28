@@ -403,6 +403,7 @@ export interface SubscriptionEntry {
   }
   defaultMonthly: number
   billingCycle: 'monthly' | 'yearly' | 'variable'
+  activeUntil?: string  // YYYY-MM — siste aktive måned. Udefinert = løpende
 }
 
 export interface InsuranceEntry {
