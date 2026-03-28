@@ -535,3 +535,18 @@ export interface JuneForecast {
     juneLonn: string
   }
 }
+
+
+// ------------------------------------------------------------
+// BRUKERINNSTILLINGER / ONBOARDING
+// ------------------------------------------------------------
+
+export type EconomyTab =
+  | 'dashboard' | 'budget' | 'salary' | 'atf' | 'feriepenger'
+  | 'savings' | 'fond' | 'debt' | 'absence' | 'tax'
+  | 'subscriptions' | 'ivf' | 'vacation' | 'settings'
+
+export interface UserPreferences {
+  onboardingCompleted: boolean
+  enabledTabs: EconomyTab[]
+}

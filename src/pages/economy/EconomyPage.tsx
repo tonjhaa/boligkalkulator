@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState, Component } from 'react'
 import type { ReactNode } from 'react'
+import { useEconomyStore } from '@/application/useEconomyStore'
+import { OnboardingWizard } from './OnboardingWizard'
 import {
   LayoutDashboard,
   CreditCard,
@@ -139,13 +141,28 @@ class PageErrorBoundary extends Component<
 }
 
 export function EconomyPage() {
+  const userPreferences = useEconomyStore((s) => s.userPreferences)
   const [currentPage, setCurrentPage] = useState<EconomySubPage>('dashboard')
+
+  // Vis onboarding for nye brukere
+  if (!userPreferences?.onboardingCompleted) {
+    return (
+      <div className="flex-1 overflow-y-auto h-full">
+        <OnboardingWizard />
+      </div>
+    )
+  }
+
+  const enabledPages = new Set(userPreferences.enabledTabs)
+  const visibleNavItems = NAV_ITEMS.filter(
+    ({ page }) => enabledPages.has(page) || page === 'settings'
+  )
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Sub-navigasjon */}
       <nav className="flex items-center gap-1 border-b border-border bg-card px-3 shrink-0 overflow-x-auto">
-        {NAV_ITEMS.map(({ page, label, Icon }) => (
+        {visibleNavItems.map(({ page, label, Icon }) => (
           <button
             key={page}
             onClick={() => setCurrentPage(page)}

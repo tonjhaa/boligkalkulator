@@ -27,6 +27,7 @@ import type {
   IVFSettings,
   FondPortfolio,
   FondPortfolioSnapshot,
+  UserPreferences,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -154,6 +155,9 @@ interface EconomyState {
   setBudgetOverride: (year: number, month: number, rowId: string, value: number) => void
   clearBudgetOverride: (year: number, month: number, rowId: string) => void
 
+  userPreferences: UserPreferences | null
+  setUserPreferences: (prefs: UserPreferences) => void
+
   exportData: () => string
   importData: (json: string) => void
   clearAllSlips: () => void
@@ -196,6 +200,7 @@ export const useEconomyStore = create<EconomyState>()(
     (set, get) => ({
       storeVersion: 1,
       profile: null,
+      userPreferences: null,
       budgetTemplate: DEFAULT_TEMPLATE,
       budgetOverrides: {},
       monthHistory: [],
@@ -217,6 +222,7 @@ export const useEconomyStore = create<EconomyState>()(
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),
+      setUserPreferences: (prefs) => set({ userPreferences: prefs }),
 
       // --- Måneder ---
       addMonthRecord: (record) =>
@@ -813,6 +819,7 @@ export const useEconomyStore = create<EconomyState>()(
       partialize: (state) => ({
         storeVersion: state.storeVersion,
         profile: state.profile,
+        userPreferences: state.userPreferences,
         budgetTemplate: state.budgetTemplate,
         monthHistory: state.monthHistory.map(({ slipPdfBase64: _pdf, ...m }) => m),
         atfEntries: state.atfEntries,

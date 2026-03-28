@@ -4,6 +4,8 @@ import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { MODULES } from './OnboardingWizard'
+import type { EconomyTab } from '@/types/economy'
 
 const LAST_EXPORT_KEY = 'min-okonomi-last-export'
 
@@ -358,15 +360,78 @@ function DataSection() {
 // Page
 // ----------------------------------------------------------------
 
+function ModulesSection() {
+  const userPreferences = useEconomyStore((s) => s.userPreferences)
+  const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
+
+  const enabled = new Set<EconomyTab>(userPreferences?.enabledTabs ?? [])
+
+  function toggle(tab: EconomyTab) {
+    const next = new Set(enabled)
+    if (next.has(tab)) next.delete(tab)
+    else next.add(tab)
+    setUserPreferences({
+      onboardingCompleted: true,
+      enabledTabs: Array.from(next),
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold">Moduler</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Velg hvilke faner som vises i Økonomi-navigasjonen.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {MODULES.map(({ tab, label, desc, icon: Icon }) => {
+          const active = enabled.has(tab)
+          return (
+            <button
+              key={tab}
+              onClick={() => toggle(tab)}
+              className={`flex items-center gap-3 p-2.5 rounded-lg border text-left transition-all ${
+                active ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/30'
+              }`}
+            >
+              <div className={`shrink-0 h-7 w-7 rounded-md flex items-center justify-center ${
+                active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+              }`}>
+                <Icon className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium">{label}</p>
+                <p className="text-xs text-muted-foreground truncate">{desc}</p>
+              </div>
+              <div className={`shrink-0 h-4 w-4 rounded border-2 flex items-center justify-center ${
+                active ? 'border-primary bg-primary' : 'border-muted-foreground/40'
+              }`}>
+                {active && <span className="text-primary-foreground text-[10px] leading-none">✓</span>}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Faner som alltid vises: Dashbord, Budsjett, Lønn, Innstillinger.
+      </p>
+    </div>
+  )
+}
+
 export function EconomySettingsPage() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-8 max-w-2xl">
       <div>
         <h2 className="text-lg font-semibold text-foreground">Økonomi — Innstillinger</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Konfigurer lønnsprofil, budsjettvisning og datahåndtering.
+          Konfigurer lønnsprofil, moduler og datahåndtering.
         </p>
       </div>
+
+      <Separator />
+      <ModulesSection />
 
       <Separator />
       <TidsbegrensetTilleggSection />
