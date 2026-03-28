@@ -609,10 +609,6 @@ export function computeBudgetTable(
   // ÅRSOPPSUMMERING — løpende YTD-totaler (kun når profil er satt)
   // ================================================================
   if (profile) {
-    const allTillegg = profile.fixedAdditions
-      .filter((a) => !(hideTemporary && a.isTemporary))
-      .reduce((s, a) => s + a.amount, 0)
-
     // YTD brutto: akkumulert sum per måned.
     // For måneder med slipp brukes faktisk bruttoSum (konsistent med brutto-inntekt-raden).
     // For fremtidige måneder brukes budsjettert inntektssum (inkl. ATF og feriepenger-netto).
