@@ -741,6 +741,7 @@ export const useEconomyStore = create<EconomyState>()(
             ivfSettings: data.ivfSettings ?? DEFAULT_IVF_SETTINGS,
             fondPortfolio: data.fondPortfolio ?? DEFAULT_FOND_PORTFOLIO,
             budgetOverrides: data.budgetOverrides ?? {},
+            userPreferences: data.userPreferences ?? null,
           })
         } catch {
           console.error('[EconomyStore] importData: ugyldig JSON')

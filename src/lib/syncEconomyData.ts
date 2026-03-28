@@ -57,6 +57,7 @@ export async function saveToSupabase(): Promise<void> {
     ivfSettings: state.ivfSettings,
     budgetOverrides: state.budgetOverrides,
     fondPortfolio: state.fondPortfolio,
+    userPreferences: state.userPreferences,
   }
 
   await supabase.from('user_data').upsert({
