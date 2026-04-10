@@ -540,18 +540,20 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
                 : '[&>div]:bg-red-500'
               )}
             />
-            {taxAnalysis.recommendation === 'reduce_extra' && (
-              <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 p-2 text-xs text-yellow-400 flex gap-2 mt-1">
-                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                <span>
-                  Du får tilbake ~{fmtNOK(taxAnalysis.avgYearlyRefund)}/år.
-                  Vurder å redusere ekstra trekk med {fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.
-                </span>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Skattevarsel ── */}
+      {taxAnalysis.recommendation === 'reduce_extra' && (
+        <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-sm text-yellow-400 flex gap-2 items-start">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>
+            Du får tilbake ~{fmtNOK(taxAnalysis.avgYearlyRefund)}/år.
+            Vurder å redusere ekstra trekk med {fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.
+          </span>
+        </div>
+      )}
 
       {/* ── Feriepenger ── */}
       {profile && (
