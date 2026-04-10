@@ -143,11 +143,11 @@ Lønnsavregning for Februar 2026
 })
 
 describe('parseForsvarsSlipp — ATF-satser', () => {
-  it('ekstraherer sats for 2230 når antall=1 (sats=beløp)', () => {
+  it('ekstraherer sats for 2230 når antall=1 (NOK-format: 1,00)', () => {
     const text = `
 Lønnsavregning for April 2025
 1S01 Månedslønn 04.25 627.110 52.259,17
-2230 Øvelse døgn Ma-Fr 04.25 1 5.709,40 5.709,40
+2230 Øvelse døgn Ma-Fr 04.25 1,00 5.709,40 5.709,40
 63.968,57 28.000,00- 35.968,57
 181.974,45 21.836,94
 `
@@ -155,11 +155,11 @@ Lønnsavregning for April 2025
     expect(slip.atfRater?.['2230']).toBeCloseTo(5709.40, 2)
   })
 
-  it('ekstraherer sats korrekt når antall=2 (to forskjellige NOK-beløp)', () => {
+  it('ekstraherer sats korrekt når antall=2 (NOK-format: 2,00)', () => {
     const text = `
 Lønnsavregning for April 2025
 1S01 Månedslønn 04.25 627.110 52.259,17
-2230 Øvelse døgn Ma-Fr 04.25 2 5.709,40 11.418,80
+2230 Øvelse døgn Ma-Fr 04.25 2,00 5.709,40 11.418,80
 63.968,57 28.000,00- 35.968,57
 181.974,45 21.836,94
 `
@@ -171,8 +171,8 @@ Lønnsavregning for April 2025
     const text = `
 Lønnsavregning for Desember 2025
 1S01 Månedslønn 12.25 670.132 55.844,40
-2230 Øvelse døgn Ma-Fr 11.25 1 6.476,20 6.476,20
-2230 Øvelse døgn Ma-Fr 12.25 1 6.764,20 6.764,20
+2230 Øvelse døgn Ma-Fr 11.25 1,00 6.476,20 6.476,20
+2230 Øvelse døgn Ma-Fr 12.25 1,00 6.764,20 6.764,20
 63.078,83 28.000,00- 35.078,83
 688.548,00 82.625,76
 `
@@ -192,16 +192,37 @@ Lønnsavregning for Januar 2026
     expect(slip.atfRater).toBeUndefined()
   })
 
-  it('ekstraherer 2236 timesats korrekt', () => {
+  it('ekstraherer 2236 timesats korrekt (NOK-format: 4,00)', () => {
     const text = `
 Lønnsavregning for April 2025
 1S01 Månedslønn 04.25 627.110 52.259,17
-2236 Øvelse pr t Ma-Fr 04.25 4 356,80 1.427,20
+2236 Øvelse pr t Ma-Fr 04.25 4,00 356,80 1.427,20
 63.968,57 28.000,00- 35.968,57
 181.974,45 21.836,94
 `
     const slip = parseForsvarsSlipp(text)
     expect(slip.atfRater?.['2236']).toBeCloseTo(356.80, 2)
+  })
+
+  it('ekstraherer atfBeløp som sum av alle ATF-linjer', () => {
+    const text = `
+Lønnsavregning for April 2026
+1S01 Månedslønn 04.26 670.132 55.844,40
+2230 Øvelse døgn Ma-Fr 03.26 7,00 6.088,00 42.616,00
+2232 Øvelse døgn Lø-Sø 03.26 2,00 9.498,10 18.996,20
+2236 Øvelse pr t Ma-Fr 03.26 16,00 380,50 6.088,00
+10P2 Fungering pensgj 04.26 100,00 6.406,62
+/440 Tabelltrekk 04.26 135.466,00 8010 57.683,00-
+69.694,04 68.370,69- 67.700,20 69.023,55
+313.625,67 37.635,08
+336.047,25 4.731,30- 121.337,00-
+`
+    const slip = parseForsvarsSlipp(text)
+    expect(slip.atfBeløp).toBeCloseTo(42616 + 18996.20 + 6088, 0)
+    expect(slip.fungeringBeløp).toBeCloseTo(6406.62, 2)
+    expect(slip.atfRater?.['2230']).toBeCloseTo(6088, 0)
+    expect(slip.atfRater?.['2232']).toBeCloseTo(9498.10, 2)
+    expect(slip.atfRater?.['2236']).toBeCloseTo(380.50, 2)
   })
 })
 

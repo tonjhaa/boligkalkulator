@@ -236,4 +236,5 @@ export const ARTSKODE_NAVN: Record<string, string> = {
   '3020': 'Fagforeningskontingent',
   '3209': 'Husleietrekk forsvarsbolig',
   '6100': 'OU-fond',
+  '10P2': 'Fungering',
 }

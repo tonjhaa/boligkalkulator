@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Lock, LockOpen, Upload, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import type { BudgetRow, MonthMeta } from '@/domain/economy/budgetTableComputer'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
+import { slaaOppTrekk, slaaOppTrekkSync } from '@/utils/trekktabellLookup'
 import type { BudgetCategory, BudgetLine } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +22,7 @@ const MONTH_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug',
 const CATEGORY_GROUPS: { label: string; categories: BudgetCategory[] }[] = [
   { label: 'Inntekter', categories: ['lonn', 'tillegg', 'atf', 'feriepenger', 'annen_inntekt'] },
   { label: 'Trekk', categories: ['skatt', 'pensjon', 'fagforening', 'husleietrekk'] },
+  { label: 'Skatteoppgjør', categories: ['skatteoppgjor'] },
   { label: 'Gjeld', categories: ['studielaan', 'billaan', 'kredittkort', 'annen_gjeld'] },
   { label: 'Faste utgifter', categories: ['bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk'] },
   { label: 'Sparing', categories: ['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'] },
@@ -29,6 +31,7 @@ const CATEGORY_GROUPS: { label: string; categories: BudgetCategory[] }[] = [
 const CATEGORY_LABELS: Record<BudgetCategory, string> = {
   lonn: 'Lønn', tillegg: 'Tillegg', atf: 'ATF', feriepenger: 'Feriepenger', annen_inntekt: 'Annen inntekt',
   skatt: 'Skatt', pensjon: 'Pensjon', fagforening: 'Fagforening', husleietrekk: 'Husleietrekk',
+  skatteoppgjor: 'Skatteoppgjør',
   studielaan: 'Studielån', billaan: 'Billån', kredittkort: 'Kredittkort', annen_gjeld: 'Annen gjeld',
   bolig: 'Bolig', transport: 'Transport', mat: 'Mat', helse: 'Helse', abonnement: 'Abonnement',
   forsikring: 'Forsikring', klær: 'Klær', fritid: 'Fritid', annet_forbruk: 'Annet forbruk',
@@ -64,11 +67,13 @@ export function BudgetPage() {
     insurances,
     temporaryPayEntries,
     ivfTransactions,
+    ivfSettings,
     fondPortfolio,
     lockMonth,
     unlockMonth,
     addBudgetLine,
     updateBudgetLine,
+    removeBudgetLine,
     budgetOverrides,
     setBudgetOverride,
     clearBudgetOverride,
@@ -78,6 +83,25 @@ export function BudgetPage() {
   const [activeYear, setActiveYear] = useState(now.getFullYear())
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
+  const [addingTaxLine, setAddingTaxLine] = useState(false)
+  const [trekktabellLoaded, setTrekktabellLoaded] = useState(false)
+
+  // Last trekktabelldata for brukerens tabellnummer inn i minne-cachen
+  useEffect(() => {
+    const tabellnummer = profile?.tabellnummer
+    if (!tabellnummer) return
+    const baseMonthly = (profile?.baseMonthly ?? 0)
+    if (baseMonthly <= 0) return
+    slaaOppTrekk(tabellnummer, Math.round(baseMonthly), 1)
+      .then(() => setTrekktabellLoaded(true))
+      .catch(() => { /* ignorer nettverksfeil — trekkrutinen brukes som fallback */ })
+  }, [profile?.tabellnummer, profile?.baseMonthly])
+
+  const trekktabellLookup = useMemo(() => {
+    const tabellnummer = profile?.tabellnummer
+    if (!trekktabellLoaded || !tabellnummer) return undefined
+    return (grunnlag: number) => slaaOppTrekkSync(tabellnummer, grunnlag, 1) ?? undefined
+  }, [trekktabellLoaded, profile?.tabellnummer])
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
   const [hideTemporary, setHideTemporary] = useState(false)
 
@@ -110,7 +134,8 @@ export function BudgetPage() {
     hideTemporary,
     ivfTransactions,
     fondPortfolio,
-    profile?.ivfOwnerLabel,
+    ivfSettings?.selfLabel,
+    trekktabellLookup,
   )
 
   const { metas, sections, estimatedAnnualGrowthRate } = tableData
@@ -120,6 +145,21 @@ export function BudgetPage() {
     'bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk',
   ])
   const SAVINGS_CATS_SET = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
+
+  // Alle manuelle (ikke-låste) rader: map fra rowId → lineId for å støtte sletting
+  const deletableRowMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const line of budgetTemplate.lines) {
+      if (line.isLocked) continue
+      let rowId: string | null = null
+      if (line.category === 'skatteoppgjor') rowId = `skattoppgjor-${line.id}`
+      else if (line.category === 'annen_inntekt') rowId = `income-${line.id}`
+      else if (EXPENSE_CATS_SET.has(line.category)) rowId = line.isVariable ? `var-${line.id}` : `exp-${line.id}`
+      else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
+      if (rowId) map[rowId] = line.id
+    }
+    return map
+  }, [budgetTemplate.lines])
   const temporaryMap = useMemo(() => {
     const map: Record<string, { isTemporary: boolean; onToggle: () => void }> = {}
     for (const line of budgetTemplate.lines) {
@@ -144,7 +184,11 @@ export function BudgetPage() {
     else setBudgetOverride(activeYear, month, rowId, value)
   }
 
-  const years = [activeYear - 1, activeYear, activeYear + 1]
+  const minYear = monthHistory.length > 0
+    ? Math.min(...monthHistory.map((m) => m.year))
+    : now.getFullYear()
+
+  const years = [activeYear - 1, activeYear, activeYear + 1].filter((y) => y >= minYear)
 
   // Total cols = 1 (label) + 12 × 2 (months) + 1 (årssum) = 26
   const TOTAL_COLS = 26
@@ -302,7 +346,18 @@ export function BudgetPage() {
                         section.colorClass,
                       )}
                     >
-                      {section.label}
+                      <span className="flex items-center gap-2">
+                        {section.label}
+                        {section.key === 'SKATTEOPPGJOR' && (
+                          <button
+                            onClick={() => setAddingTaxLine(true)}
+                            className="text-[9px] px-1.5 py-0.5 rounded border border-current opacity-60 hover:opacity-100 transition-opacity leading-none"
+                            title="Legg til skattetilgode / restskatt"
+                          >
+                            + Legg til
+                          </button>
+                        )}
+                      </span>
                     </td>
                     <td colSpan={TOTAL_COLS - 2} />
                   </tr>
@@ -319,6 +374,9 @@ export function BudgetPage() {
                       onOverride={(month, value) => handleOverride(row.id, month, value)}
                       highlightedMonth={highlightedMonth}
                       temporaryInfo={temporaryMap[row.id]}
+                      onDelete={deletableRowMap[row.id]
+                        ? () => removeBudgetLine(deletableRowMap[row.id])
+                        : undefined}
                     />
                   ))}
                 </>
@@ -358,8 +416,19 @@ export function BudgetPage() {
       {/* ---- Add budget line modal ---- */}
       {addingLine && (
         <AddBudgetLineModal
+          activeYear={activeYear}
           onSave={(line) => { addBudgetLine(line); setAddingLine(false) }}
           onCancel={() => setAddingLine(false)}
+        />
+      )}
+
+      {/* ---- Add skatteoppgjør line modal ---- */}
+      {addingTaxLine && (
+        <AddBudgetLineModal
+          activeYear={activeYear}
+          prefill={{ category: 'skatteoppgjor', isRecurring: false, label: `Skattetilgode ${activeYear - 1}` }}
+          onSave={(line) => { addBudgetLine(line); setAddingTaxLine(false) }}
+          onCancel={() => setAddingTaxLine(false)}
         />
       )}
     </div>
@@ -379,6 +448,7 @@ function DataRow({
   onOverride,
   highlightedMonth,
   temporaryInfo,
+  onDelete,
 }: {
   row: BudgetRow
   metas: MonthMeta[]
@@ -388,6 +458,7 @@ function DataRow({
   onOverride?: (month: number, value: number | null) => void
   highlightedMonth?: number | null
   temporaryInfo?: { isTemporary: boolean; onToggle: () => void }
+  onDelete?: () => void
 }) {
   const [editingMonth, setEditingMonth] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -425,7 +496,8 @@ function DataRow({
         if (hasOverride) return s + yearOverrides![overrideKey]
         if (meta.hasSlip) return s + (cell.actual ?? 0)
         if (meta.isLocked) return s + (cell.actual ?? cell.budget)
-        return s + cell.budget
+        // Bruk faktisk beløp hvis tilgjengelig (f.eks. BSU-innskudd uten slipp)
+        return s + (cell.actual ?? cell.budget)
       }, 0)
 
   // Kumulative rader (YTD): alltid positiv farge, uten avviksmarkering
@@ -490,6 +562,13 @@ function DataRow({
               title={temporaryInfo.isTemporary ? 'Fjern tidsbegrenset-merke' : 'Merk som tidsbegrenset'}
             >T</button>
           )}
+          {onDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete() }}
+              className="shrink-0 opacity-0 group-hover/row:opacity-100 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-red-400 transition-colors"
+              title="Fjern rad"
+            >✕</button>
+          )}
         </span>
       </td>
 
@@ -498,6 +577,24 @@ function DataRow({
         const hl = highlightedMonth === meta.month
 
         if (!dualColumn) {
+          if (editingMonth === meta.month && isEditable) {
+            return (
+              <td key={`${meta.month}-edit`} colSpan={2} className={cn('px-1 py-0.5 border-r border-border/40', hl && 'bg-sky-500/15')}>
+                <input
+                  type="number"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit() }}
+                  autoFocus
+                  className="w-full bg-muted/30 text-right text-xs px-1 py-0.5 rounded outline-none tabular-nums"
+                />
+              </td>
+            )
+          }
+          const overrideKey = `${meta.month}:${row.id}`
+          const hasOverride = yearOverrides && overrideKey in yearOverrides
+          const displayVal = hasOverride ? yearOverrides![overrideKey] : cell.budget
           return (
             <td
               key={meta.month}
@@ -505,11 +602,14 @@ function DataRow({
               className={cn(
                 'px-2 py-1.5 text-right border-r border-border/40 tabular-nums',
                 isHidden ? 'line-through text-muted-foreground/50' :
-                  cell.budget === 0 ? 'text-muted-foreground' : cell.budget < 0 ? 'text-red-400' : 'text-foreground',
+                  displayVal === 0 ? 'text-muted-foreground' : displayVal < 0 ? 'text-red-400' : 'text-foreground',
+                hasOverride && 'text-amber-400',
+                !isHidden && isEditable && 'cursor-text hover:bg-muted/20',
                 hl && 'bg-sky-500/15',
               )}
+              onClick={() => isEditable && startEdit(meta.month, displayVal)}
             >
-              {fmtNOK(cell.budget)}
+              {fmtNOK(displayVal)}
             </td>
           )
         }
@@ -606,19 +706,30 @@ function DataRow({
 // Add Budget Line Modal
 // ----------------------------------------------------------------
 
+const MONTH_NAMES = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember']
+
 function AddBudgetLineModal({
+  activeYear,
   onSave,
   onCancel,
+  prefill,
 }: {
+  activeYear: number
   onSave: (line: BudgetLine) => void
   onCancel: () => void
+  prefill?: Partial<BudgetLine>
 }) {
-  const [label, setLabel] = useState('')
-  const [category, setCategory] = useState<BudgetCategory>('annet_forbruk')
-  const [amount, setAmount] = useState('')
-  const [isRecurring, setIsRecurring] = useState(true)
-  const [isVariable, setIsVariable] = useState(false)
-  const [isTemporary, setIsTemporary] = useState(false)
+  const now = new Date()
+  const [label, setLabel] = useState(prefill?.label ?? '')
+  const [category, setCategory] = useState<BudgetCategory>(prefill?.category ?? 'annet_forbruk')
+  const [amount, setAmount] = useState(prefill?.amount != null ? String(prefill.amount) : '')
+  const [isRecurring, setIsRecurring] = useState(prefill?.isRecurring ?? true)
+  const [isVariable, setIsVariable] = useState(prefill?.isVariable ?? false)
+  const [isTemporary, setIsTemporary] = useState(prefill?.isTemporary ?? false)
+  const [temporaryFromDate, setTemporaryFromDate] = useState(prefill?.temporaryFromDate ?? '')
+  const [temporaryToDate, setTemporaryToDate] = useState(prefill?.temporaryToDate ?? '')
+  const [specificMonth, setSpecificMonth] = useState<number>(prefill?.specificMonth ?? now.getMonth() + 1)
+  const [specificYear, setSpecificYear] = useState<number>(prefill?.specificYear ?? activeYear)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -662,20 +773,89 @@ function AddBudgetLineModal({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={isRecurring} onChange={(e) => setIsRecurring(e.target.checked)} className="h-3 w-3" />
-              Gjentakende (vises hver måned)
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={isVariable} onChange={(e) => setIsVariable(e.target.checked)} className="h-3 w-3" />
-              Variabelt beløp
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={isTemporary} onChange={(e) => setIsTemporary(e.target.checked)} className="h-3 w-3" />
-              <span>Tidsbegrenset <span className="text-muted-foreground">(skjules med «Uten tillegg»)</span></span>
-            </label>
+          {/* Gjentakende / Engangshendelse */}
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 text-xs py-1.5 rounded border transition-colors',
+                  isRecurring
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border text-muted-foreground hover:border-border/80',
+                )}
+                onClick={() => setIsRecurring(true)}
+              >
+                Gjentakende
+                <span className="block text-[10px] text-muted-foreground font-normal">hver måned</span>
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'flex-1 text-xs py-1.5 rounded border transition-colors',
+                  !isRecurring
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border text-muted-foreground hover:border-border/80',
+                )}
+                onClick={() => setIsRecurring(false)}
+              >
+                Engang
+                <span className="block text-[10px] text-muted-foreground font-normal">velg måned</span>
+              </button>
+            </div>
+
+            {!isRecurring && (
+              <div className="flex gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Måned</Label>
+                  <Select value={String(specificMonth)} onValueChange={(v) => setSpecificMonth(parseInt(v))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {MONTH_NAMES.map((name, i) => (
+                        <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-24 space-y-1">
+                  <Label className="text-xs">År</Label>
+                  <Select value={String(specificYear)} onValueChange={(v) => setSpecificYear(parseInt(v))}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[activeYear - 1, activeYear, activeYear + 1].map((y) => (
+                        <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
+
+          {isRecurring && (
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={isVariable} onChange={(e) => setIsVariable(e.target.checked)} className="h-3 w-3" />
+                Variabelt beløp
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" checked={isTemporary} onChange={(e) => setIsTemporary(e.target.checked)} className="h-3 w-3" />
+                <span>Tidsbegrenset <span className="text-muted-foreground">(skjules med «Uten tillegg»)</span></span>
+              </label>
+              {isTemporary && (
+                <div className="flex gap-2 pl-5">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Fra dato</Label>
+                    <Input type="date" className="h-7 text-xs" value={temporaryFromDate} onChange={(e) => setTemporaryFromDate(e.target.value)} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-xs text-muted-foreground">Til dato</Label>
+                    <Input type="date" className="h-7 text-xs" value={temporaryToDate} onChange={(e) => setTemporaryToDate(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 justify-end">
@@ -692,8 +872,12 @@ function AddBudgetLineModal({
                 isRecurring,
                 source: 'manual',
                 isLocked: false,
-                isVariable,
-                isTemporary: isTemporary || undefined,
+                isVariable: isRecurring ? isVariable : false,
+                isTemporary: isRecurring && isTemporary ? true : undefined,
+                temporaryFromDate: isRecurring && isTemporary && temporaryFromDate ? temporaryFromDate : undefined,
+                temporaryToDate: isRecurring && isTemporary && temporaryToDate ? temporaryToDate : undefined,
+                specificMonth: !isRecurring ? specificMonth : undefined,
+                specificYear: !isRecurring ? specificYear : undefined,
               })
             }
           >

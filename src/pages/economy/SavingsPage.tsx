@@ -10,14 +10,15 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
+import { BSU_MAX_YEARLY } from '@/config/economy.config'
 import {
   checkBSULimits,
   calculateGoalProgress,
   projectSavingsGrowth,
   computeMonthlyContributionEstimate,
   computeYTDContributions,
-  computeETA,
   computeYearlyInterestIncome,
+  computeBSUForecast,
 } from '@/domain/economy/savingsCalculator'
 import type {
   SavingsAccount,
@@ -38,6 +39,41 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('no-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+/**
+ * Beregner effektiv saldo: siste manuelle saldo + alle innskudd/uttak
+ * som er datert ETTER den perioden, frem til og med `asOf`.
+ * Gjør at saldoen oppdaterer seg automatisk når innskuddsdato passerer.
+ */
+function computeEffectiveBalance(account: SavingsAccount, asOf: Date = new Date()): number {
+  const asOfISO = asOf.toISOString().split('T')[0]
+
+  const sortedHistory = [...account.balanceHistory].sort((a, b) =>
+    a.year !== b.year ? a.year - b.year : a.month - b.month
+  )
+  const lastEntry = sortedHistory.at(-1)
+
+  let base: number
+  let afterISO: string // innskudd/uttak fra og med denne datoen regnes med
+
+  if (lastEntry) {
+    base = lastEntry.balance
+    // Første dag i måneden ETTER den registrerte saldoen
+    const y = lastEntry.month === 12 ? lastEntry.year + 1 : lastEntry.year
+    const m = lastEntry.month === 12 ? 1 : lastEntry.month + 1
+    afterISO = `${y}-${String(m).padStart(2, '0')}-01`
+  } else {
+    base = account.openingBalance
+    afterISO = account.openingDate
+  }
+
+  const pending = [
+    ...(account.contributions ?? []).filter((c) => c.date >= afterISO && c.date <= asOfISO),
+    ...(account.withdrawals ?? []).filter((w) => w.date >= afterISO && w.date <= asOfISO),
+  ]
+
+  return base + pending.reduce((s, t) => s + t.amount, 0)
+}
+
 const ACCOUNT_TYPE_LABELS: Record<SavingsAccountType, string> = {
   BSU: 'BSU',
   fond: 'Fond',
@@ -56,6 +92,7 @@ export function SavingsPage() {
     savingsGoals,
     addSavingsAccount,
     removeSavingsAccount,
+    updateSavingsAccount,
     updateSavingsBalance,
     updateSavingsRate,
     addContribution,
@@ -79,10 +116,7 @@ export function SavingsPage() {
   const currentYear = now.getFullYear()
 
   // Summary stats
-  const totalBalance = savingsAccounts.reduce((s, a) => {
-    const last = a.balanceHistory.at(-1)
-    return s + (last?.balance ?? a.openingBalance)
-  }, 0)
+  const totalBalance = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
 
   const bsuAccount = savingsAccounts.find((a) => a.type === 'BSU')
   const bsuStatus = bsuAccount ? checkBSULimits(bsuAccount, currentYear) : null
@@ -178,6 +212,7 @@ export function SavingsPage() {
               onRemoveContribution={(id) => removeContribution(account.id, id)}
               onAddWithdrawal={(w) => addWithdrawal(account.id, w)}
               onRemoveWithdrawal={(id) => removeWithdrawal(account.id, id)}
+              onUpdateBirthYear={(year) => updateSavingsAccount(account.id, { birthYear: year })}
             />
           ))}
         </div>
@@ -268,6 +303,7 @@ function AccountCard({
   onRemoveContribution,
   onAddWithdrawal,
   onRemoveWithdrawal,
+  onUpdateBirthYear,
 }: {
   account: SavingsAccount
   now: Date
@@ -278,20 +314,29 @@ function AccountCard({
   onRemoveContribution: (id: string) => void
   onAddWithdrawal: (w: WithdrawalEntry) => void
   onRemoveWithdrawal: (id: string) => void
+  onUpdateBirthYear: (year: number) => void
 }) {
   const [activeTab, setActiveTab] = useState<AccountTab | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [bsuPickYear, setBsuPickYear] = useState<string>(String(now.getFullYear() + 2))
+  const [bsuPostRate, setBsuPostRate] = useState(3.0)
+  const [editingBirthYear, setEditingBirthYear] = useState(false)
+  const [birthYearInput, setBirthYearInput] = useState('')
 
   const currentYear = now.getFullYear()
-  const lastBalance = account.balanceHistory.at(-1)
-  const currentBalance = lastBalance?.balance ?? account.openingBalance
+  const currentBalance = computeEffectiveBalance(account, now)
   const sortedRates = [...account.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
   const currentRate = sortedRates[0]?.rate ?? 0
   const isBSU = account.type === 'BSU'
   const bsuStatus = isBSU ? checkBSULimits(account, currentYear) : null
   const monthlyEstimate = computeMonthlyContributionEstimate(account)
   const ytdContribs = computeYTDContributions(account, currentYear)
-  const eta = isBSU ? computeETA(account, 300000) : null
+  const bsuForecast = (isBSU && account.birthYear)
+    ? computeBSUForecast(account, account.birthYear, currentBalance, bsuPostRate)
+    : null
+  const bsuMaxForecast = (isBSU && account.birthYear)
+    ? computeBSUForecast(account, account.birthYear, currentBalance, bsuPostRate, BSU_MAX_YEARLY / 12)
+    : null
   const interestIncome = (account.type !== 'fond' && account.type !== 'krypto')
     ? computeYearlyInterestIncome(account, currentYear)
     : 0
@@ -392,20 +437,123 @@ function AccountCard({
               <span>BSU-kvote {currentYear}</span>
               <span>{fmtNOK(bsuStatus.yearlyContributionSoFar)} / 27 500 kr</span>
             </div>
-            <Progress value={Math.min(100, (bsuStatus.yearlyContributionSoFar / 27500) * 100)} className="h-1.5" />
             <div className="flex justify-between text-xs text-muted-foreground">
               <span>Total BSU-tak</span>
               <span>{fmtNOK(currentBalance)} / 300 000 kr</span>
             </div>
-            <Progress value={Math.min(100, (currentBalance / 300000) * 100)} className="h-1.5" />
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">
                 Skattefradrag {currentYear}: <span className="text-green-500 font-medium">{fmtNOK(Math.round(Math.min(bsuStatus.yearlyContributionSoFar, 27500) * 0.1))}</span>
               </span>
-              {eta && <span className="text-muted-foreground">Maks saldo: ~{eta}</span>}
             </div>
             {bsuStatus.warning && (
               <p className="text-xs text-yellow-400">{bsuStatus.warning}</p>
+            )}
+
+            {/* BSU aldersprognose */}
+            {bsuForecast && (() => {
+              const pickY = parseInt(bsuPickYear)
+              const validPickY = pickY && pickY >= currentYear && pickY <= 2060 ? pickY : null
+              const displayYear = validPickY ?? bsuForecast.cutoffYear
+              const contribs = bsuForecast.contributionsAtYear(displayYear)
+              const interest = bsuForecast.interestAtYear(displayYear)
+              const balance = bsuForecast.balanceAtYear(displayYear)
+              const maxContribs = bsuMaxForecast!.contributionsAtYear(displayYear)
+              const maxInterest = bsuMaxForecast!.interestAtYear(displayYear)
+              const maxBalance = bsuMaxForecast!.balanceAtYear(displayYear)
+              return (
+                <div className="rounded-md border border-border/50 mt-2 overflow-hidden">
+                  <div className="bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center justify-between">
+                    <span>BSU-prognose</span>
+                    <div className="flex items-center gap-1.5 text-muted-foreground font-normal">
+                      <span>Sparerente etter {bsuForecast.rateDropYear}:</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={0}
+                        max={10}
+                        className="h-5 w-12 text-xs rounded border border-border/60 bg-background px-1.5"
+                        value={bsuPostRate}
+                        onChange={(e) => setBsuPostRate(parseFloat(e.target.value) || 0)}
+                      />
+                      <span>%</span>
+                    </div>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/30">
+                        <th className="text-left px-3 py-1.5 font-normal text-muted-foreground w-1/2">
+                          Ved utgangen av
+                          <input
+                            type="number"
+                            min={currentYear}
+                            max={2060}
+                            className="ml-1.5 h-5 w-16 rounded border border-border bg-background px-1.5 font-normal text-foreground"
+                            value={bsuPickYear}
+                            onChange={(e) => setBsuPickYear(e.target.value)}
+                          />
+                        </th>
+                        <th className="text-right px-3 py-1.5 font-normal text-muted-foreground">Ditt tempo</th>
+                        <th className="text-right px-3 py-1.5 font-normal text-muted-foreground">Maks (27 500/år)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="px-3 py-1 text-muted-foreground">Innskudd</td>
+                        <td className="px-3 py-1 text-right">+ {fmtNOK(contribs)}</td>
+                        <td className="px-3 py-1 text-right text-muted-foreground">+ {fmtNOK(maxContribs)}</td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-1 text-muted-foreground">
+                          Renter
+                          {displayYear >= bsuForecast.rateDropYear && (
+                            <span className="ml-1 text-yellow-500/80">(inkl. lavere sats fra {bsuForecast.rateDropYear})</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1 text-right text-green-500">+ {fmtNOK(interest)}</td>
+                        <td className="px-3 py-1 text-right text-green-500/70">+ {fmtNOK(maxInterest)}</td>
+                      </tr>
+                      <tr className="border-t border-border/30 font-medium">
+                        <td className="px-3 py-1.5">Saldo ved {displayYear}</td>
+                        <td className="px-3 py-1.5 text-right">{fmtNOK(balance)}</td>
+                        <td className="px-3 py-1.5 text-right text-muted-foreground">{fmtNOK(maxBalance)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+            {!account.birthYear && !editingBirthYear && (
+              <button
+                className="text-xs text-muted-foreground underline underline-offset-2 text-left hover:text-foreground"
+                onClick={() => setEditingBirthYear(true)}
+              >
+                + Legg til fødselsår for BSU-aldersprognose
+              </button>
+            )}
+            {!account.birthYear && editingBirthYear && (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="number"
+                  placeholder="f.eks. 1995"
+                  className="h-7 w-24 text-xs rounded border border-border bg-background px-2"
+                  value={birthYearInput}
+                  onChange={(e) => setBirthYearInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const y = parseInt(birthYearInput)
+                      if (y > 1900 && y < 2100) { onUpdateBirthYear(y); setEditingBirthYear(false) }
+                    }
+                    if (e.key === 'Escape') setEditingBirthYear(false)
+                  }}
+                />
+                <Button size="sm" className="h-7 text-xs" onClick={() => {
+                  const y = parseInt(birthYearInput)
+                  if (y > 1900 && y < 2100) { onUpdateBirthYear(y); setEditingBirthYear(false) }
+                }}>OK</Button>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingBirthYear(false)}>×</Button>
+              </div>
             )}
           </div>
         )}
@@ -607,7 +755,7 @@ function SummaryCard({ label, value, subvalue }: { label: string; value: string;
 
 function AddContributionForm({ onSave, onCancel }: { onSave: (c: SavingsContribution) => void; onCancel: () => void }) {
   const today = new Date().toISOString().split('T')[0]
-  const [amount, setAmount] = useState(0)
+  const [amount, setAmount] = useState('')
   const [date, setDate] = useState(today)
   const [note, setNote] = useState('')
 
@@ -619,13 +767,13 @@ function AddContributionForm({ onSave, onCancel }: { onSave: (c: SavingsContribu
       </div>
       <div className="space-y-0.5">
         <Label className="text-xs">Beløp (kr)</Label>
-        <Input type="number" className="h-8 text-xs w-28" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value) || 0)} />
+        <Input type="number" className="h-8 text-xs w-28" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
       </div>
       <div className="space-y-0.5 flex-1">
         <Label className="text-xs">Notat (valgfritt)</Label>
         <Input className="h-8 text-xs" value={note} onChange={(e) => setNote(e.target.value)} placeholder="f.eks. lønning" />
       </div>
-      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ id: crypto.randomUUID(), date, amount, note: note || undefined })}>
+      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ id: crypto.randomUUID(), date, amount: parseFloat(amount) || 0, note: note || undefined })}>
         Lagre
       </Button>
       <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onCancel}>Avbryt</Button>
@@ -635,7 +783,7 @@ function AddContributionForm({ onSave, onCancel }: { onSave: (c: SavingsContribu
 
 function AddWithdrawalForm({ onSave, onCancel }: { onSave: (w: WithdrawalEntry) => void; onCancel: () => void }) {
   const today = new Date().toISOString().split('T')[0]
-  const [amount, setAmount] = useState(0)
+  const [amount, setAmount] = useState('')
   const [date, setDate] = useState(today)
   const [note, setNote] = useState('')
 
@@ -647,13 +795,13 @@ function AddWithdrawalForm({ onSave, onCancel }: { onSave: (w: WithdrawalEntry) 
       </div>
       <div className="space-y-0.5">
         <Label className="text-xs">Beløp (kr)</Label>
-        <Input type="number" className="h-8 text-xs w-28" value={amount} onChange={(e) => setAmount(parseFloat(e.target.value) || 0)} />
+        <Input type="number" className="h-8 text-xs w-28" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
       </div>
       <div className="space-y-0.5 flex-1">
         <Label className="text-xs">Notat (valgfritt)</Label>
         <Input className="h-8 text-xs" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Årsak" />
       </div>
-      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ id: crypto.randomUUID(), date, amount: -Math.abs(amount), note: note || undefined })}>
+      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ id: crypto.randomUUID(), date, amount: -(parseFloat(amount) || 0), note: note || undefined })}>
         Lagre
       </Button>
       <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onCancel}>Avbryt</Button>
@@ -663,7 +811,7 @@ function AddWithdrawalForm({ onSave, onCancel }: { onSave: (w: WithdrawalEntry) 
 
 function UpdateBalanceForm({ onSave, onCancel }: { onSave: (e: BalanceHistoryEntry) => void; onCancel: () => void }) {
   const now = new Date()
-  const [balance, setBalance] = useState(0)
+  const [balance, setBalance] = useState('')
   return (
     <div className="flex items-center gap-2 flex-1">
       <Input
@@ -671,9 +819,9 @@ function UpdateBalanceForm({ onSave, onCancel }: { onSave: (e: BalanceHistoryEnt
         className="h-8 text-xs flex-1"
         placeholder="Ny saldo"
         value={balance}
-        onChange={(e) => setBalance(parseFloat(e.target.value) || 0)}
+        onChange={(e) => setBalance(e.target.value)}
       />
-      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ year: now.getFullYear(), month: now.getMonth() + 1, balance, isManual: true })}>
+      <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ year: now.getFullYear(), month: now.getMonth() + 1, balance: parseFloat(balance) || 0, isManual: true })}>
         OK
       </Button>
       <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={onCancel}>×</Button>
@@ -717,11 +865,13 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
     openingBalance: 0,
     monthlyContribution: 0,
     rate: 5.5,
+    birthYear: '' as string | number,
   })
 
   function handleSave() {
     if (!form.label.trim()) return
     const isBSU = form.type === 'BSU'
+    const birthYear = typeof form.birthYear === 'string' ? parseInt(form.birthYear) || undefined : form.birthYear || undefined
     onSave({
       id: crypto.randomUUID(),
       type: form.type,
@@ -735,6 +885,7 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
       withdrawals: [],
       contributions: [],
       ...(isBSU ? { maxYearlyContribution: 27500, maxTotalBalance: 300000 } : {}),
+      ...(birthYear ? { birthYear } : {}),
     })
   }
 
@@ -777,7 +928,8 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
             <Label className="text-xs">Nåværende saldo</Label>
             <Input
               type="number"
-              value={form.openingBalance}
+              placeholder="0"
+              value={form.openingBalance || ''}
               onChange={(e) => setForm((f) => ({ ...f, openingBalance: parseFloat(e.target.value) || 0 }))}
             />
           </div>
@@ -785,12 +937,24 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
             <Label className="text-xs">Månedlig innskudd (planlagt)</Label>
             <Input
               type="number"
-              value={form.monthlyContribution}
+              placeholder="0"
+              value={form.monthlyContribution || ''}
               onChange={(e) =>
                 setForm((f) => ({ ...f, monthlyContribution: parseFloat(e.target.value) || 0 }))
               }
             />
           </div>
+          {form.type === 'BSU' && (
+            <div className="col-span-2 space-y-1">
+              <Label className="text-xs">Fødselsår (for aldersgrense)</Label>
+              <Input
+                type="number"
+                placeholder="f.eks. 1995"
+                value={form.birthYear || ''}
+                onChange={(e) => setForm((f) => ({ ...f, birthYear: e.target.value }))}
+              />
+            </div>
+          )}
         </div>
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
@@ -844,7 +1008,8 @@ function AddGoalForm({
           <Label className="text-xs">Målbeløp</Label>
           <Input
             type="number"
-            value={form.targetAmount}
+            placeholder="0"
+            value={form.targetAmount || ''}
             onChange={(e) => setForm((f) => ({ ...f, targetAmount: parseFloat(e.target.value) || 0 }))}
           />
         </div>

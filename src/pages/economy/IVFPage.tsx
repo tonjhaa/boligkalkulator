@@ -541,20 +541,33 @@ function SummaryStats() {
 
 export function IVFPage() {
   const [showAddForm, setShowAddForm] = useState(false)
+  const { ivfSettings, setIvfSettings } = useEconomyStore()
 
   return (
     <div className="flex flex-col gap-4 p-4 overflow-y-auto h-full">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">Prosjekt</h2>
-        {!showAddForm && (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Ny transaksjon
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Mitt navn i transaksjoner:</span>
+            <input
+              type="text"
+              className="h-7 w-24 text-xs rounded border border-border bg-background px-2"
+              placeholder="f.eks. Tonje"
+              value={ivfSettings?.selfLabel ?? ''}
+              onChange={(e) => setIvfSettings({ selfLabel: e.target.value || undefined })}
+            />
+          </div>
+          {!showAddForm && (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Ny transaksjon
+            </button>
+          )}
+        </div>
       </div>
 
       <SummaryStats />

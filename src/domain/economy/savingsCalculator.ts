@@ -136,13 +136,12 @@ export function projectSavingsGrowth(
   while (y < toMonth.year || (y === toMonth.year && m <= toMonth.month)) {
     const date = toDate(y, m)
 
-    // Legg til månedlig innskudd (BSU maks 27 500/år)
+    // Legg til månedlig innskudd (BSU maks 27 500/år og stopper ved aldersgrense)
     let contribution = account.monthlyContribution
     if (account.type === 'BSU') {
-      const yearContrib = results.length > 0
-        ? Math.min(account.monthlyContribution, (BSU_MAX_YEARLY) / 12)
-        : Math.min(account.monthlyContribution, (BSU_MAX_YEARLY) / 12)
-      contribution = currentBalance >= BSU_MAX_TOTAL ? 0 : yearContrib
+      const bsuCutoff = account.birthYear ? bsuLastContributionYear(account.birthYear) : Infinity
+      const pastCutoff = y > bsuCutoff
+      contribution = (currentBalance >= BSU_MAX_TOTAL || pastCutoff) ? 0 : Math.min(account.monthlyContribution, BSU_MAX_YEARLY / 12)
     }
 
     // Sjekk for uttak denne måneden
@@ -309,6 +308,112 @@ export function computeYearlyInterestIncome(account: SavingsAccount, year: numbe
   }
 
   return Math.round(totalInterest)
+}
+
+// ------------------------------------------------------------
+// BSU ALDERSGRENSE OG PROGNOSE
+// ------------------------------------------------------------
+
+/** Siste innskuddsår for BSU (inntektsåret du fyller 33 år) */
+export function bsuLastContributionYear(birthYear: number): number {
+  return birthYear + 33
+}
+
+export interface BSUForecast {
+  cutoffYear: number      // siste innskuddsår (fyller 33)
+  rateDropYear: number    // BSU-renten faller dette året (fyller 36)
+  totalRemainingContributions: number  // sum fremtidige innskudd frem til siste innskuddsår
+  interestAtCutoff: number             // renter opptjent frem til slutten av siste innskuddsår
+  balanceAtCutoff: number              // saldo ved utgangen av siste innskuddsår
+  balanceAtYear: (targetYear: number) => number
+  interestAtYear: (targetYear: number) => number
+  contributionsAtYear: (targetYear: number) => number
+}
+
+/**
+ * Beregner BSU-prognose fra nåværende saldo frem til og med siste innskuddsår,
+ * og kan videre projisere renteeffekt for år etter aldersgrensen.
+ *
+ * BSU-regler:
+ * - Siste innskuddsår = år du fyller 33
+ * - BSU-renten fortsetter ut år du fyller 35
+ * - Fra år du fyller 36 faller renten til vanlig sparerente (postRate)
+ */
+export function computeBSUForecast(
+  account: SavingsAccount,
+  birthYear: number,
+  currentBalance: number,
+  postRate = 3.0,
+  monthlyContributionOverride?: number,
+): BSUForecast {
+  const cutoffYear = bsuLastContributionYear(birthYear)  // birthYear + 33
+  const rateDropYear = birthYear + 36                    // fra dette år faller renten
+
+  const now = new Date()
+  const startYear = now.getFullYear()
+  const startMonth = now.getMonth() + 1
+
+  function simulate(untilYear: number): {
+    balance: number
+    contributions: number
+    interest: number
+  } {
+    const monthly = monthlyContributionOverride ?? account.monthlyContribution
+
+    let balance = currentBalance
+    let yearContributions = computeYTDContributions(account, startYear)
+    let totalNewContributions = 0
+    let totalInterest = 0
+    let yearlyAccrued = 0
+
+    let y = startYear
+    let m = startMonth
+
+    while (y < untilYear || (y === untilYear && m <= 12)) {
+      const date = new Date(y, m - 1, 1)
+      // Bruk BSU-rente frem til rateDropYear, deretter postRate
+      const rate = y < rateDropYear
+        ? getCurrentRateForDate(account.rateHistory, date)
+        : postRate
+
+      // Innskudd – stopp ved cutoffYear
+      if (y <= cutoffYear && balance < BSU_MAX_TOTAL) {
+        const remainingQuota = BSU_MAX_YEARLY - yearContributions
+        const contrib = Math.min(monthly, Math.max(0, remainingQuota))
+        const actual = Math.min(contrib, BSU_MAX_TOTAL - balance)
+        balance += actual
+        totalNewContributions += actual
+        yearContributions += actual
+      }
+
+      // BSU: rente akkumuleres månedlig, krediteres i desember
+      yearlyAccrued += balance * (rate / 100 / 12)
+      if (m === 12) {
+        balance += yearlyAccrued
+        totalInterest += yearlyAccrued
+        yearlyAccrued = 0
+        yearContributions = 0  // ny kvote neste år
+      }
+
+      m++
+      if (m > 12) { m = 1; y++ }
+    }
+
+    return { balance: Math.round(balance), contributions: Math.round(totalNewContributions), interest: Math.round(totalInterest) }
+  }
+
+  const atCutoff = simulate(cutoffYear)
+
+  return {
+    cutoffYear,
+    rateDropYear,
+    totalRemainingContributions: atCutoff.contributions,
+    interestAtCutoff: atCutoff.interest,
+    balanceAtCutoff: atCutoff.balance,
+    balanceAtYear: (targetYear: number) => simulate(targetYear).balance,
+    interestAtYear: (targetYear: number) => simulate(targetYear).interest,
+    contributionsAtYear: (targetYear: number) => simulate(targetYear).contributions,
+  }
 }
 
 // ------------------------------------------------------------

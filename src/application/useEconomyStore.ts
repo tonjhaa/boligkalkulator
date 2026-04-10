@@ -778,7 +778,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -812,6 +812,16 @@ export const useEconomyStore = create<EconomyState>()(
           if (!Array.isArray(state.insurances)) state.insurances = []
           if (!state.budgetOverrides || typeof state.budgetOverrides !== 'object') state.budgetOverrides = {}
           if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
+        }
+        // v3 → v4: migrer skatteoppgjør-linjer fra annen_inntekt/annet_forbruk til skatteoppgjor
+        if (fromVersion < 4 && state.budgetTemplate) {
+          const tmpl = state.budgetTemplate as { lines?: Array<{ category: string; label: string }> }
+          if (Array.isArray(tmpl.lines)) {
+            const SKATT_PATTERN = /skattetilgode|restskatt|skatte(opp|inn|ut)/i
+            tmpl.lines = tmpl.lines.map((l) =>
+              SKATT_PATTERN.test(l.label) ? { ...l, category: 'skatteoppgjor' } : l
+            )
+          }
         }
         // Alltid: sørg for fond
         if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO

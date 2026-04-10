@@ -1,6 +1,8 @@
-import { lazy, Suspense, useState, Component } from 'react'
+import { lazy, Suspense, Component } from 'react'
 import type { ReactNode } from 'react'
 import { useEconomyStore } from '@/application/useEconomyStore'
+import { useAppStore } from '@/store/useAppStore'
+import type { EconomySubPage } from '@/store/useAppStore'
 import { OnboardingWizard } from './OnboardingWizard'
 import {
   LayoutDashboard,
@@ -62,22 +64,6 @@ const EconomySettingsPage = lazy(() =>
 const FondPage = lazy(() =>
   import('./FondPage').then((m) => ({ default: m.FondPage }))
 )
-
-type EconomySubPage =
-  | 'dashboard'
-  | 'budget'
-  | 'salary'
-  | 'atf'
-  | 'savings'
-  | 'debt'
-  | 'absence'
-  | 'tax'
-  | 'subscriptions'
-  | 'feriepenger'
-  | 'fond'
-  | 'ivf'
-  | 'vacation'
-  | 'settings'
 
 interface NavItem {
   page: EconomySubPage
@@ -142,7 +128,8 @@ class PageErrorBoundary extends Component<
 
 export function EconomyPage() {
   const userPreferences = useEconomyStore((s) => s.userPreferences)
-  const [currentPage, setCurrentPage] = useState<EconomySubPage>('dashboard')
+  const currentPage = useAppStore((s) => s.currentEconomyPage)
+  const setCurrentPage = useAppStore((s) => s.setCurrentEconomyPage)
 
   // Vis onboarding for nye brukere
   if (!userPreferences?.onboardingCompleted) {

@@ -49,7 +49,6 @@ export function AbsencePage() {
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
   const [checkDateStr, setCheckDateStr] = useState(toLocalDateISO(new Date()))
-  const [hireDateStr, setHireDateStr] = useState(absenceHireDate ?? '')
   const [isSickNow, setIsSickNow] = useState(false)
   const [hasAAP, setHasAAP] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -74,10 +73,6 @@ export function AbsencePage() {
     }
   }
 
-  function handleHireDateBlur() {
-    setAbsenceHireDate(hireDateStr || null)
-  }
-
   const now = new Date()
   const useEvents = absenceEvents.length > 0
   const daysUsed = useEvents ? getDaysUsedFromEvents(absenceEvents, now) : getDaysUsedLast12Months(absenceRecords, now)
@@ -85,6 +80,7 @@ export function AbsencePage() {
   const remaining = useEvents ? getRemainingQuotaFromEvents(absenceEvents, now) : getRemainingQuota(absenceRecords, now)
 
   // Eligibility check
+  const hireDateStr = absenceHireDate ?? ''
   const checkDate = checkDateStr ? new Date(checkDateStr + 'T00:00:00Z') : new Date()
   const hireDate = hireDateStr ? new Date(hireDateStr + 'T00:00:00Z') : null
   const eligibility = useEvents ? evaluateEligibility(absenceEvents, checkDate, hireDate, isSickNow, hasAAP) : null
@@ -181,8 +177,7 @@ export function AbsencePage() {
                 <Input
                   type="date"
                   value={hireDateStr}
-                  onChange={(e) => setHireDateStr(e.target.value)}
-                  onBlur={handleHireDateBlur}
+                  onChange={(e) => setAbsenceHireDate(e.target.value || null)}
                   placeholder="YYYY-MM-DD"
                 />
               </div>

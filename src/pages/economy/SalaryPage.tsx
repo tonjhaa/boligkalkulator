@@ -169,7 +169,14 @@ export function SalaryPage() {
           ) : profile ? (
             <div className="space-y-2 text-sm">
               <InfoRow label="Arbeidsgiver" value={profile.employer === 'forsvaret' ? 'Forsvaret' : 'Annen'} />
-              <InfoRow label="Grunnlønn/mnd" value={fmtNOK(profile.baseMonthly)} />
+              <InfoRow label="Grunnlønn/mnd" value={`${fmtNOK(profile.baseMonthly)} (${fmtNOK(profile.baseMonthly * 12)}/år)`} />
+              {profile.fixedAdditions.filter((a) => a.amount > 0).map((a) => (
+                <InfoRow
+                  key={a.kode}
+                  label={`${a.label} (${a.kode})`}
+                  value={`${fmtNOK(a.amount)}/mnd (${fmtNOK(a.amount * 12)}/år)`}
+                />
+              ))}
               <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
               {profile.tabellnummer && (
                 <InfoRow label="Trekktabell" value={String(profile.tabellnummer)} />
@@ -204,6 +211,7 @@ export function SalaryPage() {
         <CardContent>
           <FungeringPanel
             entries={temporaryPayEntries}
+            baseMonthly={profile?.baseMonthly ?? 0}
             onAdd={addTemporaryPay}
             onRemove={removeTemporaryPay}
           />
@@ -246,7 +254,7 @@ export function SalaryPage() {
                     .sort((a, b) => a.year - b.year)
                     .map((r) => ({
                       year: r.year,
-                      beløp: -r.skattTilGodeEllerRest,
+                      beløp: r.skattTilGodeEllerRest,
                     }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -277,7 +285,7 @@ export function SalaryPage() {
                     {[...taxSettlements]
                       .sort((a, b) => b.year - a.year)
                       .map((r) => {
-                        const tilgode = -r.skattTilGodeEllerRest
+                        const tilgode = r.skattTilGodeEllerRest
                         return (
                           <tr key={r.year} className="border-b border-border last:border-0">
                             <td className="px-3 py-2">{r.year}</td>
@@ -616,10 +624,12 @@ function SlipDetailModal({ record, onClose }: { record: MonthRecord; onClose: ()
 
 function FungeringPanel({
   entries,
+  baseMonthly,
   onAdd,
   onRemove,
 }: {
   entries: TemporaryPayEntry[]
+  baseMonthly: number
   onAdd: (e: TemporaryPayEntry) => void
   onRemove: (id: string) => void
 }) {
@@ -679,7 +689,14 @@ function FungeringPanel({
             </div>
             {form.aarslonn > 0 && (
               <div className="space-y-0.5 self-end pb-1.5">
-                <p className="text-muted-foreground text-xs">= {Math.round(form.aarslonn / 12).toLocaleString('no-NO')} kr/mnd</p>
+                <p className="text-muted-foreground text-xs">
+                  = {Math.round(form.aarslonn / 12).toLocaleString('no-NO')} kr/mnd
+                  {baseMonthly > 0 && (
+                    <span className="text-green-500 ml-1">
+                      (+{Math.max(0, Math.round(form.aarslonn / 12 - baseMonthly)).toLocaleString('no-NO')} tillegg)
+                    </span>
+                  )}
+                </p>
               </div>
             )}
             <Button size="sm" className="h-7 text-xs" onClick={handleSave}>Lagre</Button>
@@ -695,7 +712,16 @@ function FungeringPanel({
             <div key={e.id} className="flex items-center justify-between gap-3 text-xs rounded border border-border/50 px-2 py-1.5">
               <span className="font-medium">{e.label}</span>
               <span className="text-muted-foreground">{e.fromDate} → {e.toDate}</span>
-              <span className="font-mono text-green-500">{Math.round(e.maanedslonn * 12).toLocaleString('no-NO')} kr/år <span className="text-muted-foreground font-normal">({Math.round(e.maanedslonn).toLocaleString('no-NO')} kr/mnd)</span></span>
+              <span className="font-mono text-green-500">
+                {Math.round(e.maanedslonn * 12).toLocaleString('no-NO')} kr/år
+                <span className="text-muted-foreground font-normal"> ({Math.round(e.maanedslonn).toLocaleString('no-NO')} kr/mnd</span>
+                {baseMonthly > 0 && (
+                  <span className="text-green-400 font-normal">
+                    , +{Math.max(0, Math.round(e.maanedslonn - baseMonthly)).toLocaleString('no-NO')} tillegg
+                  </span>
+                )}
+                <span className="text-muted-foreground font-normal">)</span>
+              </span>
               <button
                 className="text-muted-foreground hover:text-red-400 transition-colors ml-2"
                 onClick={() => onRemove(e.id)}

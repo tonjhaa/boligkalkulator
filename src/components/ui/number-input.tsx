@@ -33,11 +33,12 @@ export function NumberInput({
   id,
 }: NumberInputProps) {
   const [focused, setFocused] = React.useState(false)
-  const [rawValue, setRawValue] = React.useState(value.toString())
+  const toRaw = (v: number) => (v === 0 ? '' : v.toString())
+  const [rawValue, setRawValue] = React.useState(() => toRaw(value))
 
   React.useEffect(() => {
     if (!focused) {
-      setRawValue(value.toString())
+      setRawValue(toRaw(value))
     }
   }, [value, focused])
 
@@ -48,7 +49,7 @@ export function NumberInput({
 
   function handleFocus() {
     setFocused(true)
-    setRawValue(value === 0 ? '' : value.toString())
+    setRawValue(toRaw(value))
   }
 
   function handleBlur() {

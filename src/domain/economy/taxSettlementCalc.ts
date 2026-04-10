@@ -4,8 +4,8 @@ import { TAX_REFUND_RECOMMENDATION_THRESHOLD } from '@/config/economy.config'
 /**
  * Analyserer skatteoppgjør-historikk og gir anbefaling om justering av ekstra trekk.
  *
- * - Negativt skattTilGodeEllerRest = du får penger tilbake
- * - Positivt skattTilGodeEllerRest = du skylder restskatt
+ * - Positivt skattTilGodeEllerRest = du får penger tilbake (til gode)
+ * - Negativt skattTilGodeEllerRest = du skylder restskatt
  */
 export function analyzeTaxSettlements(
   records: TaxSettlementRecord[],
@@ -26,8 +26,8 @@ export function analyzeTaxSettlements(
     .sort((a, b) => b.year - a.year)
     .slice(0, 3)
 
-  // negativt = tilgode, vi snur fortegnet slik at tilgode er positivt
-  const refunds = recent.map((r) => -r.skattTilGodeEllerRest)
+  // positivt = tilgode, negativt = restskatt
+  const refunds = recent.map((r) => r.skattTilGodeEllerRest)
   const avgYearlyRefund = refunds.reduce((s, r) => s + r, 0) / refunds.length
 
   let recommendation: TaxSettlementAnalysis['recommendation']

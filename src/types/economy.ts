@@ -11,6 +11,8 @@ export type BudgetCategory =
   | 'lonn' | 'tillegg' | 'atf' | 'feriepenger' | 'annen_inntekt'
   // Trekk (negative beløp)
   | 'skatt' | 'pensjon' | 'fagforening' | 'husleietrekk'
+  // Skatteoppgjør (til gode = positivt, restskatt = negativt)
+  | 'skatteoppgjor'
   // Gjeld
   | 'studielaan' | 'billaan' | 'kredittkort' | 'annen_gjeld'
   // Faste utgifter
@@ -31,6 +33,14 @@ export interface BudgetLine {
   notes?: string
   /** Tidsbegrenset tillegg — skjules ved "uten tillegg"-visning */
   isTemporary?: boolean
+  /** Startdato for tidsbegrenset linje (ISO "YYYY-MM-DD"). Vises ikke i måneder før denne datoen. */
+  temporaryFromDate?: string
+  /** Sluttdato for tidsbegrenset linje (ISO "YYYY-MM-DD"). Vises ikke i måneder etter denne datoen. */
+  temporaryToDate?: string
+  /** Engangshendelse: kun synlig denne måneden (1–12). Krever isRecurring=false. */
+  specificMonth?: number
+  /** Engangshendelse: kun synlig dette året. Brukes sammen med specificMonth. */
+  specificYear?: number
 }
 
 export interface BudgetTemplate {
@@ -72,6 +82,10 @@ export interface ParsetLonnsslipp {
   hittilForskuddstrekk: number   // YTD forskuddstrekk
   /** ATF-satser funnet på slippen: artskode → sats per dag/time */
   atfRater?: Record<string, number>
+  /** Sum av alle ATF/øvelse-beløp (2230/2232/2233/2236 osv.) utbetalt denne slippen */
+  atfBeløp?: number
+  /** Fungeringsbeløp (10P2) utbetalt denne slippen */
+  fungeringBeløp?: number
   /** /440-grunnlaget (lønnsgrunnlag for tabelltrekk, f.eks. 61 278 kr) */
   tabelltrekkGrunnlag: number
   /** /440-trekk beløp (positivt tall, f.eks. 18 478 kr) */
@@ -117,8 +131,15 @@ export interface EmploymentProfile {
   /** Skatteprognose for inneværende år — meldt til skatteetaten */
   taxForecast?: {
     year: number
-    expectedIncome: number  // forventet pensjonsgivende inntekt
-    expectedTax: number     // forventet skatt å betale totalt
+    expectedIncome: number  // forventet pensjonsgivende inntekt (lønn)
+    expectedTax: number     // beregnet skatt (lagres for historikk)
+    fagforeningskontingent?: number
+    bsuInnskuddThisYear?: number
+    pensjonspremie?: number
+    gjeldsrenter?: number
+    renteinntekter?: number
+    reisefradragBrutto?: number
+    utgiftsgodtgjoerelseOverskudd?: number
   }
   /** Ferieperioder for året */
   vacationPeriods?: VacationPeriod[]
@@ -252,6 +273,8 @@ export interface SavingsAccount {
   maxTotalBalance?: number         // BSU: 300 000
   /** Kontonummer fra banken, brukes for matching ved re-import */
   accountNumber?: string
+  /** Fødselsår – brukes for BSU aldersgrense (siste innskuddsår = fødselsår + 33) */
+  birthYear?: number
 }
 
 export interface SavingsGoal {
@@ -378,7 +401,7 @@ export interface TaxSettlementRecord {
   pensjonsgivendeInntekt?: number
   alminneligInntekt?: number
   skattInnbetalt?: number
-  skattTilGodeEllerRest: number   // negativt = til gode, positivt = restskatt
+  skattTilGodeEllerRest: number   // positivt = til gode (du får penger), negativt = restskatt (du skylder)
   skattBetalt?: number
   nettoInntekt?: number
 }
@@ -477,6 +500,7 @@ export interface IVFSettings {
   studielaanTonje: number
   studielaanAne: number
   annenEgenkapital: number      // BSU, fond, sparekonto osv. utenom IVF-konto
+  selfLabel?: string            // Ditt navn i transaksjoner, brukes for å filtrere egne sparetransaksjoner i budsjettet
 }
 
 // ------------------------------------------------------------

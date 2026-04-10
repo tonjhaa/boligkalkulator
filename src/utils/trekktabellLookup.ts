@@ -97,6 +97,30 @@ export async function slaaOppTrekk(
 }
 
 /**
+ * Synkron oppslag – fungerer bare etter at slaaOppTrekk() har blitt kalt minst én gang
+ * for dette tabellnummeret (slik at data er i minne-cachen).
+ * Returnerer null hvis data ikke er lastet ennå.
+ */
+export function slaaOppTrekkSync(
+  tabellnummer: number,
+  grunnlag: number,
+  periode = 1,
+): number | null {
+  if (!cache.has(tabellnummer)) return null
+  const rader = cache.get(tabellnummer)!
+  const aktuelle = rader
+    .filter((r) => r.periode === periode && r.type === 0)
+    .sort((a, b) => a.grunnlag - b.grunnlag)
+  if (aktuelle.length === 0) return null
+  let treffer = aktuelle[0]
+  for (const rad of aktuelle) {
+    if (rad.grunnlag <= grunnlag) treffer = rad
+    else break
+  }
+  return treffer.trekk
+}
+
+/**
  * Returnerer alle tilgjengelige tabellnumre (for UI-validering).
  */
 export async function hentTabellnumre(): Promise<number[]> {

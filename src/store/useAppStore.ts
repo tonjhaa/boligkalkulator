@@ -10,6 +10,7 @@ import type {
 import { defaultConfig } from '@/config/default.config'
 
 export type AppView = 'calculator' | 'comparison' | 'settings' | 'economy' | 'skattekalkulator'
+export type EconomySubPage = 'dashboard' | 'budget' | 'salary' | 'atf' | 'savings' | 'debt' | 'absence' | 'tax' | 'subscriptions' | 'feriepenger' | 'fond' | 'ivf' | 'vacation' | 'settings'
 
 interface AppState {
   config: AppConfig
@@ -21,10 +22,12 @@ interface AppState {
   theme: 'dark' | 'light' | 'system'
   sidebarOpen: boolean
   currentView: AppView
+  currentEconomyPage: EconomySubPage
 
   setTheme: (theme: 'dark' | 'light' | 'system') => void
   setSidebarOpen: (open: boolean) => void
   setCurrentView: (view: AppView) => void
+  setCurrentEconomyPage: (page: EconomySubPage) => void
 
   addScenario: (scenario: ScenarioInput) => void
   updateScenario: (id: string, updates: Partial<ScenarioInput>) => void
@@ -52,10 +55,12 @@ export const useAppStore = create<AppState>()(
       theme: defaultConfig.ui.defaultTheme,
       sidebarOpen: true,
       currentView: 'economy',
+      currentEconomyPage: 'dashboard',
 
       setTheme: (theme) => set({ theme }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       setCurrentView: (view) => set({ currentView: view }),
+      setCurrentEconomyPage: (page) => set({ currentEconomyPage: page }),
 
       addScenario: (scenario) =>
         set((state) => ({
@@ -152,6 +157,7 @@ export const useAppStore = create<AppState>()(
         theme: state.theme,
         config: state.config,
         currentView: state.currentView,
+        currentEconomyPage: state.currentEconomyPage,
       }),
     }
   )

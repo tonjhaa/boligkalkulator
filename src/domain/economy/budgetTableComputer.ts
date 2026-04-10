@@ -14,6 +14,7 @@ import type {
 } from '@/types/economy'
 import { estimateSalaryTrend, projectMonthlySalary } from './salaryCalculator'
 import { computeMonthContributions } from './savingsCalculator'
+import { calcMonthlyTaxWithholding } from './norwegianTaxRules'
 
 // ----------------------------------------------------------------
 // Public types
@@ -93,6 +94,20 @@ function insMonthAmount(ins: InsuranceEntry, year: number): number {
 }
 
 // ----------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------
+
+/** Sjekker om en gitt måned (1–12) i et gitt år faller innenfor en valgfri datoavgrensing. */
+function monthInDateRange(year: number, month: number, fromDate?: string, toDate?: string): boolean {
+  if (!fromDate && !toDate) return true
+  const monthStart = new Date(year, month - 1, 1)
+  const monthEnd = new Date(year, month, 0)
+  if (fromDate && monthEnd < new Date(fromDate)) return false
+  if (toDate && monthStart > new Date(toDate)) return false
+  return true
+}
+
+// ----------------------------------------------------------------
 // Main export
 // ----------------------------------------------------------------
 
@@ -113,6 +128,9 @@ export function computeBudgetTable(
   ivfTransactions: IVFTransaction[] = [],
   fondPortfolio?: FondPortfolio,
   ivfSelfLabel?: string,
+  /** Slår opp skattetrekk fra faktisk trekktabell for et gitt grunnlag.
+   *  Returnerer undefined ved cache-miss — da brukes trekkrutinen som fallback. */
+  trekktabellLookup?: (grunnlag: number) => number | undefined,
 ): BudgetTableData {
 
   // ---- Month lookup (locked months in this year) ----
@@ -148,15 +166,15 @@ export function computeBudgetTable(
     }
   }
 
-  // For prognose: bruk fremskrevet lønn basert på trend, eller fungering hvis aktiv
+  // For prognose: bruk fremskrevet lønn basert på trend, eller basislønn når fungering er aktiv.
+  // Fungeringstillegget (mellomlegget) vises i egen rad — inkluderes IKKE her for å unngå dobbeltføring.
   const budgetSalary = (month: number): number => {
     if (!profile) return 0
-    // Har vi slipp for denne måneden i budsjettåret, bruk faktisk lønn
+    // Har vi slipp for denne måneden i budsjettåret, bruk faktisk lønn (allerede basislønn fra slip)
     const slip = monthMap.get(month)?.slipData
     if (slip) return slip.maanedslonn
-    // Midlertidig lønn (fungering) overstyrer prognose
-    const fungering = fungeringByMonth.get(month)
-    if (fungering) return fungering.maanedslonn
+    // Fungering aktiv: vis basislønn — mellomlegget håndteres i Fungering-raden
+    if (fungeringByMonth.has(month)) return profile.baseMonthly ?? projectMonthlySalary(trend, year, month)
     return projectMonthlySalary(trend, year, month)
   }
 
@@ -233,18 +251,53 @@ export function computeBudgetTable(
       )))
     }
 
-    // ATF: plasser i korrekt utbetalingsmåned
-    if (atfByMonth.size > 0) {
+    // ATF: plasser i korrekt utbetalingsmåned (budsjett fra atfEntries, faktisk fra slip)
+    const hasAtfData = atfByMonth.size > 0 || [...monthMap.values()].some(r => (r.slipData?.atfBeløp ?? 0) > 0)
+    if (hasAtfData) {
       inntekterRows.push(mkRow('atf', 'ATF-utbetaling', uniform12(
         (m) => budgetVal('atf', m, atfByMonth.get(m) ?? 0),
-        () => null,
+        (m) => {
+          const slip = monthMap.get(m)?.slipData
+          return slip ? (slip.atfBeløp ?? null) : null
+        },
+      )))
+    }
+
+    // Fungering (10P2) — prognose fra temporaryPayEntries, faktisk fra slipp
+    const hasGjøring = fungeringByMonth.size > 0 || [...monthMap.values()].some(r => (r.slipData?.fungeringBeløp ?? 0) > 0)
+    if (hasGjøring) {
+      inntekterRows.push(mkRow('fungering', 'Fungering (10P2)', uniform12(
+        (m) => {
+          const fungering = fungeringByMonth.get(m)
+          if (!fungering) return 0
+          // Fungeringstillegg = total fungering-lønn minus siste kjente grunnlønn
+          // Bruker profile.baseMonthly (faktisk fra siste slipp) fremfor trend-prognose
+          // for å unngå variasjon per måned.
+          const baseSalary = profile?.baseMonthly ?? trend.latestMonthly
+          return Math.max(0, fungering.maanedslonn - baseSalary)
+        },
+        (m) => {
+          const slip = monthMap.get(m)?.slipData
+          return slip ? (slip.fungeringBeløp ?? null) : null
+        },
       )))
     }
   }
 
-  // Template income lines (annen_inntekt)
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && l.category === 'annen_inntekt' && !(hideTemporary && l.isTemporary))) {
-    inntekterRows.push(mkRow(`income-${line.id}`, line.label, uniform12((m) => budgetVal(`income-${line.id}`, m, line.amount), () => null)))
+  // Template income lines (annen_inntekt) — recurring + once-off for this year
+  for (const line of budgetTemplate.lines.filter((l) =>
+    l.category === 'annen_inntekt' && !(hideTemporary && l.isTemporary) &&
+    (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
+  )) {
+    const rowId = `income-${line.id}`
+    inntekterRows.push(mkRow(rowId, line.label, uniform12(
+      (m) => {
+        if (!line.isRecurring && m !== line.specificMonth) return 0
+        if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
+        return budgetVal(rowId, m, line.amount)
+      },
+      () => null,
+    )))
   }
 
   // ================================================================
@@ -279,7 +332,14 @@ export function computeBudgetTable(
     // Skattepliktig inntekt = lønn + faste tillegg + ATF (/440-grunnlag)
     grunnlagRows.push(mkRow('brutto-inntekt', 'Bruttoinntekt', uniform12(
       (m) => inntekterRows.filter(r => !r.isHidden).reduce((s, r) => s + r.cells[m - 1].budget, 0),
-      (m) => monthMap.get(m)?.slipData?.bruttoSum ?? null,
+      (m) => {
+        const slip = monthMap.get(m)?.slipData
+        if (!slip) return null
+        return slip.maanedslonn
+          + slip.fasteTillegg.reduce((s, t) => s + t.belop, 0)
+          + (slip.atfBeløp ?? 0)
+          + (slip.fungeringBeløp ?? 0)
+      },
     )))
     grunnlagRows.push(mkRow('skattepliktig', 'Skattepliktig inntekt', uniform12(
       (m) => effectiveSalaryForMonth(m) + effectiveTilleggForMonth(m) + (atfByMonth.get(m) ?? 0),
@@ -290,16 +350,6 @@ export function computeBudgetTable(
       },
     )))
 
-    // Effektivt /440-grunnlag = lønn + tillegg (samme som slippen)
-    // Fallback-rate: bruker tabelltrekkBelop/tabelltrekkGrunnlag direkte fra siste slipp
-    const effectiveTaxRate = profile.lastKnownTableTaxPercent != null && profile.lastKnownTableTaxPercent > 0
-      ? profile.lastKnownTableTaxPercent / 100
-      : (() => {
-          // Estimat: lastKnownTaxWithholding delt på (lønn + tillegg) fra profilen
-          const baseGrunnlag = budgetSalary(1) + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)
-          return baseGrunnlag > 0 ? profile.lastKnownTaxWithholding / baseGrunnlag : 0
-        })()
-
     trekkRows.push(mkRow('skatt', 'Skattetrekk', uniform12(
       (m) => {
         const atfAmount = atfByMonth.get(m) ?? 0
@@ -309,12 +359,23 @@ export function computeBudgetTable(
             return budgetVal('skatt', m, -juneHoliday.juneSkattetrekk)
           }
         }
-        // /440-grunnlag = lønn + faste tillegg + ATF (speiler slippen nøyaktig)
-        // Desember: halvskatt for tabelltrekk (lønn+tillegg), ATF trekkes fullt
+        // Beregn månedlig trekk: prioriter trekktabelloppslag, fall tilbake på trekkrutine
         const grunnlagLonnTillegg = effectiveSalaryForMonth(m) + effectiveTilleggForMonth(m)
+        const grunnlagRounded = Math.round(grunnlagLonnTillegg)
+        const baseMonthlyTax = trekktabellLookup?.(grunnlagRounded)
+          ?? calcMonthlyTaxWithholding(grunnlagLonnTillegg, year)
+        // Desember: halvskatt for lønn+tillegg; ATF trekkes fullt uansett måned
         const desemberFaktor = m === 12 ? 0.5 : 1
-        const skattLonnTillegg = Math.round(grunnlagLonnTillegg * effectiveTaxRate * desemberFaktor)
-        const skattATF = Math.round(atfAmount * effectiveTaxRate)
+        const skattLonnTillegg = Math.round(baseMonthlyTax * desemberFaktor)
+        // ATF: marginal trekk (trekktabell eller trekkrutine på total - base)
+        const skattATF = atfAmount > 0
+          ? (() => {
+              const grunnlagMedAtf = Math.round(grunnlagLonnTillegg + atfAmount)
+              const totalTax = trekktabellLookup?.(grunnlagMedAtf)
+                ?? calcMonthlyTaxWithholding(grunnlagLonnTillegg + atfAmount, year)
+              return Math.round(totalTax - baseMonthlyTax)
+            })()
+          : 0
         return budgetVal('skatt', m, -(skattLonnTillegg + skattATF))
       },
       (m) => {
@@ -396,6 +457,24 @@ export function computeBudgetTable(
 
 
   // ================================================================
+  // SKATTEOPPGJØR (dualColumn = true — viser budsjett vs ingen faktisk)
+  // ================================================================
+  const skatteoppgjorRows: BudgetRow[] = []
+  for (const line of budgetTemplate.lines.filter((l) =>
+    l.category === 'skatteoppgjor' &&
+    (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
+  )) {
+    const rowId = `skattoppgjor-${line.id}`
+    skatteoppgjorRows.push(mkRow(rowId, line.label, uniform12(
+      (m) => {
+        if (!line.isRecurring && m !== line.specificMonth) return 0
+        return budgetVal(rowId, m, line.amount)
+      },
+      () => null,
+    )))
+  }
+
+  // ================================================================
   // FASTE UTGIFTER (dualColumn = false)
   // ================================================================
   const EXPENSE_CATS = new Set([
@@ -403,8 +482,19 @@ export function computeBudgetTable(
   ])
   const fasteRows: BudgetRow[] = []
 
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && !l.isVariable && !(hideTemporary && l.isTemporary))) {
-    fasteRows.push(mkRow(`exp-${line.id}`, line.label, uniform12((m) => budgetVal(`exp-${line.id}`, m, line.amount), () => null)))
+  for (const line of budgetTemplate.lines.filter((l) =>
+    EXPENSE_CATS.has(l.category) && !l.isVariable && !(hideTemporary && l.isTemporary) &&
+    (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
+  )) {
+    const rowId = `exp-${line.id}`
+    fasteRows.push(mkRow(rowId, line.label, uniform12(
+      (m) => {
+        if (!line.isRecurring && m !== line.specificMonth) return 0
+        if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
+        return budgetVal(rowId, m, line.amount)
+      },
+      () => null,
+    )))
   }
 
   const activeSubs = subscriptions.filter((s) => s.isActive)
@@ -427,8 +517,19 @@ export function computeBudgetTable(
   // VARIABLE UTGIFTER (dualColumn = false)
   // ================================================================
   const variableRows: BudgetRow[] = []
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && EXPENSE_CATS.has(l.category) && l.isVariable && !(hideTemporary && l.isTemporary))) {
-    variableRows.push(mkRow(`var-${line.id}`, line.label, uniform12((m) => budgetVal(`var-${line.id}`, m, line.amount), () => null)))
+  for (const line of budgetTemplate.lines.filter((l) =>
+    EXPENSE_CATS.has(l.category) && l.isVariable && !(hideTemporary && l.isTemporary) &&
+    (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
+  )) {
+    const rowId = `var-${line.id}`
+    variableRows.push(mkRow(rowId, line.label, uniform12(
+      (m) => {
+        if (!line.isRecurring && m !== line.specificMonth) return 0
+        if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
+        return budgetVal(rowId, m, line.amount)
+      },
+      () => null,
+    )))
   }
 
   // ================================================================
@@ -478,8 +579,19 @@ export function computeBudgetTable(
     )))
   }
 
-  for (const line of budgetTemplate.lines.filter((l) => l.isRecurring && SAVINGS_CATS.has(l.category) && !(hideTemporary && l.isTemporary))) {
-    sparingRows.push(mkRow(`sav-t-${line.id}`, line.label, uniform12((m) => budgetVal(`sav-t-${line.id}`, m, line.amount), () => null)))
+  for (const line of budgetTemplate.lines.filter((l) =>
+    SAVINGS_CATS.has(l.category) && !(hideTemporary && l.isTemporary) &&
+    (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
+  )) {
+    const rowId = `sav-t-${line.id}`
+    sparingRows.push(mkRow(rowId, line.label, uniform12(
+      (m) => {
+        if (!line.isRecurring && m !== line.specificMonth) return 0
+        if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
+        return budgetVal(rowId, m, line.amount)
+      },
+      () => null,
+    )))
   }
 
   // IVF eget sparebidrag — faktiske beløp per måned fra prosjektfanen
@@ -494,8 +606,9 @@ export function computeBudgetTable(
     const m = d.getMonth() + 1
     ivfTonjeSparByMonth.set(m, (ivfTonjeSparByMonth.get(m) ?? 0) + tx.amount)
   }
-  if (ivfTonjeSparByMonth.size > 0) {
-    sparingRows.push(mkRow('ivf-sparing-tonje', 'Annen sparing', uniform12(
+  // Vis kun Prosjekt-sparing hvis eier-filter er satt — ellers vet vi ikke hvem sin sparing det er
+  if (ivfSelfLabel && ivfTonjeSparByMonth.size > 0) {
+    sparingRows.push(mkRow('ivf-sparing-tonje', 'Sparing (Prosjekt)', uniform12(
       (m) => budgetVal('ivf-sparing-tonje', m, -(ivfTonjeSparByMonth.get(m) ?? 0)),
       (m) => ivfTonjeSparByMonth.has(m) ? -(ivfTonjeSparByMonth.get(m)!) : null,
     )))
@@ -564,6 +677,10 @@ export function computeBudgetTable(
   }
 
   sections.push({ key: 'NETTO', label: 'Netto utbetalt', colorClass: 'text-foreground', dualColumn: true, rows: [mkRow('netto', 'NETTO', nettoCells, true)] })
+
+  if (skatteoppgjorRows.length > 0) {
+    sections.push({ key: 'SKATTEOPPGJOR', label: 'Skatteoppgjør', colorClass: 'text-yellow-400', dualColumn: false, rows: skatteoppgjorRows })
+  }
 
   if (fasteRows.length > 0) {
     sections.push({ key: 'FASTE', label: 'Faste utgifter', colorClass: 'text-blue-400', dualColumn: false, rows: fasteRows })

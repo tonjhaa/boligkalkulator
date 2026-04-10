@@ -109,27 +109,27 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
     artskodeLinjer.push({ kode, navn, lastAmount, satsAmount })
   }
 
-  // ---- ATF-satser: ekstraher sats-kolonnen for øvelse-artskoder ----
+  // ---- ATF-satser og -beløp: ekstraher sats og totalbeløp for øvelse-artskoder ----
   // Ta MAKSIMUM sats per artskode (des-slipper kan ha gammel+ny sats etter lønnsoppgjør)
   //
-  // TIMER-artskoder (2236/2237/2238/2242/2243/2244):
-  //   Format: "KODE beskr. SATS ANTALL_t BELØP" → satsAmount = amounts[0] = sats ✓
-  // DÖGN-artskoder (2230/2232/2233):
-  //   Format: "KODE beskr. ANTALL,00 SATS BELØP" → satsAmount = amounts[0] = antall ✗
-  //   Riktig sats beregnes som: beløp / antall = lastAmount / satsAmount
+  // Alle ATF-artskoder (både dögn og timer) følger kolonneformat: ANTALL SATS BELØP
+  //   → satsAmount = amounts[0] = antall, lastAmount = amounts[last] = beløp
+  //   → sats per dag/time = beløp / antall = lastAmount / satsAmount
   const ATF_ARTSKODER = new Set(['2230', '2232', '2233', '2236', '2237', '2238', '2242', '2243', '2244'])
-  const ATF_DÖGN = new Set(['2230', '2232', '2233'])
   const atfRaterMap = new Map<string, number>()
+  let atfBeløp = 0
   for (const l of artskodeLinjer) {
     if (!ATF_ARTSKODER.has(l.kode) || l.satsAmount <= 0 || l.lastAmount === 0) continue
-    const sats = ATF_DÖGN.has(l.kode)
-      ? l.lastAmount / l.satsAmount   // beløp / antall = sats per døgn
-      : l.satsAmount                  // timer: satsAmount er allerede satsen
+    const sats = l.lastAmount / l.satsAmount   // beløp / antall = sats per dag/time
     const prev = atfRaterMap.get(l.kode) ?? 0
     if (sats > prev) atfRaterMap.set(l.kode, sats)
+    atfBeløp += Math.abs(l.lastAmount)
   }
   const atfRater: Record<string, number> | undefined =
     atfRaterMap.size > 0 ? Object.fromEntries(atfRaterMap) : undefined
+
+  // ---- Fungering (10P2) ----
+  const fungeringBeløp = Math.abs(getPost('10P2')?.lastAmount ?? 0)
 
   // Bruk SISTE forekomst av artskoden — ved flersiders slipper er siste side = inneværende måned.
   // Tidligere sider inneholder etterbetalinger fra tidligere perioder.
@@ -291,7 +291,7 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
   // Logg ukjente artskoder
   const kjentKoder = new Set([
     ...fasteTilleggKoder, ...trekkKoder,
-    '1S01', '1001', '7005',
+    '1S01', '1001', '7005', '10P2',
     ...ATF_ARTSKODER,
   ])
   artskodeLinjer.forEach((l) => {
@@ -323,6 +323,8 @@ export function parseForsvarsSlipp(pdfText: string): ParsetLonnsslipp {
     hittilPensjon,
     hittilForskuddstrekk,
     atfRater,
+    atfBeløp: atfBeløp > 0 ? atfBeløp : undefined,
+    fungeringBeløp: fungeringBeløp > 0 ? fungeringBeløp : undefined,
     tabelltrekkGrunnlag,
     tabelltrekkBelop,
     tabellnummer,
