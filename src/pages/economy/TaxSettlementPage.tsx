@@ -276,9 +276,7 @@ export function TaxSettlementPage() {
         taxForecast={taxForecast}
         skattetrekkYTD={skattetrekkYTD}
         ekstraTrekkYTD={ekstraTrekkYTD}
-        withheldYTD={withheldYTD}
         projectedWithheld={projectedWithheld}
-        projectedIncome={projectedIncome}
         autoFill={taxAutoFill}
         slipMonth={slipMonth}
         onSaveForecast={(d) => {
@@ -645,9 +643,7 @@ function TaxForecastSection({
   taxForecast,
   skattetrekkYTD,
   ekstraTrekkYTD,
-  withheldYTD,
   projectedWithheld,
-  projectedIncome,
   autoFill,
   slipMonth,
   onSaveForecast,
@@ -668,9 +664,7 @@ function TaxForecastSection({
   } | null
   skattetrekkYTD: number
   ekstraTrekkYTD: number
-  withheldYTD: number
   projectedWithheld: number
-  projectedIncome: number
   autoFill: TaxFillData
   slipMonth: number
   onSaveForecast: (d: TaxFillData) => void
