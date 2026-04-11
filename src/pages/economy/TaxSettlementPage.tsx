@@ -121,7 +121,7 @@ export function TaxSettlementPage() {
 
   const skattetrekkYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.skattetrekk ?? 0), 0)
   const ekstraTrekkYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.ekstraTrekk ?? 0), 0)
-  const withheldYTD = skattetrekkYTD + ekstraTrekkYTD
+
   const grossYTD = slipsThisYear.reduce((sum, m) => sum + (m.slipData!.bruttoSum ?? 0), 0)
   const slipMonth = slipsThisYear.length > 0
     ? Math.max(...slipsThisYear.map((m) => m.month))
