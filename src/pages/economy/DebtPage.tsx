@@ -39,6 +39,12 @@ export function DebtPage() {
   const totalMonthly = calculateTotalMonthlyDebtCost(debts)
   const totalBalance = debts.reduce((s, d) => s + d.currentBalance, 0)
 
+  // Forventet rentekostnad neste 12 måneder (sum av interest fra nedbetalingsplan)
+  const annualInterest = debts.reduce((sum, d) => {
+    const plan = buildRepaymentPlan(d)
+    return sum + plan.rows.slice(0, 12).reduce((s, r) => s + r.interest, 0)
+  }, 0)
+
   // Graf: samlet gjeld over tid (neste 5 år)
   const maxMonths = 60
   const chartData = Array.from({ length: maxMonths + 1 }, (_, i) => {
@@ -70,7 +76,7 @@ export function DebtPage() {
       {/* Oversikt */}
       {debts.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Card>
               <CardContent className="py-3">
                 <p className="text-xs text-muted-foreground">Total gjeld</p>
@@ -81,6 +87,12 @@ export function DebtPage() {
               <CardContent className="py-3">
                 <p className="text-xs text-muted-foreground">Månedlig kostnad</p>
                 <p className="font-mono font-semibold">{fmtNOK(totalMonthly)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-3">
+                <p className="text-xs text-muted-foreground">Renter neste 12 mnd</p>
+                <p className="font-mono font-semibold text-orange-400">{fmtNOK(Math.round(annualInterest))}</p>
               </CardContent>
             </Card>
           </div>
@@ -124,6 +136,7 @@ export function DebtPage() {
             const plan = buildRepaymentPlan(debt)
             const payoffYear = plan.payoffDate.getFullYear()
             const payoffMonth = plan.payoffDate.getMonth() + 1
+            const interestNext12 = plan.rows.slice(0, 12).reduce((s, r) => s + r.interest, 0)
 
             return (
               <Card key={debt.id}>
@@ -144,10 +157,11 @@ export function DebtPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
                     <MiniStat label="Saldo" value={fmtNOK(debt.currentBalance)} />
                     <MiniStat label="Rente" value={`${currentRate.toFixed(2)}%`} />
                     <MiniStat label="Terminbeløp" value={fmtNOK(debt.monthlyPayment)} />
+                    <MiniStat label="Renter/år" value={fmtNOK(Math.round(interestNext12))} highlight />
                     <MiniStat label="Innfris" value={`${String(payoffMonth).padStart(2, '0')}/${payoffYear}`} />
                   </div>
 
@@ -295,11 +309,11 @@ export function DebtPage() {
 // SUB-KOMPONENTER
 // ------------------------------------------------------------
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+function MiniStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-mono font-medium text-sm">{value}</p>
+      <p className={`font-mono font-medium text-sm ${highlight ? 'text-orange-400' : ''}`}>{value}</p>
     </div>
   )
 }
