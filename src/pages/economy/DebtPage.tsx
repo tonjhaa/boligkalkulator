@@ -45,6 +45,15 @@ export function DebtPage() {
     return sum + plan.rows.slice(0, 12).reduce((s, r) => s + r.interest, 0)
   }, 0)
 
+  // Samlet gjeld ved slutten av inneværende år
+  const now = new Date()
+  const monthsLeftThisYear = 12 - now.getMonth() // måneder igjen inkl. inneværende
+  const balanceEndOfYear = debts.reduce((sum, d) => {
+    const plan = buildRepaymentPlan(d)
+    const row = plan.rows[monthsLeftThisYear - 1]
+    return sum + (row?.balance ?? 0)
+  }, 0)
+
   // Graf: samlet gjeld over tid (neste 5 år)
   const maxMonths = 60
   const chartData = Array.from({ length: maxMonths + 1 }, (_, i) => {
@@ -76,11 +85,17 @@ export function DebtPage() {
       {/* Oversikt */}
       {debts.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Total gjeld</p>
+                <p className="text-xs text-muted-foreground">Total gjeld nå</p>
                 <p className="font-mono font-semibold text-red-400">{fmtNOK(totalBalance)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-3">
+                <p className="text-xs text-muted-foreground">Gjeld ved årsslutt</p>
+                <p className="font-mono font-semibold text-red-300">{fmtNOK(Math.round(balanceEndOfYear))}</p>
               </CardContent>
             </Card>
             <Card>
