@@ -5,14 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
-} from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
-import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
-import type { EmploymentProfile, MonthRecord, TaxSettlementRecord, TemporaryPayEntry, LonnsoppgjorRecord } from '@/types/economy'
+import type { EmploymentProfile, MonthRecord, TemporaryPayEntry, LonnsoppgjorRecord } from '@/types/economy'
 
 function fmtNOK(n: number) {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
@@ -106,9 +102,6 @@ export function SalaryPage() {
     profile,
     setProfile,
     monthHistory,
-    taxSettlements,
-    addTaxSettlement,
-    removeTaxSettlement,
     temporaryPayEntries,
     addTemporaryPay,
     removeTemporaryPay,
@@ -120,18 +113,12 @@ export function SalaryPage() {
   } = useEconomyStore()
 
   const [editingProfile, setEditingProfile] = useState(false)
-  const [addingSettlement, setAddingSettlement] = useState(false)
   const [viewingSlip, setViewingSlip] = useState<MonthRecord | null>(null)
   const [storageKB, setStorageKB] = useState(0)
 
   useEffect(() => {
     setStorageKB(getLocalStorageKB())
   }, [monthHistory])
-
-  const analysis = analyzeTaxSettlements(
-    taxSettlements,
-    profile?.extraTaxWithholding ?? 0
-  )
 
   const importedSlips = monthHistory
     .filter((m) => m.source === 'imported_slip')
@@ -252,108 +239,6 @@ export function SalaryPage() {
         </CardHeader>
         <CardContent>
           <PayslipImporter />
-        </CardContent>
-      </Card>
-
-      {/* Skatteoppgjør-historikk */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Skatteoppgjør-historikk</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setAddingSettlement(true)}>
-              + Legg til
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {addingSettlement && (
-            <AddSettlementForm
-              onSave={(r) => { addTaxSettlement(r); setAddingSettlement(false) }}
-              onCancel={() => setAddingSettlement(false)}
-            />
-          )}
-
-          {taxSettlements.length > 0 && (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart
-                  data={[...taxSettlements]
-                    .sort((a, b) => a.year - b.year)
-                    .map((r) => ({
-                      year: r.year,
-                      beløp: r.skattTilGodeEllerRest,
-                    }))}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="year" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${v / 1000}k`} />
-                  <Tooltip
-                    formatter={(v) => [fmtNOK(Number(v)), Number(v) >= 0 ? 'Til gode' : 'Restskatt']}
-                  />
-                  <ReferenceLine y={0} stroke="var(--border)" />
-                  <Bar
-                    dataKey="beløp"
-                    fill="#22C55E"
-                    radius={[2, 2, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-
-              <div className="rounded-md border border-border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-muted/50 border-b border-border">
-                      <th className="text-left px-3 py-2 font-medium">År</th>
-                      <th className="text-right px-3 py-2 font-medium">Til gode / Restskatt</th>
-                      <th className="text-right px-3 py-2 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...taxSettlements]
-                      .sort((a, b) => b.year - a.year)
-                      .map((r) => {
-                        const tilgode = r.skattTilGodeEllerRest
-                        return (
-                          <tr key={r.year} className="border-b border-border last:border-0">
-                            <td className="px-3 py-2">{r.year}</td>
-                            <td className={`px-3 py-2 text-right font-mono ${tilgode >= 0 ? 'text-green-500' : 'text-red-400'}`}>
-                              {tilgode >= 0 ? '+' : ''}{fmtNOK(tilgode)}
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 px-2 text-xs text-muted-foreground"
-                                onClick={() => removeTaxSettlement(r.year)}
-                              >
-                                Fjern
-                              </Button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-
-          {taxSettlements.length === 0 && !addingSettlement && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Ingen skatteoppgjør registrert.
-            </p>
-          )}
-
-          {/* Anbefaling */}
-          {analysis.recommendation !== 'keep' && (
-            <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 p-3 text-sm text-yellow-400">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span className="font-medium">Anbefaling</span>
-              </div>
-              <p className="text-xs">{analysis.reasoning}</p>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -491,47 +376,6 @@ function ProfileForm({
       <div className="flex gap-2 justify-end">
         <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
         <Button size="sm" onClick={() => onSave(form)}>Lagre</Button>
-      </div>
-    </div>
-  )
-}
-
-function AddSettlementForm({
-  onSave,
-  onCancel,
-}: {
-  onSave: (r: TaxSettlementRecord) => void
-  onCancel: () => void
-}) {
-  const [form, setForm] = useState({ year: new Date().getFullYear() - 1, skattTilGodeEllerRest: 0 })
-
-  return (
-    <div className="border border-border rounded-md p-3 space-y-3">
-      <p className="text-xs font-medium">Legg til skatteoppgjør</p>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Inntektsår</Label>
-          <Input
-            type="number"
-            value={form.year}
-            onChange={(e) => setForm((f) => ({ ...f, year: parseInt(e.target.value) || f.year }))}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Til gode (negativt = restskatt)</Label>
-          <Input
-            type="number"
-            value={form.skattTilGodeEllerRest}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, skattTilGodeEllerRest: parseFloat(e.target.value) || 0 }))
-            }
-            placeholder="-5000 = 5 000 kr tilgode"
-          />
-        </div>
-      </div>
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
-        <Button size="sm" onClick={() => onSave(form as TaxSettlementRecord)}>Lagre</Button>
       </div>
     </div>
   )
