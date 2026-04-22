@@ -346,6 +346,21 @@ export interface RepaymentPlan {
 }
 
 // ------------------------------------------------------------
+// LØNNSOPPGJØR-HISTORIKK
+// ------------------------------------------------------------
+
+export interface LonnsoppgjorRecord {
+  id: string
+  year: number
+  effectiveDate: string         // "YYYY-MM-DD", typisk 1. mai
+  maanedslonn: number           // ny grunnlønn etter oppgjør
+  forrigeMaanedslonn: number    // grunnlønn før oppgjøret (0 = ukjent/første registrerte)
+  htaTillegg: number            // HTA-tillegg inkludert i økningen (0 = ukjent)
+  notes: string
+  source: 'slip' | 'manual' | 'forventet'
+}
+
+// ------------------------------------------------------------
 // MIDLERTIDIG LØNN (FUNGERING)
 // ------------------------------------------------------------
 

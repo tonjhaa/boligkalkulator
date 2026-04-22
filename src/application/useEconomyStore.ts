@@ -28,6 +28,7 @@ import type {
   FondPortfolio,
   FondPortfolioSnapshot,
   UserPreferences,
+  LonnsoppgjorRecord,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -67,6 +68,9 @@ interface EconomyState {
 
   // Styringsrente-historikk
   policyRateHistory: PolicyRateEntry[]
+
+  // Lønnsoppgjør-historikk
+  lonnsoppgjor: LonnsoppgjorRecord[]
 
   // Midlertidig lønn (fungering)
   temporaryPayEntries: TemporaryPayEntry[]
@@ -132,6 +136,11 @@ interface EconomyState {
   addInsurance: (ins: InsuranceEntry) => void
   updateInsurance: (id: string, updates: Partial<InsuranceEntry>) => void
   removeInsurance: (id: string) => void
+
+  addLonnsoppgjor: (record: LonnsoppgjorRecord) => void
+  updateLonnsoppgjor: (id: string, updates: Partial<LonnsoppgjorRecord>) => void
+  removeLonnsoppgjor: (id: string) => void
+  deriveLonnsoppgjorFromSlips: () => void
 
   addTemporaryPay: (entry: TemporaryPayEntry) => void
   updateTemporaryPay: (id: string, updates: Partial<TemporaryPayEntry>) => void
@@ -215,6 +224,7 @@ export const useEconomyStore = create<EconomyState>()(
       subscriptions: [],
       insurances: [],
       policyRateHistory: POLICY_RATE_HISTORY,
+      lonnsoppgjor: [],
       temporaryPayEntries: [],
       ivfTransactions: INITIAL_IVF_TRANSACTIONS,
       ivfSettings: DEFAULT_IVF_SETTINGS,
@@ -574,6 +584,59 @@ export const useEconomyStore = create<EconomyState>()(
         })),
       removeSubscription: (id) =>
         set((s) => ({ subscriptions: s.subscriptions.filter((s) => s.id !== id) })),
+
+      // --- Lønnsoppgjør ---
+      addLonnsoppgjor: (record) =>
+        set((s) => ({ lonnsoppgjor: [...s.lonnsoppgjor, record].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate)) })),
+      updateLonnsoppgjor: (id, updates) =>
+        set((s) => ({ lonnsoppgjor: s.lonnsoppgjor.map((r) => (r.id === id ? { ...r, ...updates } : r)) })),
+      removeLonnsoppgjor: (id) =>
+        set((s) => ({ lonnsoppgjor: s.lonnsoppgjor.filter((r) => r.id !== id) })),
+      deriveLonnsoppgjorFromSlips: () => {
+        const { monthHistory } = get()
+        const slips = monthHistory
+          .filter((m) => m.source === 'imported_slip' && (m.slipData?.maanedslonn ?? 0) > 0)
+          .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+
+        const derived: LonnsoppgjorRecord[] = []
+        let prevLonn = 0
+
+        for (const m of slips) {
+          const lonn = m.slipData!.maanedslonn
+          const effectiveDate = `${m.year}-${String(m.month).padStart(2, '0')}-01`
+          if (prevLonn === 0) {
+            derived.push({
+              id: crypto.randomUUID(),
+              year: m.year,
+              effectiveDate,
+              maanedslonn: lonn,
+              forrigeMaanedslonn: 0,
+              htaTillegg: 0,
+              notes: 'Første registrerte lønn',
+              source: 'slip',
+            })
+          } else if (Math.abs(lonn - prevLonn) > 500) {
+            derived.push({
+              id: crypto.randomUUID(),
+              year: m.year,
+              effectiveDate,
+              maanedslonn: lonn,
+              forrigeMaanedslonn: prevLonn,
+              htaTillegg: 0,
+              notes: '',
+              source: 'slip',
+            })
+          }
+          prevLonn = lonn
+        }
+
+        set((s) => ({
+          lonnsoppgjor: [
+            ...s.lonnsoppgjor.filter((r) => r.source !== 'slip'),
+            ...derived,
+          ].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate)),
+        }))
+      },
 
       // --- Midlertidig lønn ---
       addTemporaryPay: (entry) => set((s) => ({ temporaryPayEntries: [...s.temporaryPayEntries, entry] })),

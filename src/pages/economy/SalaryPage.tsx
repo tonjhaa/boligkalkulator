@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2, TrendingUp, Pencil, Check, X, RefreshCw } from 'lucide-react'
 import { slaaOppTrekk } from '@/utils/trekktabellLookup'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,7 @@ import { useEconomyStore } from '@/application/useEconomyStore'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
-import type { EmploymentProfile, MonthRecord, TaxSettlementRecord, TemporaryPayEntry } from '@/types/economy'
+import type { EmploymentProfile, MonthRecord, TaxSettlementRecord, TemporaryPayEntry, LonnsoppgjorRecord } from '@/types/economy'
 
 function fmtNOK(n: number) {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
@@ -112,6 +112,11 @@ export function SalaryPage() {
     temporaryPayEntries,
     addTemporaryPay,
     removeTemporaryPay,
+    lonnsoppgjor,
+    addLonnsoppgjor,
+    updateLonnsoppgjor,
+    removeLonnsoppgjor,
+    deriveLonnsoppgjorFromSlips,
   } = useEconomyStore()
 
   const [editingProfile, setEditingProfile] = useState(false)
@@ -214,6 +219,28 @@ export function SalaryPage() {
             baseMonthly={profile?.baseMonthly ?? 0}
             onAdd={addTemporaryPay}
             onRemove={removeTemporaryPay}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Lønnsoppgjør & lønnsvekst */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm">Lønnsoppgjør & lønnsvekst</CardTitle>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <LonnsoppgjorSection
+            records={lonnsoppgjor}
+            hasSlips={monthHistory.some((m) => m.source === 'imported_slip')}
+            onAdd={addLonnsoppgjor}
+            onUpdate={updateLonnsoppgjor}
+            onRemove={removeLonnsoppgjor}
+            onDerive={deriveLonnsoppgjorFromSlips}
           />
         </CardContent>
       </Card>
@@ -620,6 +647,322 @@ function SlipDetailModal({ record, onClose }: { record: MonthRecord; onClose: ()
 
 // ----------------------------------------------------------------
 // FungeringPanel
+// ------------------------------------------------------------
+// LØNNSOPPGJØR-SEKSJON
+// ------------------------------------------------------------
+
+function LonnsoppgjorSection({
+  records,
+  hasSlips,
+  onAdd,
+  onUpdate,
+  onRemove,
+  onDerive,
+}: {
+  records: LonnsoppgjorRecord[]
+  hasSlips: boolean
+  onAdd: (r: LonnsoppgjorRecord) => void
+  onUpdate: (id: string, updates: Partial<LonnsoppgjorRecord>) => void
+  onRemove: (id: string) => void
+  onDerive: () => void
+}) {
+  const currentYear = new Date().getFullYear()
+  const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    year: currentYear,
+    effectiveDate: `${currentYear}-05-01`,
+    maanedslonn: 0,
+    htaTillegg: 0,
+    notes: '',
+    source: 'forventet' as LonnsoppgjorRecord['source'],
+  })
+  const [editForm, setEditForm] = useState<Partial<LonnsoppgjorRecord>>({})
+
+  const sorted = [...records].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
+
+  function handleAdd() {
+    if (form.maanedslonn <= 0) return
+    const prev = sorted.filter((r) => r.effectiveDate < `${form.year}-${String(new Date(form.effectiveDate).getMonth() + 1).padStart(2,'0')}-01`).at(-1)
+    onAdd({
+      id: crypto.randomUUID(),
+      year: form.year,
+      effectiveDate: form.effectiveDate,
+      maanedslonn: form.maanedslonn,
+      forrigeMaanedslonn: prev?.maanedslonn ?? 0,
+      htaTillegg: form.htaTillegg,
+      notes: form.notes,
+      source: form.source,
+    })
+    setAdding(false)
+    setForm({ year: currentYear, effectiveDate: `${currentYear}-05-01`, maanedslonn: 0, htaTillegg: 0, notes: '', source: 'forventet' })
+  }
+
+  function startEdit(r: LonnsoppgjorRecord) {
+    setEditingId(r.id)
+    setEditForm({ maanedslonn: r.maanedslonn, htaTillegg: r.htaTillegg, notes: r.notes, effectiveDate: r.effectiveDate, source: r.source })
+  }
+
+  function saveEdit(id: string) {
+    onUpdate(id, editForm)
+    setEditingId(null)
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 justify-between">
+        <div className="flex gap-2">
+          {hasSlips && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 gap-1"
+              onClick={onDerive}
+            >
+              <RefreshCw className="h-3 w-3" /> Avled fra slipper
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={() => { setAdding((v) => !v); setEditingId(null) }}
+          >
+            <Plus className="h-3 w-3" /> Legg til
+          </Button>
+        </div>
+        {sorted.length >= 2 && (() => {
+          const first = sorted[0]
+          const last = sorted[sorted.length - 1]
+          const yearDiff = last.year - first.year
+          if (yearDiff > 0 && first.maanedslonn > 0 && last.maanedslonn > 0) {
+            const cagr = (Math.pow(last.maanedslonn / first.maanedslonn, 1 / yearDiff) - 1) * 100
+            return (
+              <span className="text-xs text-muted-foreground">
+                Snitt: <span className="text-green-500 font-medium">+{cagr.toFixed(1)} %/år</span>
+              </span>
+            )
+          }
+          return null
+        })()}
+      </div>
+
+      {/* Legg til-skjema */}
+      {adding && (
+        <div className="border border-border rounded-md p-3 space-y-3 text-xs">
+          <p className="font-medium">Nytt lønnsoppgjør</p>
+          <div className="flex flex-wrap gap-3">
+            <div className="space-y-0.5">
+              <Label className="text-xs">Type</Label>
+              <select
+                className="h-7 text-xs border border-border rounded px-1.5 bg-background"
+                value={form.source}
+                onChange={(e) => setForm((f) => ({ ...f, source: e.target.value as LonnsoppgjorRecord['source'] }))}
+              >
+                <option value="forventet">Forventet</option>
+                <option value="manual">Manuelt (historisk)</option>
+              </select>
+            </div>
+            <div className="space-y-0.5">
+              <Label className="text-xs">Ikrafttreden</Label>
+              <Input
+                type="date"
+                className="h-7 text-xs w-36"
+                value={form.effectiveDate}
+                onChange={(e) => {
+                  const d = new Date(e.target.value)
+                  setForm((f) => ({ ...f, effectiveDate: e.target.value, year: d.getFullYear() }))
+                }}
+              />
+            </div>
+            <div className="space-y-0.5">
+              <Label className="text-xs">Ny grunnlønn/mnd (kr)</Label>
+              <Input
+                type="number"
+                className="h-7 text-xs w-36"
+                placeholder="f.eks. 62000"
+                value={form.maanedslonn || ''}
+                onChange={(e) => setForm((f) => ({ ...f, maanedslonn: parseInt(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-0.5">
+              <Label className="text-xs">HTA-tillegg inkl. (kr/mnd)</Label>
+              <Input
+                type="number"
+                className="h-7 text-xs w-36"
+                placeholder="f.eks. 1200"
+                value={form.htaTillegg || ''}
+                onChange={(e) => setForm((f) => ({ ...f, htaTillegg: parseInt(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-0.5">
+              <Label className="text-xs">Notat</Label>
+              <Input
+                className="h-7 text-xs w-48"
+                placeholder="f.eks. Sentralt oppgjør 2025"
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+          {form.maanedslonn > 0 && (
+            <p className="text-muted-foreground">
+              = <span className="text-foreground font-mono">{(form.maanedslonn * 12).toLocaleString('no-NO')} kr/år</span>
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button size="sm" className="h-7 text-xs" onClick={handleAdd} disabled={form.maanedslonn <= 0}>Lagre</Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAdding(false)}>Avbryt</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabell */}
+      {sorted.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {hasSlips
+            ? 'Trykk "Avled fra slipper" for å hente lønnshistorikk automatisk, eller legg til manuelt.'
+            : 'Importer slipper eller legg til oppgjør manuelt.'}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border">
+                <th className="text-left py-1 pr-3 font-normal">År</th>
+                <th className="text-left py-1 pr-3 font-normal">Dato</th>
+                <th className="text-right py-1 pr-3 font-normal">Grunnlønn/mnd</th>
+                <th className="text-right py-1 pr-3 font-normal">Økning kr</th>
+                <th className="text-right py-1 pr-3 font-normal">Økning %</th>
+                <th className="text-right py-1 pr-3 font-normal">HTA-tillegg</th>
+                <th className="text-left py-1 pr-3 font-normal">Notat</th>
+                <th className="text-left py-1 font-normal">Kilde</th>
+                <th className="py-1" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => {
+                const oekningKr = r.forrigeMaanedslonn > 0 ? r.maanedslonn - r.forrigeMaanedslonn : null
+                const oekningPst = r.forrigeMaanedslonn > 0 ? ((r.maanedslonn / r.forrigeMaanedslonn - 1) * 100) : null
+                const isEditing = editingId === r.id
+                const isForventet = r.source === 'forventet'
+
+                return (
+                  <tr
+                    key={r.id}
+                    className={`border-b border-border/40 ${isForventet ? 'opacity-70' : ''}`}
+                  >
+                    <td className="py-1.5 pr-3 font-medium">{r.year}{isForventet && ' *'}</td>
+                    <td className="py-1.5 pr-3 text-muted-foreground">
+                      {isEditing ? (
+                        <Input
+                          type="date"
+                          className="h-6 text-xs w-32"
+                          value={editForm.effectiveDate ?? r.effectiveDate}
+                          onChange={(e) => setEditForm((f) => ({ ...f, effectiveDate: e.target.value }))}
+                        />
+                      ) : r.effectiveDate}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right font-mono">
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          className="h-6 text-xs w-28 text-right"
+                          value={editForm.maanedslonn ?? r.maanedslonn}
+                          onChange={(e) => setEditForm((f) => ({ ...f, maanedslonn: parseInt(e.target.value) || 0 }))}
+                        />
+                      ) : (
+                        <>{r.maanedslonn.toLocaleString('no-NO')} kr</>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right">
+                      {oekningKr !== null ? (
+                        <span className={oekningKr >= 0 ? 'text-green-500' : 'text-red-400'}>
+                          {oekningKr >= 0 ? '+' : ''}{oekningKr.toLocaleString('no-NO')} kr
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right">
+                      {oekningPst !== null ? (
+                        <span className={oekningPst >= 0 ? 'text-green-500' : 'text-red-400'}>
+                          {oekningPst >= 0 ? '+' : ''}{oekningPst.toFixed(2)} %
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right">
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          className="h-6 text-xs w-24 text-right"
+                          value={editForm.htaTillegg ?? r.htaTillegg}
+                          onChange={(e) => setEditForm((f) => ({ ...f, htaTillegg: parseInt(e.target.value) || 0 }))}
+                        />
+                      ) : r.htaTillegg > 0 ? (
+                        <span className="text-blue-400">{r.htaTillegg.toLocaleString('no-NO')} kr</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-muted-foreground max-w-[160px] truncate">
+                      {isEditing ? (
+                        <Input
+                          className="h-6 text-xs w-40"
+                          value={editForm.notes ?? r.notes}
+                          onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                        />
+                      ) : r.notes || '—'}
+                    </td>
+                    <td className="py-1.5 pr-3">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        r.source === 'slip' ? 'bg-green-900/30 text-green-400' :
+                        r.source === 'forventet' ? 'bg-yellow-900/30 text-yellow-400' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {r.source === 'slip' ? 'slipp' : r.source === 'forventet' ? 'forventet' : 'manuelt'}
+                      </span>
+                    </td>
+                    <td className="py-1.5">
+                      <div className="flex items-center gap-1">
+                        {isEditing ? (
+                          <>
+                            <button className="text-green-500 hover:text-green-400" onClick={() => saveEdit(r.id)}>
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button className="text-muted-foreground hover:text-foreground" onClick={() => setEditingId(null)}>
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button className="text-muted-foreground hover:text-foreground" onClick={() => startEdit(r)}>
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button className="text-muted-foreground hover:text-red-400" onClick={() => onRemove(r.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {sorted.some((r) => r.source === 'forventet') && (
+            <p className="text-xs text-muted-foreground mt-1">* Forventet oppgjør</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ----------------------------------------------------------------
 
 function FungeringPanel({
