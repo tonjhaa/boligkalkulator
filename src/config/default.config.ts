@@ -77,8 +77,8 @@ export const defaultConfig: AppConfig = {
   // ----------------------------------------------------------
   lendingRules: {
     /**
-     * Minimum egenkapital: 15% av kjopssum inkl. fellesgjeld.
-     * (10% for forstehjemslaanere i Oslo — haandteres som override)
+     * Minimum egenkapital: 10% av kjopssum inkl. fellesgjeld.
+     * (15% er hovedregelen, men 10% gjelder for forstehjemslaanere — brukt som standard her)
      * Kilde: FOR-2024-12-18-3398 § 7
      */
     minEquityPercent: 10,
@@ -102,8 +102,8 @@ export const defaultConfig: AppConfig = {
     minStressTestRate: 7.0,
 
     /**
-     * Maksimal belaaningsgrad (LTV): 85% for ordinaere laan.
-     * (Rammelaan: 60%, BSU-garantilaan: inntil 100%)
+     * Maksimal belaaningsgrad (LTV): 90% for forstehjemslaanere (standard her).
+     * Ordinaere laan: 85%. Rammelaan: 60%. BSU-garantilaan: inntil 100%.
      * Kilde: FOR-2024-12-18-3398 § 7
      */
     maxLtvRatio: 90,
@@ -134,11 +134,10 @@ export const defaultConfig: AppConfig = {
     incomeTaxRate: 22,
 
     /**
-     * Trygdeavgift lonnsinntekt: 7.8%
-     * (7.7% for pensjonsinntekt — ikke implementert her)
-     * Kilde: Statsbudsjettet 2026
+     * Trygdeavgift lonnsinntekt: 7.6%
+     * Kilde: Skatteetaten 2026 (Prop. 1 LS (2025–2026) § 2-3)
      */
-    nationalInsuranceRate: 7.8,
+    nationalInsuranceRate: 7.6,
 
     /**
      * Minstefradragssats: 46% av lonnsinntekt

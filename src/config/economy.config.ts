@@ -91,7 +91,39 @@ export const POLICY_RATE_HISTORY: PolicyRateEntry[] = [
   { year: 2022, rate: 2.75 },
   { year: 2023, rate: 4.50 },
   { year: 2024, rate: 4.50 },
+  { year: 2025, rate: 4.50 },
+  { year: 2026, rate: 4.25 },
 ]
+
+// ------------------------------------------------------------
+// KPI (KONSUMPRISINDEKS) — SSB, årsgjennomsnitt
+// Kilde: SSB tabell 03013 (historisk) + SSB anslag 2025-2026
+// Brukes til å vise reallønnsvekst i lønnsoppgjørhistorikk
+// ------------------------------------------------------------
+
+export interface KpiEntry { year: number; index: number }
+
+/** KPI 2015=100 — årsgjennomsnitt. */
+export const KPI_HISTORIKK: KpiEntry[] = [
+  { year: 2015, index: 100.0 },
+  { year: 2016, index: 103.6 },
+  { year: 2017, index: 105.5 },
+  { year: 2018, index: 108.0 },
+  { year: 2019, index: 110.9 },
+  { year: 2020, index: 111.9 },
+  { year: 2021, index: 114.3 },
+  { year: 2022, index: 122.4 },
+  { year: 2023, index: 129.5 },
+  { year: 2024, index: 133.4 },
+  { year: 2025, index: 137.2 }, // SSB anslag
+  { year: 2026, index: 140.0 }, // SSB anslag
+]
+
+/** Henter KPI-indeks for et gitt år (returnerer siste kjente om år ikke finnes). */
+export function getKpiIndex(year: number): number {
+  const sorted = [...KPI_HISTORIKK].sort((a, b) => b.year - a.year)
+  return (sorted.find((e) => e.year <= year) ?? sorted[sorted.length - 1]).index
+}
 
 // ------------------------------------------------------------
 // INITIAL ABONNEMENTS-DATA 2026

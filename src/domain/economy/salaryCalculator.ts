@@ -1,9 +1,6 @@
 import type {
   ParsetLonnsslipp,
   ArtskopePost,
-  EmploymentProfile,
-  BudgetTemplate,
-  ATFEntry,
   MonthRecord,
   HolidayPayResult,
 } from '@/types/economy'
@@ -349,76 +346,6 @@ export function calculateHolidayPay(
   const holidayLeaveDeduction = (annualSalaryJune / FERIETREKK_DIVISOR) * FERIEDAGER_TREKK
   const netJune = annualSalaryJune / 12 + holidayPay - holidayLeaveDeduction
   return { holidayPay, holidayLeaveDeduction, netJune }
-}
-
-// ------------------------------------------------------------
-// PROGNOSE
-// ------------------------------------------------------------
-
-/**
- * Fremskriver måneder fremover fra profil og budsjettmal.
- */
-export function forecastMonths(
-  _profile: EmploymentProfile,
-  template: BudgetTemplate,
-  atfEntries: ATFEntry[],
-  fromMonth: { year: number; month: number },
-  count: number
-): MonthRecord[] {
-  const records: MonthRecord[] = []
-
-  for (let i = 0; i < count; i++) {
-    let m = fromMonth.month + i
-    let y = fromMonth.year
-    while (m > 12) {
-      m -= 12
-      y++
-    }
-
-    const isDecember = m === 12
-
-    // Kalkul ATF for denne måneden
-    const monthATF = atfEntries
-      .filter((e) => e.year === y)
-      .reduce((sum, e) => sum + e.beregnetBeløp, 0)
-
-    const baseLines = template.lines
-      .filter((l) => l.isRecurring)
-      .map((l) => ({ ...l, id: crypto.randomUUID(), source: 'auto' as const }))
-
-    // Legg til ATF-linje for desember (utbetaling av ATF for hele året)
-    if (isDecember && monthATF > 0) {
-      baseLines.push({
-        id: crypto.randomUUID(),
-        label: 'ATF-utbetaling',
-        category: 'atf',
-        amount: monthATF,
-        isRecurring: false,
-        source: 'auto',
-        isLocked: false,
-        isVariable: false,
-      })
-    }
-
-    const nettoUtbetalt = baseLines
-      .filter((l) => ['lonn', 'tillegg', 'atf', 'feriepenger', 'annen_inntekt'].includes(l.category))
-      .reduce((s, l) => s + l.amount, 0)
-
-    const disposable =
-      baseLines.reduce((s, l) => s + l.amount, 0)
-
-    records.push({
-      year: y,
-      month: m,
-      isLocked: false,
-      source: 'forecast',
-      lines: baseLines,
-      nettoUtbetalt,
-      disposable,
-    })
-  }
-
-  return records
 }
 
 // ------------------------------------------------------------

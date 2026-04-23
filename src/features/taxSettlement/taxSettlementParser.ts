@@ -40,7 +40,6 @@ export async function parseTaxSettlementFromPDF(file: File): Promise<TaxSettleme
   }
 
   const fullText = allLines.join('\n')
-  console.log('[taxSettlementParser] Rekonstruerte linjer:\n', fullText)
   return parseTaxSettlementText(fullText)
 }
 

@@ -1,9 +1,28 @@
 import { supabase } from './supabase'
 import { useEconomyStore } from '@/application/useEconomyStore'
 
+export type SyncStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+// Eksportert signal slik at UI kan abonnere på synkstatus
+let _syncListeners: Array<(s: SyncStatus) => void> = []
+let _currentStatus: SyncStatus = 'idle'
+
+export function getSyncStatus(): SyncStatus { return _currentStatus }
+
+export function onSyncStatusChange(fn: (s: SyncStatus) => void): () => void {
+  _syncListeners.push(fn)
+  return () => { _syncListeners = _syncListeners.filter((l) => l !== fn) }
+}
+
+function setSyncStatus(s: SyncStatus) {
+  _currentStatus = s
+  _syncListeners.forEach((l) => l(s))
+}
+
 /**
  * Henter økonomidata fra Supabase og laster inn i storen.
- * Hvis ingen data finnes i Supabase, lastes lokale data opp.
+ * - Ingen data i Supabase → last opp lokale data
+ * - Nettverksfeil → gjør ingenting (behold lokale data)
  */
 export async function loadFromSupabase(): Promise<boolean> {
   const { data, error } = await supabase
@@ -11,8 +30,22 @@ export async function loadFromSupabase(): Promise<boolean> {
     .select('economy_data')
     .single()
 
-  if (error || !data?.economy_data) {
-    // Ingen data i Supabase — last opp lokale data hvis de finnes
+  if (error) {
+    // PGRST116 = "no rows found" — ikke en ekte feil, bare ingen data ennå
+    if (error.code === 'PGRST116') {
+      const state = useEconomyStore.getState()
+      if (state.profile || state.monthHistory.length > 0) {
+        await saveToSupabase()
+      }
+      return false
+    }
+    // Ekte feil (nettverk, auth, etc.) — ikke overskriv cloud-data
+    console.error('[sync] loadFromSupabase feil:', error.message)
+    return false
+  }
+
+  if (!data?.economy_data) {
+    // Rad finnes men economy_data er null — last opp lokale data
     const state = useEconomyStore.getState()
     if (state.profile || state.monthHistory.length > 0) {
       await saveToSupabase()
@@ -27,6 +60,7 @@ export async function loadFromSupabase(): Promise<boolean> {
 /**
  * Lagrer økonomidata til Supabase.
  * Stripper PDF-blobs for å holde payloaden liten.
+ * Kaster feil ved lagringsproblem slik at kaller kan vise feedback.
  */
 export async function saveToSupabase(): Promise<void> {
   const state = useEconomyStore.getState()
@@ -34,7 +68,6 @@ export async function saveToSupabase(): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  // Strip PDF-blobs — for store til å lagre i database
   const monthHistoryUtenPDF = state.monthHistory.map(({ slipPdfBase64: _, ...rest }) => rest)
 
   const payload = {
@@ -53,6 +86,7 @@ export async function saveToSupabase(): Promise<void> {
     insurances: state.insurances,
     policyRateHistory: state.policyRateHistory,
     temporaryPayEntries: state.temporaryPayEntries,
+    lonnsoppgjor: state.lonnsoppgjor,
     ivfTransactions: state.ivfTransactions,
     ivfSettings: state.ivfSettings,
     budgetOverrides: state.budgetOverrides,
@@ -60,11 +94,13 @@ export async function saveToSupabase(): Promise<void> {
     userPreferences: state.userPreferences,
   }
 
-  await supabase.from('user_data').upsert({
+  const { error } = await supabase.from('user_data').upsert({
     user_id: user.id,
     economy_data: payload,
     updated_at: new Date().toISOString(),
   })
+
+  if (error) throw new Error(error.message)
 }
 
 // Debounce-timer
@@ -72,14 +108,16 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * Starter automatisk synkronisering til Supabase ved endringer i storen.
- * Lagrer maks én gang per 3 sekunder.
- * Returnerer en cleanup-funksjon.
+ * Lagrer maks én gang per 3 sekunder. Oppdaterer synkstatus for UI.
  */
 export function startAutoSync(): () => void {
   const unsubscribe = useEconomyStore.subscribe(() => {
     if (saveTimer) clearTimeout(saveTimer)
+    setSyncStatus('saving')
     saveTimer = setTimeout(() => {
       saveToSupabase()
+        .then(() => setSyncStatus('saved'))
+        .catch(() => setSyncStatus('error'))
     }, 3000)
   })
 

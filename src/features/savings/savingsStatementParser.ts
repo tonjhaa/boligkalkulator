@@ -58,8 +58,6 @@ export async function parseSavingsStatementFromPDF(file: File): Promise<ParsedBa
   }
 
   const fullText = allLines.join('\n')
-  console.log('[savingsStatementParser] Ekstrahert tekst:\n', fullText)
-
   const parsed = parseBankStatement(fullText)
   // Legg ved rå tekst for debugging ved feil
   ;(parsed as ParsedBankStatement & { _rawText?: string })._rawText = fullText

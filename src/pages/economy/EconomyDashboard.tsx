@@ -1,5 +1,5 @@
-import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap, CalendarDays } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap, CalendarDays, Cloud, CloudOff, Loader2 } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
@@ -14,6 +14,7 @@ import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
+import { getSyncStatus, onSyncStatusChange, type SyncStatus } from '@/lib/syncEconomyData'
 import { cn } from '@/lib/utils'
 import type { ParsetLonnsslipp } from '@/types/economy'
 
@@ -95,6 +96,39 @@ function getNextPayday(from: Date): Date {
   return thisMonthPayday
 }
 
+// Isolert klokke-komponent — re-renderer hvert sekund uten å påvirke Dashboard
+function LiveKlokke() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <div>
+      <p className="text-xl font-semibold tabular-nums text-foreground">
+        {now.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {now.toLocaleDateString('no-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+      </p>
+    </div>
+  )
+}
+
+// Viser synkroniseringsstatus mot Supabase
+function SyncStatusIndikator() {
+  const [status, setStatus] = useState<SyncStatus>(getSyncStatus)
+  useEffect(() => onSyncStatusChange(setStatus), [])
+  if (status === 'idle') return null
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground pb-0.5">
+      {status === 'saving' && <><Loader2 className="h-3 w-3 animate-spin" /> Lagrer…</>}
+      {status === 'saved' && <><Cloud className="h-3 w-3 text-green-500" /> Lagret</>}
+      {status === 'error' && <><CloudOff className="h-3 w-3 text-red-400" /> Lagringsfeil</>}
+    </span>
+  )
+}
+
 export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
   const {
     monthHistory,
@@ -115,13 +149,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ivfTransactions,
   } = useEconomyStore()
 
-  const [tick, setTick] = useState(() => new Date())
-  useEffect(() => {
-    const id = setInterval(() => setTick(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  const now = tick
+  // Klokken isoleres i <LiveKlokke /> — her trenger vi bare dato for beregninger
+  const now = useMemo(() => new Date(), [])
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
 
@@ -170,10 +199,12 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
   const taxAnalysis = analyzeTaxSettlements(taxSettlements, profile?.extraTaxWithholding ?? 0)
 
-  const appStore = useAppStore.getState()
-  const activeScenario = appStore.scenarios.find((s) => s.id === appStore.activeScenarioId)
+  const appScenarios = useAppStore((s) => s.scenarios)
+  const appActiveScenarioId = useAppStore((s) => s.activeScenarioId)
+  const appAnalyses = useAppStore((s) => s.analyses)
+  const activeScenario = appScenarios.find((s) => s.id === appActiveScenarioId)
   const maxKjøpesum = activeScenario
-    ? appStore.analyses[activeScenario.id]?.maxPurchase?.maxPurchasePrice
+    ? appAnalyses[activeScenario.id]?.maxPurchase?.maxPurchasePrice
     : null
 
   // ── KPI-beregninger ────────────────────────────────────────
@@ -262,13 +293,9 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
       {/* ── Topprad: klokke + nedtellinger ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xl font-semibold tabular-nums text-foreground">
-            {now.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {now.toLocaleDateString('no-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
+        <div className="flex items-end gap-3">
+          <LiveKlokke />
+          <SyncStatusIndikator />
         </div>
         <div className="flex flex-wrap gap-2">
           <CountdownChip
@@ -558,9 +585,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       {/* ── Feriepenger ── */}
       {profile && (
         <FeriepengeSummaryCard
-          monthHistory={monthHistory}
-          profile={profile}
-          atfEntries={atfEntries}
+          juneForecast={juneForecast}
           currentYear={currentYear}
           onNavigate={onNavigate}
         />
@@ -880,19 +905,14 @@ function EmptyState({ message, action, onAction }: { message: string; action: st
 // ------------------------------------------------------------
 
 function FeriepengeSummaryCard({
-  monthHistory,
-  profile,
-  atfEntries,
+  juneForecast: forecast,
   currentYear,
   onNavigate,
 }: {
-  monthHistory: ReturnType<typeof useEconomyStore.getState>['monthHistory']
-  profile: NonNullable<ReturnType<typeof useEconomyStore.getState>['profile']>
-  atfEntries: ReturnType<typeof useEconomyStore.getState>['atfEntries']
+  juneForecast: ReturnType<typeof forecastJune> | null
   currentYear: number
   onNavigate?: (page: string) => void
 }) {
-  const forecast = forecastJune(currentYear, monthHistory, profile, atfEntries)
   if (!forecast) return null
 
   return (

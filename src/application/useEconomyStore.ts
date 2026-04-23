@@ -191,10 +191,10 @@ const DEFAULT_FOND_PORTFOLIO: FondPortfolio = {
 }
 
 const DEFAULT_IVF_SETTINGS: IVFSettings = {
-  lonTonje: 0,
-  lonAne: 0,
-  studielaanTonje: 0,
-  studielaanAne: 0,
+  lonPerson1: 0,
+  lonPerson2: 0,
+  studielaanPerson1: 0,
+  studielaanPerson2: 0,
   annenEgenkapital: 0,
 }
 
@@ -800,6 +800,7 @@ export const useEconomyStore = create<EconomyState>()(
             insurances: data.insurances ?? [],
             policyRateHistory: data.policyRateHistory ?? POLICY_RATE_HISTORY,
             temporaryPayEntries: data.temporaryPayEntries ?? [],
+            lonnsoppgjor: data.lonnsoppgjor ?? [],
             ivfTransactions: data.ivfTransactions ?? INITIAL_IVF_TRANSACTIONS,
             ivfSettings: data.ivfSettings ?? DEFAULT_IVF_SETTINGS,
             fondPortfolio: data.fondPortfolio ?? DEFAULT_FOND_PORTFOLIO,
@@ -833,15 +834,17 @@ export const useEconomyStore = create<EconomyState>()(
           insurances: [],
           policyRateHistory: POLICY_RATE_HISTORY,
           temporaryPayEntries: [],
+          lonnsoppgjor: [],
           ivfTransactions: INITIAL_IVF_TRANSACTIONS,
           ivfSettings: DEFAULT_IVF_SETTINGS,
           fondPortfolio: DEFAULT_FOND_PORTFOLIO,
           budgetOverrides: {},
+          userPreferences: null,
         }),
     }),
     {
       name: 'min-okonomi-v1',
-      version: 4,
+      version: 5,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -886,6 +889,14 @@ export const useEconomyStore = create<EconomyState>()(
             )
           }
         }
+        // v4 → v5: generaliser IVFSettings-feltnavn (lonTonje→lonPerson1 osv.)
+        if (fromVersion < 5 && state.ivfSettings) {
+          const s = state.ivfSettings as Record<string, unknown>
+          if ('lonTonje' in s) { s.lonPerson1 = s.lonTonje; delete s.lonTonje }
+          if ('lonAne' in s) { s.lonPerson2 = s.lonAne; delete s.lonAne }
+          if ('studielaanTonje' in s) { s.studielaanPerson1 = s.studielaanTonje; delete s.studielaanTonje }
+          if ('studielaanAne' in s) { s.studielaanPerson2 = s.studielaanAne; delete s.studielaanAne }
+        }
         // Alltid: sørg for fond
         if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
         return state
@@ -908,6 +919,7 @@ export const useEconomyStore = create<EconomyState>()(
         insurances: state.insurances,
         policyRateHistory: state.policyRateHistory,
         temporaryPayEntries: state.temporaryPayEntries,
+        lonnsoppgjor: state.lonnsoppgjor,
         ivfTransactions: state.ivfTransactions,
         ivfSettings: state.ivfSettings,
         fondPortfolio: state.fondPortfolio,

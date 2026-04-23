@@ -37,6 +37,5 @@ export async function parseSlipFromPDF(file: File): Promise<ParsetLonnsslipp> {
   }
 
   const fullText = allLines.join('\n')
-  console.log('[slipParser] Rekonstruerte linjer:\n', fullText)
   return parseForsvarsSlipp(fullText)
 }

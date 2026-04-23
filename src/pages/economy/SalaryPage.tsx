@@ -5,10 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import type { EmploymentProfile, MonthRecord, TemporaryPayEntry, LonnsoppgjorRecord } from '@/types/economy'
+import { getKpiIndex } from '@/config/economy.config'
 
 function fmtNOK(n: number) {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
@@ -185,6 +189,12 @@ export function SalaryPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Brutto→Netto waterfall */}
+      {profile && <BruttoNettoKort profile={profile} />}
+
+      {/* Netto utbetalingshistorikk */}
+      {importedSlips.length >= 2 && <NettoHistorikkKort slips={importedSlips} />}
 
       {/* Trekktabell-estimat */}
       {profile?.tabellnummer && (
@@ -492,6 +502,130 @@ function SlipDetailModal({ record, onClose }: { record: MonthRecord; onClose: ()
 // ----------------------------------------------------------------
 // FungeringPanel
 // ------------------------------------------------------------
+// BRUTTO → NETTO WATERFALL
+// ------------------------------------------------------------
+
+function BruttoNettoKort({ profile }: { profile: EmploymentProfile }) {
+  const brutto = profile.baseMonthly + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)
+  const skatt = profile.lastKnownTaxWithholding + profile.extraTaxWithholding
+  const pensjon = Math.round(brutto * (profile.pensionPercent / 100))
+  const fagforening = profile.unionFee
+  const husleie = profile.housingDeduction
+  const netto = brutto - skatt - pensjon - fagforening - husleie
+
+  const steps: { label: string; amount: number; cumulative: number; type: 'start' | 'neg' | 'result' }[] = []
+  let cum = brutto
+  steps.push({ label: 'Brutto', amount: brutto, cumulative: cum, type: 'start' })
+  cum -= skatt
+  steps.push({ label: 'Skatt', amount: -skatt, cumulative: cum, type: 'neg' })
+  cum -= pensjon
+  steps.push({ label: 'Pensjon', amount: -pensjon, cumulative: cum, type: 'neg' })
+  if (fagforening > 0) {
+    cum -= fagforening
+    steps.push({ label: 'Fagforen.', amount: -fagforening, cumulative: cum, type: 'neg' })
+  }
+  if (husleie > 0) {
+    cum -= husleie
+    steps.push({ label: 'Husleie', amount: -husleie, cumulative: cum, type: 'neg' })
+  }
+  steps.push({ label: 'Netto', amount: netto, cumulative: netto, type: 'result' })
+
+  const maxVal = brutto * 1.05
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Brutto → Netto</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          {steps.map((s) => {
+            const widthPct = Math.max(2, (Math.abs(s.type === 'neg' ? s.amount : s.cumulative) / maxVal) * 100)
+            const offsetPct = s.type === 'neg' ? (s.cumulative / maxVal) * 100 : 0
+            return (
+              <div key={s.label} className="flex items-center gap-2 text-xs">
+                <span className="w-16 text-right text-muted-foreground shrink-0">{s.label}</span>
+                <div className="relative flex-1 h-5 bg-muted/30 rounded overflow-hidden">
+                  <div
+                    className={`absolute top-0 h-full rounded ${
+                      s.type === 'start' ? 'bg-blue-500/70' :
+                      s.type === 'result' ? 'bg-green-500/80' : 'bg-red-400/70'
+                    }`}
+                    style={{
+                      left: s.type === 'neg' ? `${offsetPct}%` : '0%',
+                      width: `${widthPct}%`,
+                    }}
+                  />
+                </div>
+                <span className={`w-24 text-right font-mono shrink-0 ${
+                  s.type === 'neg' ? 'text-red-400' : s.type === 'result' ? 'text-green-500' : 'text-foreground'
+                }`}>
+                  {s.amount >= 0 ? '' : '-'}{Math.abs(s.amount).toLocaleString('no-NO')} kr
+                </span>
+              </div>
+            )
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          Netto utgjør <span className="text-foreground font-medium">{Math.round((netto / brutto) * 100)}%</span> av brutto
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ------------------------------------------------------------
+// NETTO UTBETALINGSHISTORIKK
+// ------------------------------------------------------------
+
+function NettoHistorikkKort({ slips }: { slips: MonthRecord[] }) {
+  const data = [...slips]
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+    .slice(-24) // maks 2 år
+    .map((m) => ({
+      label: `${MONTH_NAMES[m.month]} ${String(m.year).slice(2)}`,
+      netto: m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt,
+      brutto: m.slipData?.bruttoSum,
+    }))
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Netto utbetalt — historikk</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={140}>
+          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id="nettoGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#22C55E" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#22C55E" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 9 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} width={32} />
+            <Tooltip
+              formatter={(v) => [`${Number(v).toLocaleString('no-NO')} kr`, 'Netto']}
+              contentStyle={{ fontSize: 11 }}
+            />
+            <Area
+              type="monotone"
+              dataKey="netto"
+              stroke="#22C55E"
+              strokeWidth={1.5}
+              fill="url(#nettoGrad)"
+              dot={{ r: 2, fill: '#22C55E' }}
+              activeDot={{ r: 4 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ------------------------------------------------------------
 // LØNNSOPPGJØR-SEKSJON
 // ------------------------------------------------------------
 
@@ -679,6 +813,7 @@ function LonnsoppgjorSection({
                 <th className="text-right py-1 pr-3 font-normal">Grunnlønn/mnd</th>
                 <th className="text-right py-1 pr-3 font-normal">Økning kr</th>
                 <th className="text-right py-1 pr-3 font-normal">Økning %</th>
+                <th className="text-right py-1 pr-3 font-normal">Reallønn %</th>
                 <th className="text-right py-1 pr-3 font-normal">HTA-tillegg</th>
                 <th className="text-left py-1 pr-3 font-normal">Notat</th>
                 <th className="text-left py-1 font-normal">Kilde</th>
@@ -689,6 +824,12 @@ function LonnsoppgjorSection({
               {sorted.map((r) => {
                 const oekningKr = r.forrigeMaanedslonn > 0 ? r.maanedslonn - r.forrigeMaanedslonn : null
                 const oekningPst = r.forrigeMaanedslonn > 0 ? ((r.maanedslonn / r.forrigeMaanedslonn - 1) * 100) : null
+                // Reallønnsvekst = nominell økning - KPI-vekst mellom de to årene
+                const prevYear = sorted.find((x) => x.maanedslonn === r.forrigeMaanedslonn)?.year ?? (r.year - 1)
+                const kpiNaa = getKpiIndex(r.year)
+                const kpiForrige = getKpiIndex(prevYear)
+                const kpiVekst = r.forrigeMaanedslonn > 0 ? ((kpiNaa / kpiForrige - 1) * 100) : null
+                const realloennPst = oekningPst !== null && kpiVekst !== null ? oekningPst - kpiVekst : null
                 const isEditing = editingId === r.id
                 const isForventet = r.source === 'forventet'
 
@@ -733,6 +874,15 @@ function LonnsoppgjorSection({
                       {oekningPst !== null ? (
                         <span className={oekningPst >= 0 ? 'text-green-500' : 'text-red-400'}>
                           {oekningPst >= 0 ? '+' : ''}{oekningPst.toFixed(2)} %
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-3 text-right">
+                      {realloennPst !== null ? (
+                        <span className={realloennPst >= 0 ? 'text-emerald-400' : 'text-orange-400'} title="Nominell økning minus KPI-vekst">
+                          {realloennPst >= 0 ? '+' : ''}{realloennPst.toFixed(2)} %
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>

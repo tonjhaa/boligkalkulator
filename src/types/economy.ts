@@ -510,10 +510,10 @@ export interface IVFTransaction {
 }
 
 export interface IVFSettings {
-  lonTonje: number
-  lonAne: number
-  studielaanTonje: number
-  studielaanAne: number
+  lonPerson1: number            // din lønn
+  lonPerson2: number            // partners lønn
+  studielaanPerson1: number
+  studielaanPerson2: number
   annenEgenkapital: number      // BSU, fond, sparekonto osv. utenom IVF-konto
   selfLabel?: string            // Ditt navn i transaksjoner, brukes for å filtrere egne sparetransaksjoner i budsjettet
 }
