@@ -588,4 +588,5 @@ export type EconomyTab =
 export interface UserPreferences {
   onboardingCompleted: boolean
   enabledTabs: EconomyTab[]
+  payDay?: number  // dag i måneden lønn utbetales (1-28), standard 12
 }

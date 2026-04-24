@@ -50,10 +50,11 @@ function getNorwegianHolidays(year: number): Set<string> {
   ])
 }
 
-function getNextPayday(from: Date): Date {
+function getNextPayday(from: Date, payDay = 12): Date {
   const tryMonth = (year: number, month: number): Date => {
     const holidays = getNorwegianHolidays(year)
-    let d = new Date(year, month, 12)
+    const day = Math.min(payDay, new Date(year, month + 1, 0).getDate()) // kap mot siste dag i måneden
+    let d = new Date(year, month, day)
     while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(d.toISOString().slice(0, 10))) {
       d.setDate(d.getDate() - 1)
     }
@@ -89,6 +90,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     temporaryPayEntries,
     budgetOverrides,
     ivfTransactions,
+    userPreferences,
   } = useEconomyStore()
 
   const now = useMemo(() => new Date(), [])
@@ -96,7 +98,8 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const currentMonth = now.getMonth() + 1
 
   // ── Nedtellinger ──────────────────────────────────────────
-  const nextPayday = getNextPayday(now)
+  const payDay = userPreferences?.payDay ?? 12
+  const nextPayday = getNextPayday(now, payDay)
   const daysToPayday = Math.ceil((nextPayday.getTime() - now.getTime()) / 86400000)
 
   const currentMonthRecord = monthHistory.find(

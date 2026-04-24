@@ -100,7 +100,7 @@ export function DebtPage() {
             </Card>
             <Card>
               <CardContent className="py-3">
-                <p className="text-xs text-muted-foreground">Månedlig kostnad</p>
+                <p className="text-xs text-muted-foreground">Samlet terminbeløp/mnd</p>
                 <p className="font-mono font-semibold">{fmtNOK(totalMonthly)}</p>
               </CardContent>
             </Card>
@@ -393,17 +393,19 @@ function AddDebtForm({ onSave, onCancel }: { onSave: (d: DebtAccount) => void; o
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Terminbeløp/mnd</Label>
+            <Label className="text-xs">Terminbeløp/mnd (total faktura)</Label>
             <Input
               type="number"
+              placeholder="inkl. renter, avdrag og gebyr"
               value={form.monthlyPayment}
               onChange={(e) => setForm((f) => ({ ...f, monthlyPayment: parseFloat(e.target.value) || 0 }))}
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Termingebyr</Label>
+            <Label className="text-xs">herav termingebyr</Label>
             <Input
               type="number"
+              placeholder="f.eks. 50"
               value={form.termFee}
               onChange={(e) => setForm((f) => ({ ...f, termFee: parseFloat(e.target.value) || 0 }))}
             />

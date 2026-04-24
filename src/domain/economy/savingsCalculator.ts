@@ -26,7 +26,9 @@ export function computeMonthlyContributionEstimate(account: SavingsAccount): num
   if (recent.length === 0) return account.monthlyContribution
 
   const total = recent.reduce((s, c) => s + c.amount, 0)
-  return Math.round(total / 12)
+  // Del på faktisk antall måneder med data, ikke hardkodet 12
+  const monthsWithData = (now.getFullYear() * 12 + now.getMonth()) - (cutoff.getFullYear() * 12 + cutoff.getMonth())
+  return Math.round(total / Math.max(1, monthsWithData))
 }
 
 /**

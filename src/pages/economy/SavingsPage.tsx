@@ -410,7 +410,7 @@ function AccountCard({
             <MiniStat
               label="Est. månedsspar"
               value={fmtNOK(monthlyEstimate)}
-              subvalue={ytdContribs > 0 ? '(snitt 12 mnd)' : '(planlagt)'}
+              subvalue={ytdContribs > 0 ? 'snitt siste 12 mnd' : 'planlagt bidrag'}
             />
           )}
         </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Download, Upload, Trash2, Smartphone } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { MODULES } from './OnboardingWizard'
@@ -360,6 +361,46 @@ function DataSection() {
 // Page
 // ----------------------------------------------------------------
 
+// ----------------------------------------------------------------
+// Lønningsdato
+// ----------------------------------------------------------------
+
+function LønningsdatoSection() {
+  const userPreferences = useEconomyStore((s) => s.userPreferences)
+  const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
+  const [value, setValue] = useState(String(userPreferences?.payDay ?? 12))
+
+  function save() {
+    const day = Math.min(28, Math.max(1, parseInt(value) || 12))
+    setValue(String(day))
+    setUserPreferences({
+      onboardingCompleted: userPreferences?.onboardingCompleted ?? true,
+      enabledTabs: userPreferences?.enabledTabs ?? [],
+      payDay: day,
+    })
+  }
+
+  return (
+    <Section
+      title="Lønningsdato"
+      description="Dag i måneden lønn normalt utbetales. Brukes i dashbord-nedtellingen. Skyves automatisk til forrige virkedag ved helg og helligdager."
+    >
+      <div className="flex items-center gap-3">
+        <Input
+          type="number"
+          min={1}
+          max={28}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={save}
+          className="w-20 h-8 text-sm"
+        />
+        <span className="text-sm text-muted-foreground">. i måneden</span>
+      </div>
+    </Section>
+  )
+}
+
 function ModulesSection() {
   const userPreferences = useEconomyStore((s) => s.userPreferences)
   const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
@@ -429,6 +470,9 @@ export function EconomySettingsPage() {
           Konfigurer lønnsprofil, moduler og datahåndtering.
         </p>
       </div>
+
+      <Separator />
+      <LønningsdatoSection />
 
       <Separator />
       <ModulesSection />

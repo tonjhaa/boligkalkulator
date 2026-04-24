@@ -359,6 +359,11 @@ export function VeikartPage() {
     setMndSparing(storeMndSparing > 0 ? String(Math.round(storeMndSparing)) : '')
     setArligBSU(storeArligBSU > 0 ? String(Math.round(storeArligBSU)) : '')
     if (storeAlder > 0) setAlder(String(storeAlder))
+    // Nullstill partner-feltene siden sparefanen ikke har partnerdata
+    setPartnerEnabled(false)
+    setPartnerArslonn('')
+    setPartnerEK('')
+    setPartnerMndSparing('')
   }
 
   // ── Beregning ─────────────────────────────────────────────
@@ -393,7 +398,7 @@ export function VeikartPage() {
 
   // Stacked EK plan per kontogruppe over tid
   const sparePlanData = useMemo(() => {
-    const spKonto = (parseFloat(sparekonto) || 0) + (partnerEnabled ? 0 : 0) // din sparekonto
+    const spKonto = parseFloat(sparekonto) || 0
     const mndSpar = parseFloat(mndSparing) || 0
     const pEK = partnerEnabled ? (parseFloat(partnerEK) || 0) : 0
     const pMnd = partnerEnabled ? (parseFloat(partnerMndSparing) || 0) : 0
@@ -751,7 +756,8 @@ export function VeikartPage() {
                   <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-violet-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Fond</span></div>
                   <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-teal-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Sparekonto</span></div>
                   {partnerEnabled && <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-amber-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Partner</span></div>}
-                  {inputs.mal > 0 && <div className="flex items-center gap-1"><div className="h-1.5 w-3 border-t-2 border-dashed border-green-500" /><span className="text-[9px] text-muted-foreground">EK-krav</span></div>}
+                  {inputs.mal > 0 && <div className="flex items-center gap-1"><div className="h-1.5 w-3 border-t-2 border-dashed border-green-500" /><span className="text-[9px] text-muted-foreground">EK-krav (10%)</span></div>}
+                  <span className="text-[9px] text-muted-foreground/50 ml-1">· Fond vises som nåverdi</span>
                 </div>
               </div>
               <SparePlanChart

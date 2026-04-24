@@ -25,8 +25,10 @@ export function getCurrentRate(account: DebtAccount, date: Date = new Date()): n
 // TOTAL MÅNEDLIG GJELDSKOSTAND
 // ------------------------------------------------------------
 
+// monthlyPayment er totalbeløpet per termin (inkl. renter, avdrag og termingebyr).
+// termFee er en del av monthlyPayment og skal ikke legges til en gang til.
 export function calculateTotalMonthlyDebtCost(debts: DebtAccount[]): number {
-  return debts.reduce((s, d) => s + d.monthlyPayment + d.termFee, 0)
+  return debts.reduce((s, d) => s + d.monthlyPayment, 0)
 }
 
 // ------------------------------------------------------------

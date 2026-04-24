@@ -955,6 +955,16 @@ function DataRow({
       )}>
         <span className={cn('flex items-center gap-1 min-w-0', isHidden && 'line-through')}>
           <span className="truncate">{row.label}</span>
+          {isGrunnlag && (
+            <span
+              className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground cursor-help leading-none"
+              title={
+                row.id === 'brutto-inntekt'
+                  ? 'Referanserad — sum av alle inntektsposter. Inngår ikke i Netto.'
+                  : 'Referanserad — skattepliktig grunnlag brukt for skatteberegning. Inngår ikke i Netto.'
+              }
+            >i</span>
+          )}
           {temporaryInfo && !isHidden && (
             <button
               onClick={(e) => { e.stopPropagation(); temporaryInfo.onToggle() }}
