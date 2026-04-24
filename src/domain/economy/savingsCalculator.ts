@@ -212,10 +212,28 @@ export function calculateGoalProgress(
 ): GoalProgress {
   const linked = accounts.filter((a) => goal.linkedAccountIds.includes(a.id))
 
+  const today = new Date().toISOString().split('T')[0]
   const accountsTotal = linked.reduce((s, a) => {
-    const last = a.balanceHistory.at(-1)
-    if (last) return s + last.balance
-    return s + a.openingBalance
+    const sortedHistory = [...a.balanceHistory].sort((x, y) =>
+      x.year !== y.year ? x.year - y.year : x.month - y.month
+    )
+    const last = sortedHistory.at(-1)
+    let base: number
+    let afterISO: string
+    if (last) {
+      base = last.balance
+      const y = last.month === 12 ? last.year + 1 : last.year
+      const m = last.month === 12 ? 1 : last.month + 1
+      afterISO = `${y}-${String(m).padStart(2, '0')}-01`
+    } else {
+      base = a.openingBalance
+      afterISO = a.openingDate
+    }
+    const pending = [
+      ...(a.contributions ?? []).filter((c) => c.date >= afterISO && c.date <= today),
+      ...(a.withdrawals ?? []).filter((w) => w.date >= afterISO && w.date <= today),
+    ]
+    return s + base + pending.reduce((ps, t) => ps + t.amount, 0)
   }, 0)
 
   const currentTotal = accountsTotal + (goal.includeFond ? fondCurrentValue : 0)
