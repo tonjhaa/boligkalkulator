@@ -10,7 +10,7 @@
  *   - trekk:    skattetrekk i NOK for denne bracketten
  */
 
-const BASE_URL = '/trekktabeller'
+const BASE_URL = `${import.meta.env.BASE_URL}trekktabeller`
 const FILER = [
   'trekktabeller_2026_del_1.json',
   'trekktabeller_2026_del_2.json',

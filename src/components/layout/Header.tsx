@@ -25,7 +25,7 @@ export function Header() {
       </Button>
 
       <div className="flex items-center gap-2.5 flex-1">
-        <img src="/lb-logo.svg" alt="LB" className="h-8 w-8" />
+        <img src={`${import.meta.env.BASE_URL}lb-logo.svg`} alt="LB" className="h-8 w-8" />
         <div>
           <span className="font-semibold text-foreground leading-tight block">Lommeboka</span>
           <p className="text-xs text-muted-foreground italic leading-none">Oversikt er frihet</p>
