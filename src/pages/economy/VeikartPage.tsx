@@ -34,21 +34,23 @@ function fmtMonths(m: number): string {
 function calcKjøpekraft(
   equity: number, bsu: number, fond: number,
   annualIncome: number, existingDebt: number,
-  monthlySavings: number, month: number,
+  monthlySavings: number, // total ikke-BSU sparing per mnd (begge parter)
+  monthlyBSU: number,     // BSU-innskudd per mnd
+  month: number,
 ): number {
   const futureEquity = equity + monthlySavings * month
-  const futureBsu = Math.min(BSU_MAX_TOTAL, bsu + (BSU_MAX_YEARLY / 12) * month)
+  const futureBsu = Math.min(BSU_MAX_TOTAL, bsu + monthlyBSU * month)
   return calcMaxPurchase(futureEquity + futureBsu + fond, annualIncome, existingDebt)
 }
 
 function findKlarMonth(
   equity: number, bsu: number, fond: number,
   annualIncome: number, existingDebt: number,
-  monthlySavings: number, malPris: number,
+  monthlySavings: number, monthlyBSU: number, malPris: number,
 ): number | null {
   if (malPris <= 0) return null
   for (let m = 0; m <= 120; m++) {
-    if (calcKjøpekraft(equity, bsu, fond, annualIncome, existingDebt, monthlySavings, m) >= malPris) {
+    if (calcKjøpekraft(equity, bsu, fond, annualIncome, existingDebt, monthlySavings, monthlyBSU, m) >= malPris) {
       return m
     }
   }
@@ -251,8 +253,16 @@ export function VeikartPage() {
 
   const storeDebt = debts.reduce((s, d) => s + d.currentBalance, 0)
 
-  const storeMndSparing = savingsAccounts.reduce((s, a) => s + (a.monthlyContribution ?? 0), 0)
+  // Ikke-BSU månedlig sparing (sparekonto + fond)
+  const storeMndSparing = savingsAccounts
+    .filter(a => a.type !== 'BSU')
+    .reduce((s, a) => s + (a.monthlyContribution ?? 0), 0)
     + (fondPortfolio?.monthlyDeposit ?? 0)
+
+  // Årlig BSU-innskudd
+  const storeArligBSU = savingsAccounts
+    .filter(a => a.type === 'BSU')
+    .reduce((s, a) => s + (a.monthlyContribution ?? 0), 0) * 12
 
   const storeAlder = 0
 
@@ -266,6 +276,8 @@ export function VeikartPage() {
   const [bsu, setBsu] = useState(() => storeBsu > 0 ? String(Math.round(storeBsu)) : '')
   const [alder, setAlder] = useState(() => storeAlder > 0 ? String(storeAlder) : '')
   const [mndSparing, setMndSparing] = useState(() => storeMndSparing > 0 ? String(Math.round(storeMndSparing)) : '')
+  const [partnerMndSparing, setPartnerMndSparing] = useState('')
+  const [arligBSU, setArligBSU] = useState(() => storeArligBSU > 0 ? String(Math.round(storeArligBSU)) : '')
   const [malPrisInput, setMalPrisInput] = useState('')
   const [showInfo, setShowInfo] = useState(false)
 
@@ -275,6 +287,7 @@ export function VeikartPage() {
     setFond(storeFond > 0 ? String(Math.round(storeFond)) : '')
     setBsu(storeBsu > 0 ? String(Math.round(storeBsu)) : '')
     setMndSparing(storeMndSparing > 0 ? String(Math.round(storeMndSparing)) : '')
+    setArligBSU(storeArligBSU > 0 ? String(Math.round(storeArligBSU)) : '')
     if (storeAlder > 0) setAlder(String(storeAlder))
   }
 
@@ -285,22 +298,25 @@ export function VeikartPage() {
     const fondVal = parseFloat(fond) || 0
     const income = (parseFloat(arslonn) || 0) + (partnerEnabled ? (parseFloat(partnerArslonn) || 0) : 0)
     const debt = storeDebt
-    const savings = parseFloat(mndSparing) || 0
+    // Total ikke-BSU månedlig sparing (begge parter)
+    const savings = (parseFloat(mndSparing) || 0) + (partnerEnabled ? (parseFloat(partnerMndSparing) || 0) : 0)
+    // BSU-innskudd per måned (maks BSU_MAX_YEARLY)
+    const bsuMonthly = Math.min(BSU_MAX_YEARLY, parseFloat(arligBSU) || 0) / 12
     const mal = parseFloat(malPrisInput.replace(/\s/g, '').replace(/,/g, '')) || 0
     const age = parseInt(alder) || 0
     const bsuCanSave = age === 0 || age <= 33
-    return { eq, bsuVal, fondVal, income, debt, savings, mal, age, bsuCanSave }
-  }, [arslonn, partnerEnabled, partnerArslonn, partnerEK, sparekonto, fond, bsu, mndSparing, malPrisInput, alder, storeDebt])
+    return { eq, bsuVal, fondVal, income, debt, savings, bsuMonthly, mal, age, bsuCanSave }
+  }, [arslonn, partnerEnabled, partnerArslonn, partnerEK, sparekonto, fond, bsu, mndSparing, partnerMndSparing, arligBSU, malPrisInput, alder, storeDebt])
 
   const chartPoints = useMemo(() => {
     return Array.from({ length: 73 }, (_, m) => ({
       month: m,
-      maxBuy: calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, m),
+      maxBuy: calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, m),
     }))
   }, [inputs])
 
   const klarMonth = useMemo(() =>
-    findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.mal),
+    findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, inputs.mal),
     [inputs])
 
   const totalEquity = inputs.eq + inputs.bsuVal + inputs.fondVal
@@ -309,7 +325,7 @@ export function VeikartPage() {
   const scenarios = scenarioMonths.map(m => {
     const pt = chartPoints[m]
     const futureEquity = inputs.eq + inputs.savings * m
-    const futureBsu = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + (BSU_MAX_YEARLY / 12) * m)
+    const futureBsu = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * m)
     return {
       label: m === 0 ? 'Nå' : m < 12 ? `${m} mnd` : `${m / 12} år`,
       months: m,
@@ -324,20 +340,20 @@ export function VeikartPage() {
     if (inputs.mal <= 0 || klarMonth === 0) return []
     const items: { label: string; desc: string; gain: number | null }[] = []
 
-    const with5kSavings = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings + 5000, inputs.mal)
+    const with5kSavings = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings + 5000, inputs.bsuMonthly, inputs.mal)
     if (klarMonth !== null && with5kSavings !== null) {
       items.push({ label: '+5 000 kr/mnd sparing', desc: `${fmtMonths(klarMonth - with5kSavings)} raskere`, gain: klarMonth - with5kSavings })
     } else if (klarMonth === null && with5kSavings !== null) {
       items.push({ label: '+5 000 kr/mnd sparing', desc: `Når målet om ${fmtMonths(with5kSavings)}`, gain: null })
     }
 
-    const with10kIncome = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income + 10000 * 12, inputs.debt, inputs.savings, inputs.mal)
+    const with10kIncome = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income + 10000 * 12, inputs.debt, inputs.savings, inputs.bsuMonthly, inputs.mal)
     if (klarMonth !== null && with10kIncome !== null) {
       items.push({ label: '+10 000 kr/mnd brutto', desc: `${fmtMonths(klarMonth - with10kIncome)} raskere`, gain: klarMonth - with10kIncome })
     }
 
     if (inputs.debt > 100_000) {
-      const withLessDebt = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, Math.max(0, inputs.debt - 100_000), inputs.savings, inputs.mal)
+      const withLessDebt = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, Math.max(0, inputs.debt - 100_000), inputs.savings, inputs.bsuMonthly, inputs.mal)
       if (klarMonth !== null && withLessDebt !== null) {
         items.push({ label: 'Nedbetal 100k gjeld', desc: `${fmtMonths(klarMonth - withLessDebt)} raskere`, gain: klarMonth - withLessDebt })
       }
@@ -457,6 +473,16 @@ export function VeikartPage() {
                     className="h-7 text-xs"
                   />
                 </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Partners mnd. sparing (eks. BSU)</Label>
+                  <Input
+                    type="number"
+                    value={partnerMndSparing}
+                    onChange={e => setPartnerMndSparing(e.target.value)}
+                    placeholder="0"
+                    className="h-7 text-xs"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -507,7 +533,7 @@ export function VeikartPage() {
               />
             </div>
             <div className="flex-1 space-y-1">
-              <Label className="text-[11px]">Mnd. sparing</Label>
+              <Label className="text-[11px]">Din mnd. sparing (eks. BSU)</Label>
               <Input
                 type="number"
                 value={mndSparing}
@@ -516,6 +542,16 @@ export function VeikartPage() {
                 className="h-7 text-xs"
               />
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[11px]">Årlig BSU-innskudd</Label>
+            <Input
+              type="number"
+              value={arligBSU}
+              onChange={e => setArligBSU(e.target.value)}
+              placeholder={`maks ${BSU_MAX_YEARLY.toLocaleString('no-NO')}`}
+              className="h-7 text-xs"
+            />
           </div>
         </div>
 
