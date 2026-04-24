@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Lock, LockOpen, Upload, Plus } from 'lucide-react'
+import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -81,6 +81,8 @@ export function BudgetPage() {
 
   const now = new Date()
   const [activeYear, setActiveYear] = useState(now.getFullYear())
+  const [selectedView, setSelectedView] = useState<'oversikt' | 'tabell'>('oversikt')
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
   const [addingTaxLine, setAddingTaxLine] = useState(false)
@@ -138,7 +140,7 @@ export function BudgetPage() {
     trekktabellLookup,
   )
 
-  const { metas, sections, estimatedAnnualGrowthRate } = tableData
+  const { metas, sections } = tableData
 
   // T-merking for manuelle budsjettlinjer (ikke tillegg/husleie — de er auto-styrt av toggle)
   const EXPENSE_CATS_SET = new Set([
@@ -196,61 +198,122 @@ export function BudgetPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ---- Top bar ---- */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0 gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex gap-1">
-            {years.map((y) => (
-              <Button
-                key={y}
-                variant={activeYear === y ? 'default' : 'outline'}
-                size="sm"
-                className="text-xs h-7 px-3"
-                onClick={() => setActiveYear(y)}
-              >
-                {y}
-              </Button>
-            ))}
-          </div>
-          {estimatedAnnualGrowthRate !== null && (
-            <span className="text-xs text-muted-foreground">
-              Estimert lønnsøkning:{' '}
-              <span className="text-green-400 font-medium">
-                ~{(estimatedAnnualGrowthRate * 100).toFixed(1)} % / år
-              </span>
-            </span>
-          )}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border shrink-0 flex-wrap">
+        {/* Year selector */}
+        <div className="flex gap-1 shrink-0">
+          {years.map((y) => (
+            <Button
+              key={y}
+              variant={activeYear === y ? 'default' : 'outline'}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setActiveYear(y)}
+            >
+              {y}
+            </Button>
+          ))}
         </div>
 
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant={hideTemporary ? 'default' : 'outline'}
-            size="sm"
-            className="text-xs h-7 gap-1"
-            onClick={() => setHideTemporary(!hideTemporary)}
-            title="Skjul tidsbegrensede tillegg (husleiekomp, husleietrekk, flyttebonus osv.)"
-          >
-            {hideTemporary ? 'Uten tillegg' : 'Med tillegg'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 gap-1"
-            onClick={() => setAddingLine(true)}
-          >
-            <Plus className="h-3 w-3" /> Ny linje
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 gap-1"
-            onClick={() => setShowSlipFor(now.getMonth() + 1)}
-          >
-            <Upload className="h-3 w-3" /> Last opp slipp
-          </Button>
+        {/* Divider */}
+        <div className="h-5 w-px bg-border shrink-0" />
+
+        {/* Month pills */}
+        <div className="flex gap-0.5 flex-wrap">
+          {metas.map((meta) => (
+            <button
+              key={meta.month}
+              onClick={() => setSelectedMonth(meta.month)}
+              className={cn(
+                'relative flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors',
+                selectedMonth === meta.month
+                  ? 'bg-primary text-primary-foreground font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+              )}
+            >
+              {MONTH_SHORT[meta.month]}
+              {(meta.hasSlip || meta.isLocked) && (
+                <span className={cn(
+                  'h-1 w-1 rounded-full',
+                  selectedMonth === meta.month ? 'bg-primary-foreground/70' : 'bg-green-500/70',
+                )} />
+              )}
+            </button>
+          ))}
         </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* View toggle */}
+        <div className="flex gap-0.5 bg-muted/40 rounded-md p-0.5">
+          <button
+            onClick={() => setSelectedView('oversikt')}
+            className={cn(
+              'flex items-center gap-1 text-[11px] px-2.5 py-1 rounded transition-colors',
+              selectedView === 'oversikt'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <LayoutDashboard className="h-3 w-3" /> Oversikt
+          </button>
+          <button
+            onClick={() => setSelectedView('tabell')}
+            className={cn(
+              'flex items-center gap-1 text-[11px] px-2.5 py-1 rounded transition-colors',
+              selectedView === 'tabell'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Table2 className="h-3 w-3" /> Tabell
+          </button>
+        </div>
+
+        {/* Action buttons */}
+        {selectedView === 'tabell' && (
+          <>
+            <Button
+              variant={hideTemporary ? 'default' : 'outline'}
+              size="sm"
+              className="text-xs h-7 gap-1"
+              onClick={() => setHideTemporary(!hideTemporary)}
+              title="Skjul tidsbegrensede tillegg"
+            >
+              {hideTemporary ? 'Uten tillegg' : 'Med tillegg'}
+            </Button>
+          </>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 gap-1"
+          onClick={() => setAddingLine(true)}
+        >
+          <Plus className="h-3 w-3" /> Ny linje
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 gap-1"
+          onClick={() => setShowSlipFor(selectedMonth)}
+        >
+          <Upload className="h-3 w-3" /> Last opp slipp
+        </Button>
       </div>
 
-      {/* ---- Table ---- */}
+      {/* ---- Oversikt view ---- */}
+      {selectedView === 'oversikt' && (
+        <OversiktView
+          sections={sections}
+          metas={metas}
+          selectedMonth={selectedMonth}
+          activeYear={activeYear}
+        />
+      )}
+
+      {/* ---- Tabell view ---- */}
+      {selectedView === 'tabell' && (
       <div className="overflow-auto flex-1">
         <table className="text-xs border-collapse min-w-max">
           {/* === HEADER === */}
@@ -385,6 +448,7 @@ export function BudgetPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* ---- Payslip modal ---- */}
       {showSlipFor !== null && (
@@ -431,6 +495,347 @@ export function BudgetPage() {
           onCancel={() => setAddingTaxLine(false)}
         />
       )}
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// OversiktView
+// ----------------------------------------------------------------
+
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = (angleDeg - 90) * Math.PI / 180
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+}
+
+function DonutChart({ segments }: { segments: { value: number; color: string; label: string }[] }) {
+  const total = segments.reduce((s, g) => s + g.value, 0)
+  if (total <= 0) return null
+  const cx = 50, cy = 50, outerR = 44, innerR = 28
+  let cumAngle = 0
+  const paths = segments
+    .filter(s => s.value > 0)
+    .map(seg => {
+      const pct = seg.value / total
+      const start = cumAngle * 360
+      cumAngle += pct
+      const end = cumAngle * 360
+      const oStart = polarToCartesian(cx, cy, outerR, start)
+      const oEnd = polarToCartesian(cx, cy, outerR, end)
+      const iStart = polarToCartesian(cx, cy, innerR, end)
+      const iEnd = polarToCartesian(cx, cy, innerR, start)
+      const large = pct > 0.5 ? 1 : 0
+      const d = `M${oStart.x.toFixed(2)} ${oStart.y.toFixed(2)} A${outerR} ${outerR} 0 ${large} 1 ${oEnd.x.toFixed(2)} ${oEnd.y.toFixed(2)} L${iStart.x.toFixed(2)} ${iStart.y.toFixed(2)} A${innerR} ${innerR} 0 ${large} 0 ${iEnd.x.toFixed(2)} ${iEnd.y.toFixed(2)} Z`
+      return { d, color: seg.color, label: seg.label, pct }
+    })
+  return (
+    <svg viewBox="0 0 100 100" className="w-28 h-28">
+      {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} />)}
+    </svg>
+  )
+}
+
+function OversiktView({
+  sections,
+  metas,
+  selectedMonth,
+  activeYear,
+}: {
+  sections: ReturnType<typeof computeBudgetTable>['sections']
+  metas: MonthMeta[]
+  selectedMonth: number
+  activeYear: number
+}) {
+  const mi = selectedMonth - 1
+  const meta = metas[mi]
+
+  function getVal(row: BudgetRow): number {
+    const cell = row.cells[mi]
+    if (!cell) return 0
+    return (meta?.hasSlip || meta?.isLocked) ? (cell.actual ?? cell.budget) : cell.budget
+  }
+
+  // Netto inn
+  const nettoSection = sections.find(s => s.key === 'NETTO')
+  const nettoRow = nettoSection?.rows.find(r => r.isBold)
+  const nettoInn = nettoRow ? getVal(nettoRow) : 0
+
+  // BUNN: overskudd
+  const bunnSection = sections.find(s => s.key === 'BUNN')
+  const overskuddRow = bunnSection?.rows.find(r => r.id === 'overskudd')
+  const ledig = overskuddRow ? getVal(overskuddRow) : 0
+
+  // Expenses
+  const fasteRows = sections.find(s => s.key === 'FASTE')?.rows.filter(r => !r.isBold) ?? []
+  const varRows = sections.find(s => s.key === 'VARIABLE')?.rows.filter(r => !r.isBold) ?? []
+  const sparingRows = sections.find(s => s.key === 'SPARING')?.rows.filter(r => !r.isBold && !r.isCumulative) ?? []
+  const gjeldRows = sections.find(s => s.key === 'GJELD')?.rows.filter(r => !r.isBold) ?? []
+
+  const totalUtgifter = [...fasteRows, ...varRows].reduce((s, r) => s + Math.abs(getVal(r)), 0)
+  const totalSparing = sparingRows.reduce((s, r) => s + Math.abs(getVal(r)), 0)
+  const totalGjeld = gjeldRows.reduce((s, r) => s + Math.abs(getVal(r)), 0)
+  const sparerate = nettoInn > 0 ? totalSparing / nettoInn : 0
+
+  // 12-month netto bar chart
+  const nettoByMonth = metas.map((m, i) => {
+    if (!nettoRow) return 0
+    const cell = nettoRow.cells[i]
+    if (!cell) return 0
+    return (m.hasSlip || m.isLocked) ? (cell.actual ?? cell.budget) : cell.budget
+  })
+  const maxNetto = Math.max(...nettoByMonth.map(Math.abs), 1)
+
+  // Category group totals
+  const categoryGroups = useMemo(() => {
+    const groupTotals: { label: string; budget: number; actual: number | null }[] = [
+      { label: 'Faste utgifter', budget: 0, actual: null },
+      { label: 'Variable utgifter', budget: 0, actual: null },
+      { label: 'Gjeld', budget: 0, actual: null },
+      { label: 'Sparing', budget: 0, actual: null },
+    ]
+
+    function addToGroup(label: string, budget: number, actual: number | null) {
+      const g = groupTotals.find(x => x.label === label)
+      if (!g) return
+      g.budget += budget
+      if (actual !== null) g.actual = (g.actual ?? 0) + actual
+    }
+
+    for (const row of fasteRows) {
+      const cell = row.cells[mi]
+      if (!cell) continue
+      addToGroup('Faste utgifter', Math.abs(cell.budget), cell.actual !== null ? Math.abs(cell.actual) : null)
+    }
+    for (const row of varRows) {
+      const cell = row.cells[mi]
+      if (!cell) continue
+      addToGroup('Variable utgifter', Math.abs(cell.budget), cell.actual !== null ? Math.abs(cell.actual) : null)
+    }
+    for (const row of gjeldRows) {
+      const cell = row.cells[mi]
+      if (!cell) continue
+      addToGroup('Gjeld', Math.abs(cell.budget), cell.actual !== null ? Math.abs(cell.actual) : null)
+    }
+    for (const row of sparingRows) {
+      const cell = row.cells[mi]
+      if (!cell) continue
+      addToGroup('Sparing', Math.abs(cell.budget), cell.actual !== null ? Math.abs(cell.actual) : null)
+    }
+
+    return groupTotals.filter(g => g.budget > 0 || (g.actual ?? 0) > 0)
+  }, [sections, mi, fasteRows, varRows, gjeldRows, sparingRows])
+
+  const maxCatBudget = Math.max(...categoryGroups.map(g => Math.max(g.budget, g.actual ?? 0)), 1)
+
+  // Donut segments
+  const donutSegments = [
+    { value: totalUtgifter, color: '#3b82f6', label: 'Utgifter' },
+    { value: totalGjeld, color: '#f97316', label: 'Gjeld' },
+    { value: totalSparing, color: '#22c55e', label: 'Sparing' },
+    { value: Math.max(0, ledig), color: '#6b7280', label: 'Ledig' },
+  ]
+
+  const monthName = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni',
+    'Juli', 'August', 'September', 'Oktober', 'November', 'Desember'][selectedMonth - 1]
+
+  function fmt(n: number): string {
+    if (n === 0) return '—'
+    return Math.round(n).toLocaleString('no-NO')
+  }
+
+  return (
+    <div className="flex h-full overflow-hidden">
+      {/* Left panel */}
+      <div className="w-[260px] shrink-0 border-r border-border overflow-y-auto p-4 space-y-4">
+        {/* Header */}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Månedsoppsummering</p>
+          <p className="text-base font-semibold mt-0.5">{monthName} {activeYear}</p>
+          {meta && (meta.hasSlip || meta.isLocked) && (
+            <span className="text-[10px] bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded-sm">Faktisk</span>
+          )}
+          {meta && !meta.hasSlip && !meta.isLocked && (
+            <span className="text-[10px] bg-muted/40 text-muted-foreground px-1.5 py-0.5 rounded-sm italic">Prognose</span>
+          )}
+        </div>
+
+        {/* Key metrics */}
+        <div className="space-y-2.5">
+          <MetricRow label="Netto inn" value={fmt(nettoInn)} color={nettoInn >= 0 ? 'text-green-400' : 'text-red-400'} bold />
+          <MetricRow label="Utgifter" value={`−${fmt(totalUtgifter)}`} color="text-blue-400" />
+          <MetricRow label="Gjeld" value={`−${fmt(totalGjeld)}`} color="text-orange-400" />
+          <MetricRow label="Sparing" value={`−${fmt(totalSparing)}`} color="text-purple-400" />
+          <div className="border-t border-border/40 pt-2">
+            <MetricRow
+              label="Ledig"
+              value={fmt(ledig)}
+              color={ledig >= 0 ? 'text-foreground' : 'text-red-400'}
+              bold
+            />
+            {nettoInn > 0 && (
+              <MetricRow
+                label="Sparerate"
+                value={`${(sparerate * 100).toFixed(0)} %`}
+                color="text-muted-foreground"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* 12-month netto mini chart */}
+        <div className="rounded-lg border border-border/40 bg-muted/10 p-3">
+          <p className="text-[10px] text-muted-foreground mb-2 uppercase tracking-wide">Netto siste 12 mnd</p>
+          <div className="flex items-end gap-0.5 h-10">
+            {nettoByMonth.map((val, i) => {
+              const meta = metas[i]
+              const hasData = meta?.hasSlip || meta?.isLocked
+              const h = Math.max(2, (Math.abs(val) / maxNetto) * 40)
+              const isSelected = i === mi
+              return (
+                <div
+                  key={i}
+                  className="flex-1 rounded-sm transition-colors cursor-pointer"
+                  style={{
+                    height: `${h}px`,
+                    background: isSelected
+                      ? 'hsl(var(--primary))'
+                      : hasData
+                        ? val >= 0 ? 'hsl(142 76% 36% / 0.7)' : 'hsl(0 84% 60% / 0.6)'
+                        : 'hsl(215 20.2% 28%)',
+                  }}
+                  title={`${MONTH_SHORT[i + 1]}: ${fmt(val)}`}
+                />
+              )
+            })}
+          </div>
+          <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
+            <span>Jan</span><span>Des</span>
+          </div>
+        </div>
+
+        {/* Sparing breakdown */}
+        {sparingRows.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Sparing denne måneden</p>
+            {sparingRows.map(row => {
+              const v = Math.abs(getVal(row))
+              if (v === 0) return null
+              return (
+                <div key={row.id} className="flex justify-between text-[11px]">
+                  <span className="text-muted-foreground truncate">{row.label}</span>
+                  <span className="font-mono text-purple-400">{fmt(v)}</span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Right panel */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {/* Category bars */}
+        <div className="rounded-xl border border-border/50 bg-card/60 px-4 py-3 space-y-3">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Utgiftskategorier
+          </p>
+          {categoryGroups.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">Ingen utgifter budsjettert.</p>
+          ) : (
+            <div className="space-y-3">
+              {categoryGroups.map(g => {
+                const budgetPct = g.budget / maxCatBudget
+                const actualPct = g.actual !== null ? g.actual / maxCatBudget : null
+                const overrun = g.actual !== null && g.actual > g.budget
+                return (
+                  <div key={g.label} className="space-y-1">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-muted-foreground">{g.label}</span>
+                      <div className="flex items-center gap-2">
+                        {g.actual !== null ? (
+                          <>
+                            <span className={cn('font-mono', overrun ? 'text-red-400' : 'text-foreground')}>
+                              {fmt(g.actual)}
+                            </span>
+                            <span className="text-muted-foreground/50">/</span>
+                            <span className="font-mono text-muted-foreground">{fmt(g.budget)}</span>
+                            {overrun && (
+                              <span className="text-[9px] bg-red-500/15 text-red-400 px-1 py-0.5 rounded-sm leading-none">
+                                +{fmt(g.actual - g.budget)}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="font-mono text-muted-foreground italic">{fmt(g.budget)}</span>
+                        )}
+                      </div>
+                    </div>
+                    {/* Bar */}
+                    <div className="relative h-1.5 rounded-full bg-muted/30">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full bg-blue-500/40"
+                        style={{ width: `${budgetPct * 100}%` }}
+                      />
+                      {actualPct !== null && (
+                        <div
+                          className={cn(
+                            'absolute inset-y-0 left-0 rounded-full',
+                            overrun ? 'bg-red-400' : 'bg-blue-500',
+                          )}
+                          style={{ width: `${actualPct * 100}%` }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Donut chart */}
+        {nettoInn > 0 && (
+          <div className="rounded-xl border border-border/50 bg-card/60 px-4 py-3">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Fordeling av netto lønn
+            </p>
+            <div className="flex items-center gap-6">
+              <DonutChart segments={donutSegments} />
+              <div className="space-y-1.5">
+                {donutSegments.filter(s => s.value > 0).map((s) => (
+                  <div key={s.label} className="flex items-center gap-2 text-[11px]">
+                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="text-muted-foreground">{s.label}</span>
+                    <span className="font-mono ml-auto">
+                      {((s.value / nettoInn) * 100).toFixed(0)}%
+                    </span>
+                    <span className="font-mono text-muted-foreground/60 text-[10px]">
+                      {fmt(s.value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No data hint */}
+        {nettoInn === 0 && totalUtgifter === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+            <p className="text-sm text-muted-foreground">
+              Last opp en lønnsslipp eller sett opp lønnsprofil for å se oversikt.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MetricRow({ label, value, color, bold }: { label: string; value: string; color: string; bold?: boolean }) {
+  return (
+    <div className="flex items-center justify-between text-[12px]">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn('font-mono', color, bold && 'font-semibold text-[13px]')}>{value}</span>
     </div>
   )
 }
