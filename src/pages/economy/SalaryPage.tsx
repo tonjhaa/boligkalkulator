@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2, TrendingUp, Pencil, Check, X, RefreshCw } from 'lucide-react'
+import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2, TrendingUp, Pencil, Check, X, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { SalaryWaterfallHero } from '@/components/economy/widgets/SalaryWaterfallHero'
+import { SalaryGrowthChart } from '@/components/economy/charts/SalaryGrowthChart'
+import { MonthlyNettoChart } from '@/components/economy/charts/MonthlyNettoChart'
+import { TaxRateChart } from '@/components/economy/charts/TaxRateChart'
 import { slaaOppTrekk } from '@/utils/trekktabellLookup'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
@@ -119,6 +120,7 @@ export function SalaryPage() {
   const [editingProfile, setEditingProfile] = useState(false)
   const [viewingSlip, setViewingSlip] = useState<MonthRecord | null>(null)
   const [storageKB, setStorageKB] = useState(0)
+  const [advanced, setAdvanced] = useState(false)
 
   useEffect(() => {
     setStorageKB(getLocalStorageKB())
@@ -128,186 +130,215 @@ export function SalaryPage() {
     .filter((m) => m.source === 'imported_slip')
     .sort((a, b) => b.year - a.year || b.month - a.month)
 
-  return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
-      <h2 className="font-semibold">Lønn og skatt</h2>
+  const latestSlipRecord = importedSlips[0] ?? null
 
-      {/* Lønnsprofil */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm">Lønnsprofil</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditingProfile(!editingProfile)}
-            >
-              {editingProfile ? 'Avbryt' : 'Rediger'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!profile && !editingProfile ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-muted-foreground mb-3">
-                Ingen lønnsprofil. Sett opp profilen din eller importer en lønnsslipp.
-              </p>
-              <Button size="sm" onClick={() => setEditingProfile(true)}>
-                Sett opp profil
+  // CAGR fra lønnsoppgjør
+  const sortedOppgjor = [...lonnsoppgjor]
+    .filter((r) => r.maanedslonn > 0)
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.effectiveDate.localeCompare(b.effectiveDate))
+  const cagr = sortedOppgjor.length >= 2
+    ? Math.pow(
+        sortedOppgjor[sortedOppgjor.length - 1].maanedslonn / sortedOppgjor[0].maanedslonn,
+        1 / Math.max(1, sortedOppgjor[sortedOppgjor.length - 1].year - sortedOppgjor[0].year)
+      ) - 1
+    : null
+
+  // Effektiv skattesats per år
+  const taxByYear = new Map<number, { total: number; count: number }>()
+  importedSlips.forEach((m) => {
+    if (m.slipData && m.slipData.bruttoSum > 0) {
+      const pct = (m.slipData.skattetrekk / m.slipData.bruttoSum) * 100
+      const prev = taxByYear.get(m.year) ?? { total: 0, count: 0 }
+      taxByYear.set(m.year, { total: prev.total + pct, count: prev.count + 1 })
+    }
+  })
+  const taxHistory = [...taxByYear.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, { total, count }]) => ({ year, pct: total / count }))
+  const currentTaxRate = latestSlipRecord?.slipData && latestSlipRecord.slipData.bruttoSum > 0
+    ? (latestSlipRecord.slipData.skattetrekk / latestSlipRecord.slipData.bruttoSum) * 100
+    : null
+
+  return (
+    <div className="flex h-full overflow-hidden">
+
+      {/* ── VENSTRE — Lønnssammensetning (380px) ── */}
+      <div className="w-[380px] shrink-0 border-r border-border overflow-y-auto p-5 space-y-4">
+
+        {/* Waterfall-hero */}
+        <SalaryWaterfallHero
+          profile={profile}
+          latestSlip={latestSlipRecord?.slipData ?? null}
+          advanced={advanced}
+        />
+
+        {/* Advanced-toggle */}
+        {profile && (
+          <button
+            onClick={() => setAdvanced(!advanced)}
+            className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {advanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            {advanced ? 'Skjul detaljer' : 'Vis detaljer (SPK, fagforening, husleie)'}
+          </button>
+        )}
+
+        {/* Lønnsprofil */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Lønnsprofil</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => setEditingProfile(!editingProfile)}>
+                {editingProfile ? 'Avbryt' : 'Rediger'}
               </Button>
             </div>
-          ) : editingProfile ? (
-            <ProfileForm
-              initial={profile}
-              onSave={(p) => { setProfile(p); setEditingProfile(false) }}
-              onCancel={() => setEditingProfile(false)}
-            />
-          ) : profile ? (
-            <div className="space-y-2 text-sm">
-              <InfoRow label="Arbeidsgiver" value={profile.employer === 'forsvaret' ? 'Forsvaret' : 'Annen'} />
-              <InfoRow label="Grunnlønn/mnd" value={`${fmtNOK(profile.baseMonthly)} (${fmtNOK(profile.baseMonthly * 12)}/år)`} />
-              {profile.fixedAdditions.filter((a) => a.amount > 0).map((a) => (
-                <InfoRow
-                  key={a.kode}
-                  label={`${a.label} (${a.kode})`}
-                  value={`${fmtNOK(a.amount)}/mnd (${fmtNOK(a.amount * 12)}/år)`}
-                />
-              ))}
-              <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
-              {profile.tabellnummer && (
-                <InfoRow label="Trekktabell" value={String(profile.tabellnummer)} />
-              )}
-              {profile.extraTaxWithholding > 0 && (
-                <InfoRow label="Ekstra trekk/mnd" value={fmtNOK(profile.extraTaxWithholding)} />
-              )}
-              {profile.housingDeduction > 0 && (
-                <InfoRow label="Husleietrekk/mnd" value={fmtNOK(profile.housingDeduction)} />
-              )}
-              <InfoRow label="Pensjonstrekk" value={`${profile.pensionPercent}%`} />
-              <InfoRow label="Fagforeningskontingent/mnd" value={fmtNOK(profile.unionFee)} />
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            {!profile && !editingProfile ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Ingen lønnsprofil. Sett opp profilen din eller importer en lønnsslipp.
+                </p>
+                <Button size="sm" onClick={() => setEditingProfile(true)}>Sett opp profil</Button>
+              </div>
+            ) : editingProfile ? (
+              <ProfileForm
+                initial={profile}
+                onSave={(p) => { setProfile(p); setEditingProfile(false) }}
+                onCancel={() => setEditingProfile(false)}
+              />
+            ) : profile ? (
+              <div className="space-y-2 text-sm">
+                <InfoRow label="Arbeidsgiver" value={profile.employer === 'forsvaret' ? 'Forsvaret' : 'Annen'} />
+                <InfoRow label="Grunnlønn/mnd" value={`${fmtNOK(profile.baseMonthly)} (${fmtNOK(profile.baseMonthly * 12)}/år)`} />
+                {profile.fixedAdditions.filter((a) => a.amount > 0).map((a) => (
+                  <InfoRow key={a.kode} label={`${a.label} (${a.kode})`} value={`${fmtNOK(a.amount)}/mnd`} />
+                ))}
+                <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
+                {profile.tabellnummer && <InfoRow label="Trekktabell" value={String(profile.tabellnummer)} />}
+                {profile.extraTaxWithholding > 0 && <InfoRow label="Ekstra trekk/mnd" value={fmtNOK(profile.extraTaxWithholding)} />}
+                {profile.housingDeduction > 0 && <InfoRow label="Husleietrekk/mnd" value={fmtNOK(profile.housingDeduction)} />}
+                <InfoRow label="Pensjonstrekk" value={`${profile.pensionPercent}%`} />
+                <InfoRow label="Fagforeningskont./mnd" value={fmtNOK(profile.unionFee)} />
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
-      {/* Brutto→Netto waterfall */}
-      {profile && <BruttoNettoKort profile={profile} />}
-
-      {/* Netto utbetalingshistorikk */}
-      {importedSlips.length >= 2 && <NettoHistorikkKort slips={importedSlips} />}
-
-      {/* Trekktabell-estimat */}
-      {profile?.tabellnummer && (
-        <TrekktabellKort
-          tabellnummer={profile.tabellnummer}
-          grunnlag={profile.baseMonthly + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)}
-          faktiskTrekk={profile.lastKnownTaxWithholding}
-        />
-      )}
-
-      {/* Fungering */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Midlertidig lønn (fungering)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FungeringPanel
-            entries={temporaryPayEntries}
-            baseMonthly={profile?.baseMonthly ?? 0}
-            onAdd={addTemporaryPay}
-            onRemove={removeTemporaryPay}
+        {/* Trekktabell */}
+        {profile?.tabellnummer && (
+          <TrekktabellKort
+            tabellnummer={profile.tabellnummer}
+            grunnlag={profile.baseMonthly + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)}
+            faktiskTrekk={profile.lastKnownTaxWithholding}
           />
-        </CardContent>
-      </Card>
+        )}
 
-      {/* Lønnsoppgjør & lønnsvekst */}
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
+        {/* Fungering */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Midlertidig lønn (fungering)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FungeringPanel
+              entries={temporaryPayEntries}
+              baseMonthly={profile?.baseMonthly ?? 0}
+              onAdd={addTemporaryPay}
+              onRemove={removeTemporaryPay}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── HØYRE — Grafer + historikk ── */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+        {/* Lønnsutvikling */}
+        <SalaryGrowthChart records={lonnsoppgjor} cagr={cagr} />
+
+        {/* Netto per måned */}
+        {importedSlips.length >= 2 && <MonthlyNettoChart slips={importedSlips} />}
+
+        {/* Effektiv skattesats */}
+        {taxHistory.length >= 2 && (
+          <TaxRateChart data={taxHistory} currentRate={currentTaxRate} />
+        )}
+
+        {/* Lønnsoppgjør & lønnsvekst */}
+        <Card>
+          <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
               <CardTitle className="text-sm">Lønnsoppgjør & lønnsvekst</CardTitle>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <LonnsoppgjorSection
-            records={lonnsoppgjor}
-            hasSlips={monthHistory.some((m) => m.source === 'imported_slip')}
-            onAdd={addLonnsoppgjor}
-            onUpdate={updateLonnsoppgjor}
-            onRemove={removeLonnsoppgjor}
-            onDerive={deriveLonnsoppgjorFromSlips}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Last opp slipp */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Importer lønnsslipp</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PayslipImporter />
-        </CardContent>
-      </Card>
-
-      {/* Slipp-historikk */}
-      {importedSlips.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Importerte slipper</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {storageKB > 4500 && (
-              <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 p-2 text-xs text-yellow-400">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                Lagringsplass nærmer seg grensen ({storageKB} KB / ~5 120 KB). PDF-er for eldre slipper er automatisk fjernet.
-              </div>
-            )}
-            <div className="space-y-1">
-                  {importedSlips.map((m) => {
-                    // Bruk slipData.nettoUtbetalt som kilde til sannhet (fikser stale records)
-                    const netto = m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt
-                    const brutto = m.slipData?.bruttoSum ?? 0
-                    return (
-                      <div key={`${m.year}-${m.month}`} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/10 text-xs">
-                        <span className="text-muted-foreground w-20 shrink-0">
-                          {MONTH_NAMES[m.month]} {m.year}
-                        </span>
-                        <span className="font-mono font-medium">
-                          Netto: {fmtNOK(netto)}
-                        </span>
-                        {brutto > 0 && (
-                          <span className="font-mono text-muted-foreground">
-                            Brutto: {fmtNOK(brutto)}
-                          </span>
-                        )}
-                        <span className="ml-auto">
-                          {(m.slipData || m.slipPdfBase64) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 px-2 text-xs gap-1"
-                              onClick={() => setViewingSlip(m)}
-                            >
-                              <FileText className="h-3 w-3" />
-                              Vis
-                            </Button>
-                          )}
-                        </span>
-                      </div>
-                    )
-                  })}
-            </div>
+          <CardContent>
+            <LonnsoppgjorSection
+              records={lonnsoppgjor}
+              hasSlips={monthHistory.some((m) => m.source === 'imported_slip')}
+              onAdd={addLonnsoppgjor}
+              onUpdate={updateLonnsoppgjor}
+              onRemove={removeLonnsoppgjor}
+              onDerive={deriveLonnsoppgjorFromSlips}
+            />
           </CardContent>
         </Card>
-      )}
 
-      {/* Slipp-detaljer-modal */}
-      {viewingSlip && (
-        <SlipDetailModal record={viewingSlip} onClose={() => setViewingSlip(null)} />
-      )}
+        {/* Importer slipp */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Importer lønnsslipp</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PayslipImporter />
+          </CardContent>
+        </Card>
+
+        {/* Slipp-historikk */}
+        {importedSlips.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Importerte slipper</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {storageKB > 4500 && (
+                <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 p-2 text-xs text-yellow-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Lagringsplass nærmer seg grensen ({storageKB} KB / ~5 120 KB). PDF-er for eldre slipper er automatisk fjernet.
+                </div>
+              )}
+              <div className="space-y-1">
+                {importedSlips.map((m) => {
+                  const netto = m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt
+                  const brutto = m.slipData?.bruttoSum ?? 0
+                  return (
+                    <div key={`${m.year}-${m.month}`} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/10 text-xs">
+                      <span className="text-muted-foreground w-20 shrink-0">
+                        {MONTH_NAMES[m.month]} {m.year}
+                      </span>
+                      <span className="font-mono font-medium">Netto: {fmtNOK(netto)}</span>
+                      {brutto > 0 && (
+                        <span className="font-mono text-muted-foreground">Brutto: {fmtNOK(brutto)}</span>
+                      )}
+                      <span className="ml-auto">
+                        {(m.slipData || m.slipPdfBase64) && (
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1" onClick={() => setViewingSlip(m)}>
+                            <FileText className="h-3 w-3" />
+                            Vis
+                          </Button>
+                        )}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Modal */}
+      {viewingSlip && <SlipDetailModal record={viewingSlip} onClose={() => setViewingSlip(null)} />}
     </div>
   )
 }
@@ -496,132 +527,6 @@ function SlipDetailModal({ record, onClose }: { record: MonthRecord; onClose: ()
         )}
       </div>
     </div>
-  )
-}
-
-// ----------------------------------------------------------------
-// FungeringPanel
-// ------------------------------------------------------------
-// BRUTTO → NETTO WATERFALL
-// ------------------------------------------------------------
-
-function BruttoNettoKort({ profile }: { profile: EmploymentProfile }) {
-  const brutto = profile.baseMonthly + profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)
-  const skatt = profile.lastKnownTaxWithholding + profile.extraTaxWithholding
-  const pensjon = Math.round(brutto * (profile.pensionPercent / 100))
-  const fagforening = profile.unionFee
-  const husleie = profile.housingDeduction
-  const netto = brutto - skatt - pensjon - fagforening - husleie
-
-  const steps: { label: string; amount: number; cumulative: number; type: 'start' | 'neg' | 'result' }[] = []
-  let cum = brutto
-  steps.push({ label: 'Brutto', amount: brutto, cumulative: cum, type: 'start' })
-  cum -= skatt
-  steps.push({ label: 'Skatt', amount: -skatt, cumulative: cum, type: 'neg' })
-  cum -= pensjon
-  steps.push({ label: 'Pensjon', amount: -pensjon, cumulative: cum, type: 'neg' })
-  if (fagforening > 0) {
-    cum -= fagforening
-    steps.push({ label: 'Fagforen.', amount: -fagforening, cumulative: cum, type: 'neg' })
-  }
-  if (husleie > 0) {
-    cum -= husleie
-    steps.push({ label: 'Husleie', amount: -husleie, cumulative: cum, type: 'neg' })
-  }
-  steps.push({ label: 'Netto', amount: netto, cumulative: netto, type: 'result' })
-
-  const maxVal = brutto * 1.05
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Brutto → Netto</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-1.5">
-          {steps.map((s) => {
-            const widthPct = Math.max(2, (Math.abs(s.type === 'neg' ? s.amount : s.cumulative) / maxVal) * 100)
-            const offsetPct = s.type === 'neg' ? (s.cumulative / maxVal) * 100 : 0
-            return (
-              <div key={s.label} className="flex items-center gap-2 text-xs">
-                <span className="w-16 text-right text-muted-foreground shrink-0">{s.label}</span>
-                <div className="relative flex-1 h-5 bg-muted/30 rounded overflow-hidden">
-                  <div
-                    className={`absolute top-0 h-full rounded ${
-                      s.type === 'start' ? 'bg-blue-500/70' :
-                      s.type === 'result' ? 'bg-green-500/80' : 'bg-red-400/70'
-                    }`}
-                    style={{
-                      left: s.type === 'neg' ? `${offsetPct}%` : '0%',
-                      width: `${widthPct}%`,
-                    }}
-                  />
-                </div>
-                <span className={`w-24 text-right font-mono shrink-0 ${
-                  s.type === 'neg' ? 'text-red-400' : s.type === 'result' ? 'text-green-500' : 'text-foreground'
-                }`}>
-                  {s.amount >= 0 ? '' : '-'}{Math.abs(s.amount).toLocaleString('no-NO')} kr
-                </span>
-              </div>
-            )
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">
-          Netto utgjør <span className="text-foreground font-medium">{Math.round((netto / brutto) * 100)}%</span> av brutto
-        </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ------------------------------------------------------------
-// NETTO UTBETALINGSHISTORIKK
-// ------------------------------------------------------------
-
-function NettoHistorikkKort({ slips }: { slips: MonthRecord[] }) {
-  const data = [...slips]
-    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
-    .slice(-24) // maks 2 år
-    .map((m) => ({
-      label: `${MONTH_NAMES[m.month]} ${String(m.year).slice(2)}`,
-      netto: m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt,
-      brutto: m.slipData?.bruttoSum,
-    }))
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Netto utbetalt — historikk</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={140}>
-          <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="nettoGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#22C55E" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#22C55E" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="label" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 9 }} tickFormatter={(v) => `${Math.round(v / 1000)}k`} width={32} />
-            <Tooltip
-              formatter={(v) => [`${Number(v).toLocaleString('no-NO')} kr`, 'Netto']}
-              contentStyle={{ fontSize: 11 }}
-            />
-            <Area
-              type="monotone"
-              dataKey="netto"
-              stroke="#22C55E"
-              strokeWidth={1.5}
-              fill="url(#nettoGrad)"
-              dot={{ r: 2, fill: '#22C55E' }}
-              activeDot={{ r: 4 }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
   )
 }
 

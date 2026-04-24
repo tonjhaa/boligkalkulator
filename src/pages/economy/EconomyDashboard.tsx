@@ -1,48 +1,30 @@
-import { Home, AlertTriangle, TrendingUp, TrendingDown, Minus, Zap, CalendarDays, Cloud, CloudOff, Loader2 } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
-} from 'recharts'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { AlertTriangle, Zap, Home } from 'lucide-react'
+import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { calculateGoalProgress } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
+import type { AbsenceStatus } from '@/types/economy'
 import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
-import { getSyncStatus, onSyncStatusChange, type SyncStatus } from '@/lib/syncEconomyData'
 import { cn } from '@/lib/utils'
-import type { ParsetLonnsslipp } from '@/types/economy'
+import { HeroBand, calcHealthScore } from '@/components/economy/widgets/HeroBand'
+import { FormueChart } from '@/components/economy/charts/FormueChart'
 
 const MONTH_NAMES = [
   '', 'Jan', 'Feb', 'Mars', 'April', 'Mai', 'Juni',
   'Juli', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
 ]
 
-const MONTH_NAMES_FULL = [
-  '', 'Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Desember',
-]
-
-const EXPENSE_CATEGORIES = [
-  'bolig', 'transport', 'mat', 'helse',
-  'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk',
-] as const
-
 function fmtNOK(n: number): string {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
 }
 
-function fmtSigned(n: number | null): string {
-  if (n === null) return '—'
-  return Math.round(n).toLocaleString('no-NO') + ' kr'
-}
-
-// ── Norske helligdager ─────────────────────────────────────
+// ── Norske helligdager ──────────────────────────────────────
 function getEasterSunday(year: number): Date {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100
   const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
@@ -57,23 +39,14 @@ function getEasterSunday(year: number): Date {
 
 function getNorwegianHolidays(year: number): Set<string> {
   const easter = getEasterSunday(year)
-  const addDays = (d: Date, n: number) => {
-    const r = new Date(d); r.setDate(r.getDate() + n); return r
-  }
+  const addDays = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r }
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
   return new Set([
-    `${year}-01-01`, // Nyttår
-    `${year}-05-01`, // 1. mai
-    `${year}-05-17`, // 17. mai
-    `${year}-12-25`, // 1. juledag
-    `${year}-12-26`, // 2. juledag
-    fmt(addDays(easter, -3)),  // Skjærtorsdag
-    fmt(addDays(easter, -2)),  // Langfredag
-    fmt(easter),               // 1. påskedag
-    fmt(addDays(easter, 1)),   // 2. påskedag
-    fmt(addDays(easter, 39)),  // Kristi Himmelfartsdag
-    fmt(addDays(easter, 49)),  // 1. pinsedag
-    fmt(addDays(easter, 50)),  // 2. pinsedag
+    `${year}-01-01`, `${year}-05-01`, `${year}-05-17`,
+    `${year}-12-25`, `${year}-12-26`,
+    fmt(addDays(easter, -3)), fmt(addDays(easter, -2)), fmt(easter),
+    fmt(addDays(easter, 1)), fmt(addDays(easter, 39)),
+    fmt(addDays(easter, 49)), fmt(addDays(easter, 50)),
   ])
 }
 
@@ -81,14 +54,12 @@ function getNextPayday(from: Date): Date {
   const tryMonth = (year: number, month: number): Date => {
     const holidays = getNorwegianHolidays(year)
     let d = new Date(year, month, 12)
-    // Flytt bakover forbi helg og helligdager
     while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(d.toISOString().slice(0, 10))) {
       d.setDate(d.getDate() - 1)
     }
     return d
   }
   const thisMonthPayday = tryMonth(from.getFullYear(), from.getMonth())
-  // Bruk neste måned hvis lønningsdagen allerede har vært
   if (thisMonthPayday <= from) {
     const next = new Date(from.getFullYear(), from.getMonth() + 1, 1)
     return tryMonth(next.getFullYear(), next.getMonth())
@@ -96,38 +67,9 @@ function getNextPayday(from: Date): Date {
   return thisMonthPayday
 }
 
-// Isolert klokke-komponent — re-renderer hvert sekund uten å påvirke Dashboard
-function LiveKlokke() {
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
-  return (
-    <div>
-      <p className="text-xl font-semibold tabular-nums text-foreground">
-        {now.toLocaleTimeString('no-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {now.toLocaleDateString('no-NO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-      </p>
-    </div>
-  )
-}
-
-// Viser synkroniseringsstatus mot Supabase
-function SyncStatusIndikator() {
-  const [status, setStatus] = useState<SyncStatus>(getSyncStatus)
-  useEffect(() => onSyncStatusChange(setStatus), [])
-  if (status === 'idle') return null
-  return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground pb-0.5">
-      {status === 'saving' && <><Loader2 className="h-3 w-3 animate-spin" /> Lagrer…</>}
-      {status === 'saved' && <><Cloud className="h-3 w-3 text-green-500" /> Lagret</>}
-      {status === 'error' && <><CloudOff className="h-3 w-3 text-red-400" /> Lagringsfeil</>}
-    </span>
-  )
-}
+// ══════════════════════════════════════════════════════════════
+// HOVED-KOMPONENT
+// ══════════════════════════════════════════════════════════════
 
 export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) => void }) {
   const {
@@ -149,7 +91,6 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ivfTransactions,
   } = useEconomyStore()
 
-  // Klokken isoleres i <LiveKlokke /> — her trenger vi bare dato for beregninger
   const now = useMemo(() => new Date(), [])
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
@@ -158,44 +99,24 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const nextPayday = getNextPayday(now)
   const daysToPayday = Math.ceil((nextPayday.getTime() - now.getTime()) / 86400000)
 
-  // Neste kommende ferieperiode (siste arbeidsdag ennå ikke passert, eller pågående)
-  const nextVacation = (profile?.vacationPeriods ?? [])
-    .filter((p) => new Date(p.firstWorkDayAfter) > now)
-    .sort((a, b) => new Date(a.lastWorkDayBefore).getTime() - new Date(b.lastWorkDayBefore).getTime())[0] ?? null
-
-  const daysToVacation = nextVacation
-    ? Math.ceil((new Date(nextVacation.lastWorkDayBefore).getTime() - now.getTime()) / 86400000)
-    : null
-  const daysBackFromVacation = nextVacation
-    ? Math.ceil((new Date(nextVacation.firstWorkDayAfter).getTime() - now.getTime()) / 86400000)
-    : null
-  const isOnVacation = daysToVacation !== null && daysToVacation <= 0
-
   const currentMonthRecord = monthHistory.find(
     (m) => m.year === currentYear && m.month === currentMonth
   )
-
   const nettoInn = currentMonthRecord?.nettoUtbetalt ?? 0
 
   const fasteUt = budgetTemplate.lines
-    .filter((l) => l.isRecurring && (EXPENSE_CATEGORIES as readonly string[]).includes(l.category))
+    .filter((l) => l.isRecurring && ['bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk'].includes(l.category))
     .reduce((s, l) => s + Math.abs(l.amount), 0)
-
-  const harBudsjettLinjer = budgetTemplate.lines.some(
-    (l) => l.isRecurring && (EXPENSE_CATEGORIES as readonly string[]).includes(l.category)
-  )
-
-  const disponibelt = nettoInn - fasteUt
-
-  const latestSlipRecord = monthHistory
-    .filter((m) => m.year === currentYear && m.slipData != null)
-    .sort((a, b) => b.month - a.month)[0]
 
   const atfSum = sumATFByYear(atfEntries, currentYear)
   const yearATF = atfEntries.filter((e) => (e.payoutYear ?? e.year) === currentYear)
 
-  const absenceDays = absenceEvents.length > 0 ? getDaysUsedFromEvents(absenceEvents) : getDaysUsedLast12Months(absenceRecords)
-  const absenceStatus = absenceEvents.length > 0 ? getAbsenceStatusFromEvents(absenceEvents) : getAbsenceStatus(absenceRecords)
+  const absenceDays = absenceEvents.length > 0
+    ? getDaysUsedFromEvents(absenceEvents)
+    : getDaysUsedLast12Months(absenceRecords)
+  const absenceStatus = absenceEvents.length > 0
+    ? getAbsenceStatusFromEvents(absenceEvents)
+    : getAbsenceStatus(absenceRecords)
 
   const taxAnalysis = analyzeTaxSettlements(taxSettlements, profile?.extraTaxWithholding ?? 0)
 
@@ -207,64 +128,29 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ? appAnalyses[activeScenario.id]?.maxPurchase?.maxPurchasePrice
     : null
 
-  // ── KPI-beregninger ────────────────────────────────────────
+  // ── Formue ────────────────────────────────────────────────
   const sparingKontoer = savingsAccounts.reduce((s, a) => {
     const sorted = [...a.balanceHistory].sort((x, y) =>
       x.year !== y.year ? y.year - x.year : y.month - x.month
     )
     return s + (sorted[0]?.balance ?? a.openingBalance)
   }, 0)
-
   const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondVerdi = sortedFondSnapshots[0]?.totalValue ?? 0
-
   const totalSparing = sparingKontoer + fondVerdi
   const totalGjeld = debts.reduce((s, d) => s + d.currentBalance, 0)
   const nettoFormue = totalSparing - totalGjeld
 
-  // ── Inntektstrend — siste 6 måneder med slipp ─────────────
+  // ── Inntektstrend ─────────────────────────────────────────
   const trendData = [...monthHistory]
     .filter((m) => m.slipData != null)
     .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
-    .slice(-6)
-    .map((m) => ({
-      mnd: MONTH_NAMES[m.month],
-      netto: m.nettoUtbetalt,
-    }))
+    .slice(-12)
+    .map((m) => ({ m: MONTH_NAMES[m.month], v: m.nettoUtbetalt }))
 
-  const trendAvg = trendData.length > 0
-    ? trendData.reduce((s, d) => s + d.netto, 0) / trendData.length
-    : 0
-
-  // Sammenlign siste to måneder for trend-indikator
-  const trendDir: 'opp' | 'ned' | 'flat' = trendData.length >= 2
-    ? trendData[trendData.length - 1].netto > trendData[trendData.length - 2].netto * 1.01
-      ? 'opp'
-      : trendData[trendData.length - 1].netto < trendData[trendData.length - 2].netto * 0.99
-        ? 'ned'
-        : 'flat'
-    : 'flat'
-
-  // ── Innsiktstekst ─────────────────────────────────────────
-  const innsikt: string[] = []
-  if (trendData.length >= 3) {
-    innsikt.push(`Snitt netto siste ${trendData.length} mnd: ${fmtNOK(trendAvg)}`)
-  }
-  if (atfSum > 0) {
-    innsikt.push(`ATF registrert i ${currentYear}: ${fmtNOK(atfSum)}`)
-  }
-  if (nettoFormue > 0) {
-    innsikt.push(`Netto formue (sparing minus gjeld): ${fmtNOK(nettoFormue)}`)
-  }
-  if (taxAnalysis.recommendation === 'reduce_extra') {
-    innsikt.push(
-      `Skatteoppgjøret tyder på at du kan redusere ekstra trekk med ${fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.`
-    )
-  }
-
+  // ── Budsjett ──────────────────────────────────────────────
   const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
 
-  // ── Budsjettabell (samme motor som Budsjett-fanen) ─────────
   const yearOverrides = Object.fromEntries(
     Object.entries(budgetOverrides)
       .filter(([k]) => k.startsWith(`${currentYear}:`))
@@ -280,421 +166,36 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     : null
 
   const allBudgetRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
-  const nettoRow = allBudgetRows.find((r) => r.id === 'netto')
-  const overskuddRow = allBudgetRows.find((r) => r.id === 'overskudd')
   const monthIdx = currentMonth - 1
-  const nettoCell = nettoRow?.cells[monthIdx]
-  const overskuddCell = overskuddRow?.cells[monthIdx]
+  const nettoCell = allBudgetRows.find((r) => r.id === 'netto')?.cells[monthIdx]
+  const overskuddCell = allBudgetRows.find((r) => r.id === 'overskudd')?.cells[monthIdx]
   const nettoFraBudsjett = nettoCell ? (nettoCell.actual ?? nettoCell.budget) : 0
   const overskuddFraBudsjett = overskuddCell ? (overskuddCell.actual ?? overskuddCell.budget) : null
 
-  return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
+  // ── Sparerate & healthscore ───────────────────────────────
+  const sparerate = nettoFraBudsjett > 0 && overskuddFraBudsjett !== null
+    ? Math.max(0, Math.round((overskuddFraBudsjett / nettoFraBudsjett) * 100))
+    : 0
 
-      {/* ── Topprad: klokke + nedtellinger ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-end gap-3">
-          <LiveKlokke />
-          <SyncStatusIndikator />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <CountdownChip
-            icon="💰"
-            label="Neste lønning"
-            days={daysToPayday}
-            detail={nextPayday.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
-          />
-          {nextVacation && !isOnVacation && daysToVacation !== null && daysToVacation > 0 && (
-            <CountdownChip
-              icon="🏖️"
-              label={nextVacation.label}
-              days={daysToVacation}
-              detail={new Date(nextVacation.lastWorkDayBefore).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
-            />
-          )}
-          {nextVacation && isOnVacation && daysBackFromVacation !== null && (
-            <CountdownChip
-              icon="🏖️"
-              label={`${nextVacation.label} — tilbake`}
-              days={daysBackFromVacation}
-              detail={new Date(nextVacation.firstWorkDayAfter).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })}
-            />
-          )}
-          {!nextVacation && (
-            <button
-              onClick={() => onNavigate('vacation')}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs bg-muted/40 border border-border/40 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <CalendarDays className="h-3 w-3" />
-              Planlegg ferie
-            </button>
-          )}
-        </div>
-      </div>
+  const healthScore = calcHealthScore({
+    sparerate,
+    absenceDays,
+    nettoFormue,
+    overskudd: overskuddFraBudsjett,
+    totalSparing,
+    totalGjeld,
+  })
 
-      {/* ── KPI-strip ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <KpiCard
-          label="Netto formue"
-          value={nettoFormue}
-          color={nettoFormue >= 0 ? 'green' : 'red'}
-          sub={totalGjeld > 0 ? `Gjeld: ${fmtNOK(totalGjeld)}` : undefined}
-        />
-        <KpiCard
-          label="Total sparing"
-          value={totalSparing}
-          color="blue"
-          sub={
-            fondVerdi > 0 && savingsAccounts.length > 0
-              ? `${savingsAccounts.length} kontoer + fond`
-              : fondVerdi > 0
-              ? `inkl. fond ${Math.round(fondVerdi).toLocaleString('no-NO')} kr`
-              : savingsAccounts.length > 0
-              ? `${savingsAccounts.length} kontoer`
-              : undefined
-          }
-        />
-        <KpiCard
-          label="Netto inn"
-          value={nettoInn}
-          color={nettoInn > 0 ? 'green' : 'default'}
-          sub={currentMonthRecord ? undefined : 'Ingen slipp lastet'}
-        />
-        <KpiCard
-          label="Feriepenger juni"
-          value={juneForecast?.nettoJuni ?? 0}
-          color="purple"
-          sub={juneForecast ? `Ekstra: ${fmtNOK(juneForecast.nettoEkstra)}` : 'Trenger profil'}
-        />
-      </div>
-
-      {/* ── Inntektstrend-chart ── */}
-      {trendData.length >= 2 && (
-        <div className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm px-4 pt-3 pb-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">Nettoinntekt</span>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              {trendDir === 'opp' && <TrendingUp className="h-3.5 w-3.5 text-green-500" />}
-              {trendDir === 'ned' && <TrendingDown className="h-3.5 w-3.5 text-red-400" />}
-              {trendDir === 'flat' && <Minus className="h-3.5 w-3.5" />}
-              <span>snitt {fmtNOK(trendAvg)}</span>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={100}>
-            <AreaChart data={trendData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-              <defs>
-                <linearGradient id="nettoGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.25} />
-                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="mnd" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
-              <YAxis hide domain={['auto', 'auto']} />
-              <Tooltip
-                formatter={(v) => [fmtNOK(Number(v)), 'Netto']}
-                contentStyle={{
-                  fontSize: 11,
-                  background: 'hsl(240 10% 10%)',
-                  border: '1px solid hsl(240 5% 20%)',
-                  borderRadius: 8,
-                  color: '#e2e8f0',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                }}
-                labelStyle={{ color: '#94a3b8' }}
-                cursor={{ stroke: 'hsl(240 5% 30%)', strokeWidth: 1 }}
-              />
-              <ReferenceLine y={trendAvg} stroke="hsl(240 5% 40%)" strokeDasharray="4 3" strokeOpacity={0.6} />
-              <Area
-                type="monotone"
-                dataKey="netto"
-                stroke="#22c55e"
-                strokeWidth={1.5}
-                fill="url(#nettoGrad)"
-                dot={false}
-                activeDot={{ r: 3, fill: '#22c55e', strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* ── Pengepuls ── */}
-      <PengePuls
-        trendData={trendData}
-        trendAvg={trendAvg}
-        nettoInn={nettoFraBudsjett}
-        overskudd={overskuddFraBudsjett}
-        juneForecast={juneForecast}
-        savingsGoals={savingsGoals}
-        savingsAccounts={savingsAccounts}
-        atfSum={atfSum}
-        absenceDays={absenceDays}
-        fondVerdi={fondVerdi}
-        fondMonthlyDeposit={fondPortfolio?.monthlyDeposit ?? 0}
-      />
-
-      {/* ── Månedsstatus (disponibelt) — vises kun ved ingen trend-data ── */}
-      {trendData.length < 2 && currentMonthRecord && (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            <StatCard label="Netto inn" value={nettoInn} positive />
-            <StatCard label="Faste ut" value={fasteUt} />
-            <StatCard label="Disponibelt" value={disponibelt} positive={disponibelt >= 0} />
-          </div>
-          {!harBudsjettLinjer && (
-            <p className="text-xs text-muted-foreground text-center">
-              <button className="underline hover:text-foreground" onClick={() => onNavigate('budget')}>
-                Legg til faste utgifter i Budsjett
-              </button>
-            </p>
-          )}
-        </>
-      )}
-
-      {!currentMonthRecord && trendData.length === 0 && (
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Ingen data for {MONTH_NAMES[currentMonth]}. Last opp lønnsslippen din for å komme i gang.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── 2-kolonne grid: Sparemål / ATF / Gjeld / Egenmelding ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Sparemål</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {savingsGoals.length === 0 ? (
-              <EmptyState message="Ingen sparemål registrert" action="Legg til mål" onAction={() => onNavigate('savings')} />
-            ) : (
-              savingsGoals.slice(0, 3).map((goal) => {
-                const progress = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio?.monthlyDeposit ?? 0)
-                return (
-                  <div key={goal.id} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-1">
-                        <span>{goal.icon}</span>
-                        <span className="font-medium">{goal.label}</span>
-                      </span>
-                      <span className="text-muted-foreground text-xs">{Math.round(progress.percent)}%</span>
-                    </div>
-                    <Progress value={progress.percent} className="h-1.5" />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>{fmtNOK(progress.currentTotal)}</span>
-                      <span>{fmtNOK(progress.targetAmount)}</span>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">ATF dette året</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {yearATF.length === 0 ? (
-              <EmptyState message={`Ingen øvelser registrert for ${currentYear}`} action="Legg til øvelse" onAction={() => onNavigate('atf')} />
-            ) : (
-              <>
-                {yearATF.slice(0, 4).map((e) => (
-                  <div key={e.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground truncate">{e.øvelsesnavn}</span>
-                    <span className="font-mono font-medium ml-2 shrink-0">{fmtNOK(e.beregnetBeløp)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between text-sm border-t border-border pt-2 mt-2">
-                  <span className="font-medium">Sum {currentYear}</span>
-                  <span className="font-mono font-semibold text-green-500">{fmtNOK(atfSum)}</span>
-                </div>
-                <Button variant="ghost" size="sm" className="w-full mt-1" onClick={() => onNavigate('atf')}>
-                  + Legg til øvelse
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Gjeld</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {debts.length === 0 ? (
-              <EmptyState message="Ingen gjeld registrert" action="Legg til lån" onAction={() => onNavigate('debt')} />
-            ) : (
-              <>
-                {debts.slice(0, 4).map((d) => (
-                  <div key={d.id} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{d.creditor}</span>
-                    <span className="font-mono font-medium">{fmtNOK(d.currentBalance)}</span>
-                  </div>
-                ))}
-                <div className="flex justify-between text-sm border-t border-border pt-2">
-                  <span className="font-medium">Total</span>
-                  <span className="font-mono font-semibold text-red-400">
-                    {fmtNOK(debts.reduce((s, d) => s + d.currentBalance, 0))}
-                  </span>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Egenmelding</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Brukt siste 12 mnd</span>
-              <span className={cn('text-sm font-medium', getStatusColor(absenceStatus))}>
-                {absenceDays} / 24 dager
-              </span>
-            </div>
-            <Progress
-              value={(absenceDays / 24) * 100}
-              className={cn(
-                'h-2',
-                absenceStatus === 'ok' ? '[&>div]:bg-green-500'
-                : absenceStatus === 'warning' ? '[&>div]:bg-yellow-500'
-                : '[&>div]:bg-red-500'
-              )}
-            />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Skattevarsel ── */}
-      {taxAnalysis.recommendation === 'reduce_extra' && (
-        <div className="rounded-md bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 text-sm text-yellow-400 flex gap-2 items-start">
-          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-          <span>
-            Du får tilbake ~{fmtNOK(taxAnalysis.avgYearlyRefund)}/år.
-            Vurder å redusere ekstra trekk med {fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.
-          </span>
-        </div>
-      )}
-
-      {/* ── Feriepenger ── */}
-      {profile && (
-        <FeriepengeSummaryCard
-          juneForecast={juneForecast}
-          currentYear={currentYear}
-          onNavigate={onNavigate}
-        />
-      )}
-
-      {/* ── Lønn og skatt ── */}
-      <SlipWidget slip={latestSlipRecord?.slipData ?? null} onNavigate={onNavigate} />
-
-      {/* ── Boligscenario ── */}
-      {maxKjøpesum && (
-        <Card>
-          <CardContent className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Home className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">
-                <span className="text-muted-foreground">Maks kjøpesum: </span>
-                <span className="font-semibold">{fmtNOK(maxKjøpesum)}</span>
-              </span>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => useAppStore.getState().setCurrentView('calculator')}>
-              Åpne kalkulator
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ------------------------------------------------------------
-// KPI-KORT
-// ------------------------------------------------------------
-
-function KpiCard({
-  label,
-  value,
-  color = 'default',
-  sub,
-}: {
-  label: string
-  value: number
-  color?: 'green' | 'red' | 'blue' | 'purple' | 'default'
-  sub?: string
-}) {
-  const colorClass = {
-    green: 'text-green-500',
-    red: 'text-red-400',
-    blue: 'text-blue-400',
-    purple: 'text-violet-400',
-    default: 'text-foreground',
-  }[color]
-
-  return (
-    <div className="rounded-lg border border-border/40 bg-card/50 px-3 py-2.5">
-      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className={cn('text-sm font-semibold font-mono mt-0.5 tabular-nums', colorClass)}>
-        {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
-      </p>
-      {sub && <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</p>}
-    </div>
-  )
-}
-
-// ------------------------------------------------------------
-// PENGEPULS
-// ------------------------------------------------------------
-
-function PengePuls({
-  trendData: _trendData,
-  trendAvg,
-  nettoInn,
-  overskudd,
-  juneForecast,
-  savingsGoals,
-  savingsAccounts,
-  atfSum,
-  absenceDays,
-  fondVerdi,
-  fondMonthlyDeposit,
-}: {
-  trendData: { mnd: string; netto: number }[]
-  trendAvg: number
-  nettoInn: number
-  overskudd: number | null
-  juneForecast: ReturnType<typeof forecastJune> | null
-  savingsGoals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
-  savingsAccounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
-  atfSum: number
-  absenceDays: number
-  fondVerdi: number
-  fondMonthlyDeposit: number
-}) {
+  // ── Pengepuls-chips ───────────────────────────────────────
   const chips: { icon: string; text: string; accent?: string }[] = []
-
-  // Sparerate — basert på budsjettmotoren (inkl. sparing, gjeld, abonnementer)
-  if (nettoInn > 0 && overskudd !== null) {
-    const sparerate = Math.round((overskudd / nettoInn) * 100)
+  if (nettoFraBudsjett > 0 && overskuddFraBudsjett !== null) {
     chips.push({
       icon: '💰',
       text: `Sparerate: ${sparerate}% av netto`,
       accent: sparerate >= 20 ? 'green' : sparerate >= 10 ? 'yellow' : 'red',
     })
-  } else if (trendAvg > 0) {
-    chips.push({ icon: '📈', text: `Snitt netto: ${Math.round(trendAvg).toLocaleString('no-NO')} kr/mnd` })
   }
-
-  // Dager til feriepenger
   if (juneForecast) {
-    const now = new Date()
     const juneFirst = new Date(now.getFullYear(), 5, 24)
     if (juneFirst < now) juneFirst.setFullYear(now.getFullYear() + 1)
     const days = Math.ceil((juneFirst.getTime() - now.getTime()) / 86400000)
@@ -703,253 +204,379 @@ function PengePuls({
       text: `${days} dager til feriepenger (${Math.round(juneForecast.nettoJuni).toLocaleString('no-NO')} kr)`,
     })
   }
-
-  // Sparemål ETA — basert på faktisk månedlig sparing på tilknyttede kontoer
   if (savingsGoals.length > 0) {
     const goal = savingsGoals[0]
-    const prog = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondMonthlyDeposit)
+    const prog = calculateGoalProgress(goal, savingsAccounts, fondVerdi, fondPortfolio?.monthlyDeposit ?? 0)
     if (prog.percent >= 100) {
       chips.push({ icon: '✅', text: `«${goal.label}» er nådd!`, accent: 'green' })
     } else if (prog.monthsRemaining !== null && prog.monthsRemaining > 0) {
-      chips.push({
-        icon: '🎯',
-        text: `«${goal.label}» nås om ca. ${prog.monthsRemaining} mnd`,
-      })
+      chips.push({ icon: '🎯', text: `«${goal.label}» nås om ca. ${prog.monthsRemaining} mnd` })
     }
   }
-
-  // ATF bonus
   if (atfSum > 0) {
     chips.push({ icon: '🎖️', text: `ATF-bonus i år: ${Math.round(atfSum).toLocaleString('no-NO')} kr` })
   }
-
-  // Egenmelding
   if (absenceDays >= 16) {
     chips.push({ icon: '⚠️', text: `${absenceDays}/24 egenmeldingsdager brukt`, accent: 'red' })
   }
+  if (taxAnalysis.recommendation === 'reduce_extra') {
+    chips.push({
+      icon: '🧾',
+      text: `Vurder å senke ekstra trekk med ${fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd`,
+      accent: 'yellow',
+    })
+  }
 
-  if (chips.length === 0) return null
-
+  // ── Render ────────────────────────────────────────────────
   return (
-    <div className="rounded-xl border border-border/40 bg-card/40 px-4 py-3">
-      <div className="flex items-center gap-1.5 mb-2.5">
-        <Zap className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pengepuls</span>
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+
+      {/* ── 1. HERO BAND ── */}
+      <HeroBand
+        healthScore={healthScore}
+        nettoFormue={nettoFormue}
+        totalSparing={totalSparing}
+        totalGjeld={totalGjeld}
+        nettoInn={nettoFraBudsjett}
+        sparerate={sparerate}
+        daysToPayday={daysToPayday}
+        nextPayday={nextPayday}
+        juneForecast={juneForecast}
+      />
+
+      {/* ── 2. MIDT-RAD ── */}
+      <div className="grid grid-cols-[260px_1fr_260px] gap-3 px-5 py-3 shrink-0">
+        <MonthlyFlowCard
+          nettoInn={nettoFraBudsjett || nettoInn}
+          fasteUt={fasteUt}
+          overskudd={overskuddFraBudsjett}
+        />
+        <FormueChart
+          history={trendData}
+          nettoFormue={nettoFormue}
+        />
+        <PengePulsCard chips={chips} />
       </div>
-      <div className="flex flex-wrap gap-2">
-        {chips.map((chip, i) => (
-          <span
-            key={i}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs border',
-              chip.accent === 'green' && 'bg-green-500/10 border-green-500/20 text-green-400',
-              chip.accent === 'yellow' && 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
-              chip.accent === 'red' && 'bg-red-500/10 border-red-500/20 text-red-400',
-              !chip.accent && 'bg-muted/40 border-border/40 text-muted-foreground',
-            )}
-          >
-            <span>{chip.icon}</span>
-            <span>{chip.text}</span>
-          </span>
-        ))}
+
+      {/* ── 3. BUNN-GRID ── */}
+      <div className="grid grid-cols-4 gap-3 px-5 pb-4 flex-1 min-h-0">
+        <SpareMaalCard
+          goals={savingsGoals}
+          accounts={savingsAccounts}
+          fondVerdi={fondVerdi}
+          fondMonthlyDeposit={fondPortfolio?.monthlyDeposit ?? 0}
+          onNavigate={onNavigate}
+        />
+        <ATFCard
+          entries={yearATF}
+          sum={atfSum}
+          year={currentYear}
+          onNavigate={onNavigate}
+        />
+        <GjeldCard debts={debts} onNavigate={onNavigate} />
+        <AbsenceAndTaxCard
+          absenceDays={absenceDays}
+          absenceStatus={absenceStatus}
+          taxAnalysis={taxAnalysis}
+          onNavigate={onNavigate}
+          maxKjøpesum={maxKjøpesum}
+        />
       </div>
     </div>
   )
 }
 
-// ------------------------------------------------------------
-// LØNN OG SKATT WIDGET
-// ------------------------------------------------------------
+// ══════════════════════════════════════════════════════════════
+// MIDT-RAD: MÅNEDLIG FLYT
+// ══════════════════════════════════════════════════════════════
 
-function SlipWidget({ slip, onNavigate }: { slip: ParsetLonnsslipp | null; onNavigate: (page: string) => void }) {
-  if (!slip) {
-    return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Lønn og skatt</CardTitle>
-        </CardHeader>
-        <CardContent className="text-center py-4 space-y-2">
-          <p className="text-sm text-muted-foreground">Last opp lønnsslippen din for å se tall</p>
-          <Button variant="outline" size="sm" onClick={() => onNavigate('salary')}>Last opp slipp</Button>
-        </CardContent>
-      </Card>
-    )
-  }
+function MonthlyFlowCard({
+  nettoInn, fasteUt, overskudd,
+}: {
+  nettoInn: number
+  fasteUt: number
+  overskudd: number | null
+}) {
+  const ledig = overskudd ?? (nettoInn - fasteUt)
+  const sparing = nettoInn - fasteUt - Math.max(0, ledig)
 
-  const hittilNetto = slip.hittilBrutto > 0
-    ? slip.hittilBrutto - slip.hittilForskuddstrekk - slip.hittilPensjon
-    : null
-
-  const periode = `${MONTH_NAMES_FULL[slip.periode.month]} ${slip.periode.year}`
-
-  type SlipRow = { label: string; denne: number; hittil: number | null; bold?: boolean }
-
-  const rows: SlipRow[] = [
-    { label: 'Brutto', denne: slip.bruttoSum, hittil: slip.hittilBrutto || null },
-    { label: 'Skattetrekk', denne: -slip.skattetrekk, hittil: slip.hittilForskuddstrekk ? -slip.hittilForskuddstrekk : null },
-    { label: 'Pensjonstrekk SPK', denne: -slip.pensjonstrekk, hittil: slip.hittilPensjon ? -slip.hittilPensjon : null },
-    ...(slip.husleietrekk > 0 ? [{ label: 'Husleietrekk', denne: -slip.husleietrekk, hittil: null as null }] : []),
-    ...(slip.ekstraTrekk > 0 ? [{ label: 'Ekstra trekk', denne: -slip.ekstraTrekk, hittil: null as null }] : []),
-    ...(slip.fagforeningskontingent > 0 ? [{ label: 'Fagforeningskont.', denne: -slip.fagforeningskontingent, hittil: null as null }] : []),
-    { label: 'Netto utbetalt', denne: slip.nettoUtbetalt, hittil: hittilNetto, bold: true },
+  const rows: { label: string; value: number; color: string }[] = [
+    { label: 'Netto inn', value: nettoInn, color: 'bg-green-500' },
+    { label: 'Faste ut', value: fasteUt, color: 'bg-red-400' },
+    ...(sparing > 0 ? [{ label: 'Sparing', value: sparing, color: 'bg-blue-400' }] : []),
+    { label: 'Ledig', value: Math.max(0, ledig), color: 'bg-violet-400' },
   ]
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between flex-wrap gap-1">
-          <CardTitle className="text-sm font-medium">Lønn og skatt</CardTitle>
-          <span className="text-xs text-muted-foreground">Basert på slipp {periode}</span>
-        </div>
-        {slip.avregningsdato && (
-          <p className="text-xs text-muted-foreground">Avregningsdato: {slip.avregningsdato}</p>
-        )}
-      </CardHeader>
-      <CardContent className="p-0">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/30 border-b border-border">
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground w-1/2">Post</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Denne mnd</th>
-              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Hittil i år</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, i) => (
-              <tr key={i} className={cn('border-b border-border/50 last:border-0', row.bold && 'bg-muted/20 font-semibold')}>
-                <td className="px-4 py-2 text-muted-foreground">{row.label}</td>
-                <td className={cn('px-4 py-2 text-right font-mono', row.denne < 0 ? 'text-red-400' : '')}>
-                  {fmtSigned(row.denne)}
-                </td>
-                <td className={cn('px-4 py-2 text-right font-mono text-muted-foreground', row.hittil !== null && row.hittil < 0 ? 'text-red-400/70' : '')}>
-                  {fmtSigned(row.hittil)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          {(slip.feriepengegrunnlag > 0 || slip.opptjentFerie > 0 || slip.gruppelivspremie > 0) && (
-            <tfoot className="border-t-2 border-border">
-              {slip.feriepengegrunnlag > 0 && (
-                <tr className="border-b border-border/30">
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">Feriepengegrunnlag</td>
-                  <td />
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.feriepengegrunnlag)}</td>
-                </tr>
-              )}
-              {slip.opptjentFerie > 0 && (
-                <tr className="border-b border-border/30">
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">Opptjent ferie</td>
-                  <td />
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.opptjentFerie)}</td>
-                </tr>
-              )}
-              {slip.gruppelivspremie > 0 && (
-                <tr>
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">Gruppelivspremie</td>
-                  <td className="px-4 py-1.5 text-right font-mono text-xs text-muted-foreground">{fmtNOK(slip.gruppelivspremie)}</td>
-                  <td />
-                </tr>
-              )}
-            </tfoot>
-          )}
-        </table>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ------------------------------------------------------------
-// HJELPERE
-// ------------------------------------------------------------
-
-function StatCard({ label, value, positive }: { label: string; value: number; positive?: boolean }) {
-  return (
-    <Card>
-      <CardContent className="py-3 px-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={cn('text-base font-semibold font-mono mt-0.5', positive === true ? 'text-green-500' : positive === false ? 'text-red-400' : '')}>
-          {Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
-        </p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function CountdownChip({ icon, label, days, detail }: { icon: string; label: string; days: number; detail: string }) {
-  const accent = days <= 3 ? 'green' : days <= 7 ? 'yellow' : undefined
-  return (
-    <div className={cn(
-      'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs border',
-      accent === 'green' && 'bg-green-500/10 border-green-500/20 text-green-400',
-      accent === 'yellow' && 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
-      !accent && 'bg-muted/40 border-border/40 text-muted-foreground',
-    )}>
-      <span>{icon}</span>
-      <span className="font-medium">{label}</span>
-      <span className="opacity-70">{days} dager · {detail}</span>
+    <div className="rounded-xl border border-border/50 bg-card/60 px-4 pt-3 pb-3 flex flex-col gap-2.5">
+      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Månedlig flyt</p>
+      {nettoInn === 0 ? (
+        <p className="text-xs text-muted-foreground flex-1 flex items-center">Ingen data</p>
+      ) : (
+        rows.map((row) => (
+          <div key={row.label} className="space-y-0.5">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="font-mono tabular-nums text-foreground/80">
+                {Math.round(row.value).toLocaleString('no-NO')} kr
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+              <div
+                className={cn('h-full rounded-full', row.color)}
+                style={{ width: `${Math.min(100, (row.value / nettoInn) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))
+      )}
     </div>
   )
 }
+
+// ══════════════════════════════════════════════════════════════
+// MIDT-RAD: PENGEPULS-KORT
+// ══════════════════════════════════════════════════════════════
+
+function PengePulsCard({ chips }: { chips: { icon: string; text: string; accent?: string }[] }) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 px-4 pt-3 pb-3 flex flex-col">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <Zap className="h-3 w-3 text-violet-400" />
+        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Pengepuls</span>
+      </div>
+      {chips.length === 0 ? (
+        <p className="text-xs text-muted-foreground flex-1">Last inn data for å se innsikter.</p>
+      ) : (
+        <div className="flex flex-col gap-1.5 overflow-y-auto">
+          {chips.map((chip, i) => (
+            <span
+              key={i}
+              className={cn(
+                'inline-flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] border leading-snug',
+                chip.accent === 'green' && 'bg-green-500/10 border-green-500/20 text-green-400',
+                chip.accent === 'yellow' && 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400',
+                chip.accent === 'red' && 'bg-red-500/10 border-red-500/20 text-red-400',
+                !chip.accent && 'bg-muted/40 border-border/40 text-muted-foreground',
+              )}
+            >
+              <span className="shrink-0">{chip.icon}</span>
+              <span>{chip.text}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUNN-GRID: SPAREMÅL
+// ══════════════════════════════════════════════════════════════
+
+function SpareMaalCard({
+  goals, accounts, fondVerdi, fondMonthlyDeposit, onNavigate,
+}: {
+  goals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
+  accounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
+  fondVerdi: number
+  fondMonthlyDeposit: number
+  onNavigate: (page: string) => void
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 flex flex-col overflow-hidden">
+      <div className="px-4 pt-3 pb-2 border-b border-border/30">
+        <p className="text-xs font-medium">Sparemål</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2.5">
+        {goals.length === 0 ? (
+          <EmptyState message="Ingen sparemål" action="Legg til" onAction={() => onNavigate('savings')} />
+        ) : (
+          goals.slice(0, 4).map((goal) => {
+            const progress = calculateGoalProgress(goal, accounts, fondVerdi, fondMonthlyDeposit)
+            return (
+              <div key={goal.id} className="space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="flex items-center gap-1 min-w-0">
+                    <span>{goal.icon}</span>
+                    <span className="font-medium truncate">{goal.label}</span>
+                  </span>
+                  <span className="text-muted-foreground shrink-0 ml-1">{Math.round(progress.percent)}%</span>
+                </div>
+                <Progress value={progress.percent} className="h-1.5" />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>{Math.round(progress.currentTotal).toLocaleString('no-NO')} kr</span>
+                  <span>{Math.round(progress.targetAmount).toLocaleString('no-NO')} kr</span>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUNN-GRID: ATF
+// ══════════════════════════════════════════════════════════════
+
+function ATFCard({
+  entries, sum, year, onNavigate,
+}: {
+  entries: ReturnType<typeof useEconomyStore.getState>['atfEntries']
+  sum: number
+  year: number
+  onNavigate: (page: string) => void
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 flex flex-col overflow-hidden">
+      <div className="px-4 pt-3 pb-2 border-b border-border/30">
+        <p className="text-xs font-medium">ATF {year}</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1.5">
+        {entries.length === 0 ? (
+          <EmptyState message={`Ingen øvelser ${year}`} action="Legg til" onAction={() => onNavigate('atf')} />
+        ) : (
+          <>
+            {entries.slice(0, 5).map((e) => (
+              <div key={e.id} className="flex justify-between text-[11px]">
+                <span className="text-muted-foreground truncate">{e.øvelsesnavn}</span>
+                <span className="font-mono ml-2 shrink-0">{Math.round(e.beregnetBeløp).toLocaleString('no-NO')} kr</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-[11px] border-t border-border pt-1.5 mt-1">
+              <span className="font-medium">Sum</span>
+              <span className="font-mono font-semibold text-green-500">{Math.round(sum).toLocaleString('no-NO')} kr</span>
+            </div>
+            <Button variant="ghost" size="sm" className="w-full h-7 text-xs mt-0.5" onClick={() => onNavigate('atf')}>
+              + Øvelse
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUNN-GRID: GJELD
+// ══════════════════════════════════════════════════════════════
+
+function GjeldCard({
+  debts, onNavigate,
+}: {
+  debts: ReturnType<typeof useEconomyStore.getState>['debts']
+  onNavigate: (page: string) => void
+}) {
+  const total = debts.reduce((s, d) => s + d.currentBalance, 0)
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 flex flex-col overflow-hidden">
+      <div className="px-4 pt-3 pb-2 border-b border-border/30">
+        <p className="text-xs font-medium">Gjeld</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-1.5">
+        {debts.length === 0 ? (
+          <EmptyState message="Ingen gjeld" action="Legg til lån" onAction={() => onNavigate('debt')} />
+        ) : (
+          <>
+            {debts.slice(0, 4).map((d) => (
+              <div key={d.id} className="flex justify-between text-[11px]">
+                <span className="text-muted-foreground truncate">{d.creditor}</span>
+                <span className="font-mono ml-2 shrink-0">{Math.round(d.currentBalance).toLocaleString('no-NO')} kr</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-[11px] border-t border-border pt-1.5 mt-1">
+              <span className="font-medium">Total</span>
+              <span className="font-mono font-semibold text-red-400">{Math.round(total).toLocaleString('no-NO')} kr</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUNN-GRID: EGENMELDING + SKATT (+ valgfri bolig)
+// ══════════════════════════════════════════════════════════════
+
+function AbsenceAndTaxCard({
+  absenceDays, absenceStatus, taxAnalysis, maxKjøpesum,
+}: {
+  absenceDays: number
+  absenceStatus: AbsenceStatus
+  taxAnalysis: ReturnType<typeof analyzeTaxSettlements>
+  onNavigate: (page: string) => void
+  maxKjøpesum: number | null | undefined
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-card/60 flex flex-col overflow-hidden">
+      <div className="px-4 pt-3 pb-2 border-b border-border/30">
+        <p className="text-xs font-medium">Egenmelding & skatt</p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+
+        {/* Egenmelding */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">Brukt siste 12 mnd</span>
+            <span className={cn('font-medium', getStatusColor(absenceStatus))}>
+              {absenceDays} / 24 dager
+            </span>
+          </div>
+          <Progress
+            value={(absenceDays / 24) * 100}
+            className={cn(
+              'h-1.5',
+              absenceStatus === 'ok' ? '[&>div]:bg-green-500'
+                : absenceStatus === 'warning' ? '[&>div]:bg-yellow-500'
+                : '[&>div]:bg-red-500'
+            )}
+          />
+        </div>
+
+        {/* Skattevarsel */}
+        {taxAnalysis.recommendation === 'reduce_extra' && (
+          <div className="rounded-md bg-yellow-500/10 border border-yellow-500/25 px-2.5 py-2 text-[11px] text-yellow-400 flex gap-1.5 items-start">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              Du får tilbake ~{fmtNOK(taxAnalysis.avgYearlyRefund)}/år.
+              Senk ekstra trekk med {fmtNOK(taxAnalysis.recommendedExtraAdjustment)}/mnd.
+            </span>
+          </div>
+        )}
+        {taxAnalysis.recommendation === 'keep' && (
+          <p className="text-[11px] text-muted-foreground">Skattetrekk ser riktig ut ✓</p>
+        )}
+
+        {/* Boligscenario */}
+        {maxKjøpesum && (
+          <div className="flex items-center justify-between pt-1 border-t border-border/30">
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <Home className="h-3 w-3 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">Maks kjøpesum</span>
+            </div>
+            <button
+              onClick={() => useAppStore.getState().setCurrentView('calculator')}
+              className="text-[11px] font-semibold font-mono text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              {Math.round(maxKjøpesum).toLocaleString('no-NO')} kr →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Felles hjelpere ──────────────────────────────────────────
 
 function EmptyState({ message, action, onAction }: { message: string; action: string; onAction: () => void }) {
   return (
     <div className="text-center py-2">
-      <p className="text-xs text-muted-foreground mb-2">{message}</p>
-      <Button variant="outline" size="sm" onClick={onAction}>{action}</Button>
+      <p className="text-[11px] text-muted-foreground mb-2">{message}</p>
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onAction}>{action}</Button>
     </div>
-  )
-}
-
-// ------------------------------------------------------------
-// FERIEPENGE-SAMMENDRAG
-// ------------------------------------------------------------
-
-function FeriepengeSummaryCard({
-  juneForecast: forecast,
-  currentYear,
-  onNavigate,
-}: {
-  juneForecast: ReturnType<typeof forecastJune> | null
-  currentYear: number
-  onNavigate?: (page: string) => void
-}) {
-  if (!forecast) return null
-
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Feriepenger — juni {currentYear}</CardTitle>
-          {onNavigate && (
-            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => onNavigate('feriepenger')}>
-              Detaljer →
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-1.5 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Feriepenger (12%)</span>
-          <span className="font-mono text-green-500">+{fmtNOK(forecast.feriepenger)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Ferietrekk (25 dager)</span>
-          <span className="font-mono text-red-400">-{fmtNOK(forecast.ferietrekk)}</span>
-        </div>
-        <div className="flex justify-between border-t border-border pt-1.5 font-medium">
-          <span className="text-muted-foreground">Netto ekstra</span>
-          <span className={`font-mono ${forecast.nettoEkstra >= 0 ? 'text-green-500' : 'text-red-400'}`}>
-            {forecast.nettoEkstra >= 0 ? '+' : ''}{fmtNOK(forecast.nettoEkstra)}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Estimert netto juni</span>
-          <span className="font-mono text-green-500">{fmtNOK(forecast.nettoJuni)}</span>
-        </div>
-        <p className="text-xs text-muted-foreground pt-1">
-          Konfidensgrad: {forecast.confidence === 'høy' ? '✓ Høy' : forecast.confidence === 'middels' ? '~ Middels' : '? Lav'} · {forecast.kilder.feriepengegrunnlag}
-        </p>
-      </CardContent>
-    </Card>
   )
 }

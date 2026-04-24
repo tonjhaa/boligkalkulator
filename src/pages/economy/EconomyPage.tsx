@@ -19,6 +19,7 @@ import {
   Umbrella,
   Settings,
   BarChart2,
+  Map,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -64,6 +65,9 @@ const EconomySettingsPage = lazy(() =>
 const FondPage = lazy(() =>
   import('./FondPage').then((m) => ({ default: m.FondPage }))
 )
+const VeikartPage = lazy(() =>
+  import('./VeikartPage').then((m) => ({ default: m.VeikartPage }))
+)
 
 interface NavItem {
   page: EconomySubPage
@@ -85,6 +89,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'subscriptions', label: 'Abo & Fors.', Icon: RefreshCw },
   { page: 'ivf', label: 'Prosjekt', Icon: HeartPulse },
   { page: 'vacation', label: 'Ferie', Icon: Umbrella },
+  { page: 'veikart', label: 'Veikart', Icon: Map },
   { page: 'settings', label: 'Innstillinger', Icon: Settings },
 ]
 
@@ -185,6 +190,7 @@ export function EconomyPage() {
           {currentPage === 'feriepenger' && <FeriepengePage />}
           {currentPage === 'ivf' && <IVFPage />}
           {currentPage === 'vacation' && <VacationPage />}
+          {currentPage === 'veikart' && <VeikartPage />}
           {currentPage === 'settings' && <EconomySettingsPage />}
         </Suspense>
         </PageErrorBoundary>
