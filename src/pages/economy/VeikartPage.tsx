@@ -224,6 +224,76 @@ function ScenarioCard({
   )
 }
 
+// ── Stacked EK Chart ──────────────────────────────────────────
+function SparePlanChart({
+  data, ekKrav, partnerEnabled,
+}: {
+  data: Array<{ month: number; s1: number; s2: number; s3: number; s4: number; total: number }>
+  ekKrav: number  // EK-mål (10% av målpris), 0 = ikke satt
+  partnerEnabled: boolean
+}) {
+  const W = 560, H = 160
+  const pad = { top: 12, right: 20, bottom: 28, left: 52 }
+  const innerW = W - pad.left - pad.right
+  const innerH = H - pad.top - pad.bottom
+
+  const maxVal = Math.max(...data.map(d => d.total), ekKrav > 0 ? ekKrav * 1.1 : 0) * 1.12 || 2_000_000
+
+  function xOf(m: number) { return pad.left + (m / 72) * innerW }
+  function yOf(v: number) { return pad.top + (1 - Math.min(v / maxVal, 1.05)) * innerH }
+
+  function stackedArea(topFn: (d: typeof data[0]) => number, botFn: (d: typeof data[0]) => number) {
+    const fwd = data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xOf(d.month).toFixed(1)},${yOf(topFn(d)).toFixed(1)}`).join(' ')
+    const bwd = [...data].reverse().map(d => `L${xOf(d.month).toFixed(1)},${yOf(botFn(d)).toFixed(1)}`).join(' ')
+    return `${fwd} ${bwd} Z`
+  }
+
+  const goalY = ekKrav > 0 ? yOf(ekKrav) : null
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => ({ val: pct * maxVal, y: yOf(pct * maxVal) }))
+  const xTicks = [0, 12, 24, 36, 48, 60, 72]
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minHeight: 120 }}>
+      {yTicks.map((t, i) => (
+        <line key={i} x1={pad.left} y1={t.y} x2={W - pad.right} y2={t.y}
+          stroke="hsl(215 20.2% 18%)" strokeWidth="0.5" />
+      ))}
+
+      {/* Stacked areas */}
+      <path d={stackedArea(d => d.s1, _ => 0)} fill="#3b82f6" opacity="0.4" />
+      <path d={stackedArea(d => d.s2, d => d.s1)} fill="#8b5cf6" opacity="0.4" />
+      <path d={stackedArea(d => d.s3, d => d.s2)} fill="#14b8a6" opacity="0.4" />
+      {partnerEnabled && (
+        <path d={stackedArea(d => d.s4, d => d.s3)} fill="#f59e0b" opacity="0.4" />
+      )}
+
+      {/* EK-krav linje */}
+      {goalY !== null && goalY >= pad.top && goalY <= pad.top + innerH && (
+        <>
+          <line x1={pad.left} y1={goalY} x2={W - pad.right} y2={goalY}
+            stroke="#22c55e" strokeWidth="1.5" strokeDasharray="5 3" />
+          <text x={W - pad.right + 3} y={goalY + 4} fontSize="7.5" fill="#22c55e" fontWeight="600">EK</text>
+        </>
+      )}
+
+      {yTicks.filter((_, i) => i > 0).map((t, i) => (
+        <text key={i} x={pad.left - 3} y={t.y + 3} textAnchor="end" fontSize="7" fill="hsl(215 20.2% 48%)">
+          {t.val >= 1_000_000 ? `${(t.val / 1_000_000).toFixed(1)}M` : `${Math.round(t.val / 1000)}k`}
+        </text>
+      ))}
+      {xTicks.map((m, i) => (
+        <text key={i} x={xOf(m)} y={H - 4} textAnchor="middle" fontSize="7" fill="hsl(215 20.2% 48%)">
+          {m === 0 ? 'Nå' : `År ${m / 12}`}
+        </text>
+      ))}
+      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={pad.top + innerH}
+        stroke="hsl(215 20.2% 28%)" strokeWidth="0.5" />
+      <line x1={pad.left} y1={pad.top + innerH} x2={W - pad.right} y2={pad.top + innerH}
+        stroke="hsl(215 20.2% 28%)" strokeWidth="0.5" />
+    </svg>
+  )
+}
+
 // ── Hoved ─────────────────────────────────────────────────────
 export function VeikartPage() {
   const { savingsAccounts, fondPortfolio, debts, profile } = useEconomyStore()
@@ -320,6 +390,26 @@ export function VeikartPage() {
     [inputs])
 
   const totalEquity = inputs.eq + inputs.bsuVal + inputs.fondVal
+
+  // Stacked EK plan per kontogruppe over tid
+  const sparePlanData = useMemo(() => {
+    const spKonto = (parseFloat(sparekonto) || 0) + (partnerEnabled ? 0 : 0) // din sparekonto
+    const mndSpar = parseFloat(mndSparing) || 0
+    const pEK = partnerEnabled ? (parseFloat(partnerEK) || 0) : 0
+    const pMnd = partnerEnabled ? (parseFloat(partnerMndSparing) || 0) : 0
+    return Array.from({ length: 73 }, (_, m) => {
+      const bsu = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * m)
+      const fond = inputs.fondVal
+      const din = spKonto + mndSpar * m
+      const partner = pEK + pMnd * m
+      const s1 = bsu
+      const s2 = s1 + fond
+      const s3 = s2 + din
+      const s4 = s3 + partner
+      return { month: m, s1, s2, s3, s4, total: s4 }
+    })
+  }, [inputs, sparekonto, mndSparing, partnerEnabled, partnerEK, partnerMndSparing])
+
   // Scenario-kort: nå, 6 mnd, 1 år, 2 år, 3 år
   const scenarioMonths = [0, 6, 12, 24, 36]
   const scenarios = scenarioMonths.map(m => {
@@ -648,6 +738,48 @@ export function VeikartPage() {
                   isNow={i === 0}
                 />
               ))}
+            </div>
+
+            {/* Spareplan – stacked EK */}
+            <div className="rounded-xl border border-border/50 bg-card/60 px-4 pt-3 pb-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Spareutvikling per kontogruppe
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-blue-500 opacity-70" /><span className="text-[9px] text-muted-foreground">BSU</span></div>
+                  <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-violet-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Fond</span></div>
+                  <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-teal-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Sparekonto</span></div>
+                  {partnerEnabled && <div className="flex items-center gap-1"><div className="h-2 w-3 rounded-sm bg-amber-500 opacity-70" /><span className="text-[9px] text-muted-foreground">Partner</span></div>}
+                  {inputs.mal > 0 && <div className="flex items-center gap-1"><div className="h-1.5 w-3 border-t-2 border-dashed border-green-500" /><span className="text-[9px] text-muted-foreground">EK-krav</span></div>}
+                </div>
+              </div>
+              <SparePlanChart
+                data={sparePlanData}
+                ekKrav={inputs.mal > 0 ? inputs.mal * EK_KRAV : 0}
+                partnerEnabled={partnerEnabled}
+              />
+              {/* Yearly milestones */}
+              <div className="mt-2 grid grid-cols-6 gap-1 border-t border-border/30 pt-2">
+                {[0, 12, 24, 36, 48, 60].map(m => {
+                  const d = sparePlanData[m]
+                  const yr = new Date().getFullYear() + Math.floor(m / 12)
+                  const ekKravMet = inputs.mal > 0 && d.total >= inputs.mal * EK_KRAV
+                  return (
+                    <div key={m} className="text-center">
+                      <p className="text-[9px] text-muted-foreground">{m === 0 ? 'Nå' : yr}</p>
+                      <p className={cn('text-[11px] font-mono font-semibold', ekKravMet ? 'text-green-400' : 'text-foreground')}>
+                        {fmtNOK(d.total, true)}
+                      </p>
+                      {inputs.mal > 0 && (
+                        <p className="text-[9px] text-muted-foreground">
+                          {Math.round(d.total / (inputs.mal * EK_KRAV) * 100)}%
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
 
             {/* Metrics row */}
