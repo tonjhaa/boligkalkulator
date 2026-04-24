@@ -844,7 +844,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 5,
+      version: 6,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -896,6 +896,13 @@ export const useEconomyStore = create<EconomyState>()(
           if ('lonAne' in s) { s.lonPerson2 = s.lonAne; delete s.lonAne }
           if ('studielaanTonje' in s) { s.studielaanPerson1 = s.studielaanTonje; delete s.studielaanTonje }
           if ('studielaanAne' in s) { s.studielaanPerson2 = s.studielaanAne; delete s.studielaanAne }
+        }
+        // v5 → v6: legg til 'veikart' i enabledTabs for eksisterende brukere
+        if (fromVersion < 6 && state.userPreferences) {
+          const prefs = state.userPreferences as { enabledTabs?: string[] }
+          if (Array.isArray(prefs.enabledTabs) && !prefs.enabledTabs.includes('veikart')) {
+            prefs.enabledTabs = [...prefs.enabledTabs, 'veikart']
+          }
         }
         // Alltid: sørg for fond
         if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
