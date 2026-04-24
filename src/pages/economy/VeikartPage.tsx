@@ -260,6 +260,7 @@ export function VeikartPage() {
   const [arslonn, setArslonn] = useState(() => storeArslonn > 0 ? String(Math.round(storeArslonn)) : '')
   const [partnerEnabled, setPartnerEnabled] = useState(false)
   const [partnerArslonn, setPartnerArslonn] = useState('')
+  const [partnerEK, setPartnerEK] = useState('')
   const [sparekonto, setSparekonto] = useState(() => storeEquity > 0 ? String(Math.round(storeEquity)) : '')
   const [fond, setFond] = useState(() => storeFond > 0 ? String(Math.round(storeFond)) : '')
   const [bsu, setBsu] = useState(() => storeBsu > 0 ? String(Math.round(storeBsu)) : '')
@@ -279,7 +280,7 @@ export function VeikartPage() {
 
   // ── Beregning ─────────────────────────────────────────────
   const inputs = useMemo(() => {
-    const eq = parseFloat(sparekonto) || 0
+    const eq = (parseFloat(sparekonto) || 0) + (partnerEnabled ? (parseFloat(partnerEK) || 0) : 0)
     const bsuVal = parseFloat(bsu) || 0
     const fondVal = parseFloat(fond) || 0
     const income = (parseFloat(arslonn) || 0) + (partnerEnabled ? (parseFloat(partnerArslonn) || 0) : 0)
@@ -289,7 +290,7 @@ export function VeikartPage() {
     const age = parseInt(alder) || 0
     const bsuCanSave = age === 0 || age <= 33
     return { eq, bsuVal, fondVal, income, debt, savings, mal, age, bsuCanSave }
-  }, [arslonn, partnerEnabled, partnerArslonn, sparekonto, fond, bsu, mndSparing, malPrisInput, alder, storeDebt])
+  }, [arslonn, partnerEnabled, partnerArslonn, partnerEK, sparekonto, fond, bsu, mndSparing, malPrisInput, alder, storeDebt])
 
   const chartPoints = useMemo(() => {
     return Array.from({ length: 73 }, (_, m) => ({
@@ -435,15 +436,27 @@ export function VeikartPage() {
               <ChevronDown className={cn('h-3 w-3 ml-auto transition-transform', partnerEnabled && 'rotate-180')} />
             </button>
             {partnerEnabled && (
-              <div className="mt-2 space-y-1">
-                <Label className="text-[11px]">Partners årslønn</Label>
-                <Input
-                  type="number"
-                  value={partnerArslonn}
-                  onChange={e => setPartnerArslonn(e.target.value)}
-                  placeholder="f.eks. 550000"
-                  className="h-7 text-xs"
-                />
+              <div className="mt-2 space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Partners årslønn</Label>
+                  <Input
+                    type="number"
+                    value={partnerArslonn}
+                    onChange={e => setPartnerArslonn(e.target.value)}
+                    placeholder="f.eks. 550000"
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Partners EK (sparekonto + BSU + fond)</Label>
+                  <Input
+                    type="number"
+                    value={partnerEK}
+                    onChange={e => setPartnerEK(e.target.value)}
+                    placeholder="f.eks. 150000"
+                    className="h-7 text-xs"
+                  />
+                </div>
               </div>
             )}
           </div>
