@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Upload, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -58,6 +58,7 @@ export function SavingsPage() {
   const {
     savingsAccounts,
     savingsGoals,
+    budgetTemplate,
     addSavingsAccount,
     removeSavingsAccount,
     updateSavingsAccount,
@@ -71,6 +72,11 @@ export function SavingsPage() {
     removeSavingsGoal,
     fondPortfolio,
   } = useEconomyStore()
+
+  const SAVINGS_CATS = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
+  const budgetSavingsLines = (budgetTemplate?.lines ?? []).filter(
+    (l) => SAVINGS_CATS.has(l.category) && l.isRecurring && Math.abs(l.amount) > 0
+  )
 
   const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondCurrentValue = sortedFondSnapshots[0]?.totalValue ?? 0
@@ -181,8 +187,37 @@ export function SavingsPage() {
               onAddWithdrawal={(w) => addWithdrawal(account.id, w)}
               onRemoveWithdrawal={(id) => removeWithdrawal(account.id, id)}
               onUpdateBirthYear={(year) => updateSavingsAccount(account.id, { birthYear: year })}
+              onUpdateMonthlyContribution={(amount) => updateSavingsAccount(account.id, { monthlyContribution: amount })}
             />
           ))}
+        </div>
+      )}
+
+      {/* Spareposter fra budsjett */}
+      {budgetSavingsLines.length > 0 && (
+        <div>
+          <h3 className="font-medium text-sm mb-2">Spareposter fra budsjett</h3>
+          <div className="rounded-md border border-border bg-muted/10 divide-y divide-border/50">
+            {budgetSavingsLines.map((line) => {
+              const linkedAccount = savingsAccounts.find((a) => a.id === (line as { linkedSavingsAccountId?: string }).linkedSavingsAccountId)
+              return (
+                <div key={line.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                  <div>
+                    <p className="font-medium">{line.label}</p>
+                    {linkedAccount ? (
+                      <p className="text-[10px] text-green-500">→ {linkedAccount.label}</p>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">Ikke koblet til konto</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Repeat2 className="h-3 w-3 text-muted-foreground" />
+                    <span className="font-mono text-foreground">{Math.abs(line.amount).toLocaleString('no-NO')} kr/mnd</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -272,6 +307,7 @@ function AccountCard({
   onAddWithdrawal,
   onRemoveWithdrawal,
   onUpdateBirthYear,
+  onUpdateMonthlyContribution,
 }: {
   account: SavingsAccount
   now: Date
@@ -283,9 +319,12 @@ function AccountCard({
   onAddWithdrawal: (w: WithdrawalEntry) => void
   onRemoveWithdrawal: (id: string) => void
   onUpdateBirthYear: (year: number) => void
+  onUpdateMonthlyContribution: (amount: number) => void
 }) {
   const [activeTab, setActiveTab] = useState<AccountTab | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [editingMonthlySaving, setEditingMonthlySaving] = useState(false)
+  const [monthlySavingInput, setMonthlySavingInput] = useState('')
   const [bsuPickYear, setBsuPickYear] = useState<string>(String(now.getFullYear() + 2))
   const [bsuPostRate, setBsuPostRate] = useState(3.0)
   const [editingBirthYear, setEditingBirthYear] = useState(false)
@@ -380,6 +419,53 @@ function AccountCard({
               value={fmtNOK(monthlyEstimate)}
               subvalue={ytdContribs > 0 ? 'snitt siste 12 mnd' : 'planlagt bidrag'}
             />
+          )}
+        </div>
+
+        {/* Fast sparebeløp */}
+        <div className="flex items-center justify-between text-xs border-t border-border/30 pt-2">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Repeat2 className="h-3 w-3" />
+            <span>Fast sparebeløp/mnd</span>
+          </div>
+          {editingMonthlySaving ? (
+            <div className="flex items-center gap-1">
+              <input
+                autoFocus
+                type="number"
+                min={0}
+                placeholder="0"
+                className="h-6 w-24 rounded border border-border bg-background px-2 text-xs text-right"
+                value={monthlySavingInput}
+                onChange={(e) => setMonthlySavingInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0)
+                    setEditingMonthlySaving(false)
+                  }
+                  if (e.key === 'Escape') setEditingMonthlySaving(false)
+                }}
+              />
+              <button className="text-green-400 hover:text-green-300" onClick={() => {
+                onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0)
+                setEditingMonthlySaving(false)
+              }}><Check className="h-3.5 w-3.5" /></button>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setEditingMonthlySaving(false)}>
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              className="flex items-center gap-1.5 hover:text-foreground text-muted-foreground transition-colors group"
+              onClick={() => { setMonthlySavingInput(String(account.monthlyContribution || '')); setEditingMonthlySaving(true) }}
+            >
+              <span className={account.monthlyContribution > 0 ? 'text-foreground font-mono' : 'italic'}>
+                {account.monthlyContribution > 0
+                  ? `${account.monthlyContribution.toLocaleString('no-NO')} kr`
+                  : 'Ikke satt'}
+              </span>
+              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+            </button>
           )}
         </div>
 
@@ -589,7 +675,7 @@ function AccountCard({
         )}
 
         {/* Transaction log toggle */}
-        {(sortedContribs.length > 0 || sortedWithdrawals.length > 0) && (
+        {(sortedContribs.length > 0 || sortedWithdrawals.length > 0 || account.monthlyContribution > 0) && (
           <button
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setShowLog((v) => !v)}
@@ -604,6 +690,7 @@ function AccountCard({
           <TransactionLog
             contributions={sortedContribs}
             withdrawals={sortedWithdrawals}
+            monthlyContribution={account.monthlyContribution}
             onRemoveContribution={onRemoveContribution}
             onRemoveWithdrawal={onRemoveWithdrawal}
           />
@@ -620,11 +707,13 @@ function AccountCard({
 function TransactionLog({
   contributions,
   withdrawals,
+  monthlyContribution,
   onRemoveContribution,
   onRemoveWithdrawal,
 }: {
   contributions: SavingsContribution[]
   withdrawals: WithdrawalEntry[]
+  monthlyContribution: number
   onRemoveContribution: (id: string) => void
   onRemoveWithdrawal: (id: string) => void
 }) {
@@ -651,6 +740,22 @@ function TransactionLog({
           </tr>
         </thead>
         <tbody>
+          {monthlyContribution > 0 && (
+            <tr className="border-b border-border/50 bg-muted/10">
+              <td className="px-2 py-1 text-muted-foreground italic">Månedlig</td>
+              <td className="px-2 py-1">
+                <span className="flex items-center gap-1 text-blue-400">
+                  <Repeat2 className="h-3 w-3" />
+                  Fast bidrag
+                </span>
+              </td>
+              <td className="px-2 py-1 text-right font-mono text-blue-400">
+                +{monthlyContribution.toLocaleString('no-NO')} kr
+              </td>
+              <td className="px-2 py-1 text-muted-foreground text-[10px]">Planlagt · vises i budsjett</td>
+              <td />
+            </tr>
+          )}
           {entries.map((entry) => {
             const isContrib = entry.kind === 'contribution'
             const amount = isContrib ? entry.data.amount : entry.data.amount
