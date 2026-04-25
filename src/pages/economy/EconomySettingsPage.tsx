@@ -40,7 +40,10 @@ function TidsbegrensetTilleggSection() {
   const profile = useEconomyStore((s) => s.profile)
   const setProfile = useEconomyStore((s) => s.setProfile)
 
-  if (!profile || (profile.fixedAdditions.filter(a => a.amount > 0).length === 0 && profile.housingDeduction === 0)) {
+  const candidates = profile?.fixedAdditions.filter(a => a.amount > 0 && !a.isPermanent) ?? []
+  const permanentOnes = profile?.fixedAdditions.filter(a => a.amount > 0 && a.isPermanent) ?? []
+
+  if (!profile || (candidates.length === 0 && permanentOnes.length === 0 && profile.housingDeduction === 0)) {
     return (
       <Section
         title="Tidsbegrensede tillegg"
@@ -57,6 +60,16 @@ function TidsbegrensetTilleggSection() {
       ...profile,
       fixedAdditions: profile.fixedAdditions.map((a) =>
         a.kode === kode ? { ...a, isTemporary: !a.isTemporary } : a
+      ),
+    })
+  }
+
+  function markPermanent(kode: string) {
+    if (!profile) return
+    setProfile({
+      ...profile,
+      fixedAdditions: profile.fixedAdditions.map((a) =>
+        a.kode === kode ? { ...a, isPermanent: true, isTemporary: false, fromDate: undefined, toDate: undefined } : a
       ),
     })
   }
@@ -82,21 +95,33 @@ function TidsbegrensetTilleggSection() {
       description='Hak av tillegg og trekk som er midlertidige. Disse gråes ut og ekskluderes fra beregninger når du trykker "Uten tillegg" i budsjett-fanen.'
     >
       <div className="rounded-md border border-border bg-muted/20 p-3 space-y-3">
-        {profile.fixedAdditions.filter((a) => a.amount > 0).map((addition) => (
+        {candidates.length === 0 && profile.housingDeduction === 0 && (
+          <p className="text-xs text-muted-foreground italic">Ingen midlertidige tillegg.</p>
+        )}
+        {candidates.map((addition) => (
           <div key={addition.kode} className="space-y-1.5">
-            <label className="flex items-center gap-3 text-xs cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!addition.isTemporary}
-                onChange={() => toggleAddition(addition.kode)}
-                className="h-3.5 w-3.5 accent-amber-400 shrink-0"
-              />
-              <span className="flex-1 min-w-0 truncate">{addition.label}</span>
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!addition.isTemporary}
+                  onChange={() => toggleAddition(addition.kode)}
+                  className="h-3.5 w-3.5 accent-amber-400 shrink-0"
+                />
+                <span className="flex-1 min-w-0 truncate">{addition.label}</span>
+              </label>
               <span className="font-mono text-muted-foreground shrink-0">{addition.kode}</span>
               <span className="tabular-nums text-muted-foreground shrink-0 text-right w-20">
                 +{Math.round(addition.amount).toLocaleString('no-NO')} kr
               </span>
-            </label>
+              <button
+                onClick={() => markPermanent(addition.kode)}
+                className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0"
+                title="Marker som fast lønn — fjerner fra denne listen"
+              >
+                fast lønn
+              </button>
+            </div>
             {addition.isTemporary && (
               <div className="ml-6 flex items-center gap-2 text-[11px]">
                 <span className="text-muted-foreground w-16 shrink-0">Gyldig fra</span>
@@ -123,6 +148,24 @@ function TidsbegrensetTilleggSection() {
             )}
           </div>
         ))}
+        {permanentOnes.length > 0 && (
+          <div className="border-t border-border/40 pt-2.5 space-y-1.5">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Fast lønn (skjult herfra)</p>
+            {permanentOnes.map((a) => (
+              <div key={a.kode} className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex-1 min-w-0 truncate">{a.label}</span>
+                <span className="font-mono">{a.kode}</span>
+                <span className="tabular-nums w-20 text-right">+{Math.round(a.amount).toLocaleString('no-NO')} kr</span>
+                <button
+                  onClick={() => setProfile({ ...profile, fixedAdditions: profile.fixedAdditions.map(x => x.kode === a.kode ? { ...x, isPermanent: false } : x) })}
+                  className="text-[10px] hover:text-foreground underline underline-offset-2 shrink-0"
+                >
+                  tilbake
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {profile.housingDeduction > 0 && (
           <label className="flex items-center gap-3 text-xs cursor-pointer select-none border-t border-border/40 pt-2.5">
             <input

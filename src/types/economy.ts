@@ -114,6 +114,8 @@ export interface EmploymentProfile {
     fromDate?: string
     /** Sluttmåned for tillegget (ISO "YYYY-MM"). Undefined = løpende */
     toDate?: string
+    /** Fast lønn/tillegg — vises ikke i tidsbegrenset-seksjonen */
+    isPermanent?: boolean
   }[]
   lastKnownTaxWithholding: number     // siste kjente skattetrekk
   extraTaxWithholding: number          // ekstra forskuddstrekk (1620)
