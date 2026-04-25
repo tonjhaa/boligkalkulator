@@ -11,7 +11,7 @@ import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
-import { useVeikart } from '@/hooks/useVeikart'
+import { useVeikart, calcMaxPurchase } from '@/hooks/useVeikart'
 import { cn } from '@/lib/utils'
 import { HeroBand, calcHealthScore } from '@/components/economy/widgets/HeroBand'
 import { FormueChart } from '@/components/economy/charts/FormueChart'
@@ -92,6 +92,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     budgetOverrides,
     ivfTransactions,
     userPreferences,
+    partnerVeikart,
   } = useEconomyStore()
 
   const now = useMemo(() => new Date(), [])
@@ -268,6 +269,39 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         />
         <PengePulsCard chips={chips} />
       </div>
+
+      {/* ── 3. PARTNER-KJØPEKRAFT ── */}
+      {partnerVeikart.enabled && (() => {
+        const soloMax = veikartData.maxPurchase
+        const combinedEq = veikartData.totalEquity + partnerVeikart.equity
+        const combinedIncome = veikartData.annualIncome + partnerVeikart.annualIncome
+        const combinedMax = calcMaxPurchase(combinedEq, combinedIncome, veikartData.existingDebt)
+        const gain = combinedMax - soloMax
+        const pct = soloMax > 0 ? Math.round((gain / soloMax) * 100) : 0
+        return (
+          <div className="mx-5 mb-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-sm">👫</span>
+              <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wide">Kjøpekraft med partner</span>
+            </div>
+            <div className="flex items-center gap-6 text-xs">
+              <div>
+                <p className="text-[10px] text-muted-foreground">Din alene</p>
+                <p className="font-mono font-semibold">{(soloMax / 1_000_000).toFixed(2)} mill</p>
+              </div>
+              <div className="text-muted-foreground">→</div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">Felles</p>
+                <p className="font-mono font-semibold text-amber-400">{(combinedMax / 1_000_000).toFixed(2)} mill</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">Økning</p>
+                <p className="font-mono font-semibold text-green-400">+{(gain / 1_000_000).toFixed(2)} mill · +{pct}%</p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── 3. BUNN-GRID ── */}
       <div className="grid grid-cols-4 gap-3 px-5 pb-4 flex-1 min-h-0">

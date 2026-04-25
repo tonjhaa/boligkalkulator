@@ -29,6 +29,7 @@ import type {
   FondPortfolioSnapshot,
   UserPreferences,
   LonnsoppgjorRecord,
+  PartnerVeikart,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -81,6 +82,10 @@ interface EconomyState {
 
   // Fond (KRON-portefølje)
   fondPortfolio: FondPortfolio
+
+  // Partner (Veikart + Dashboard)
+  partnerVeikart: PartnerVeikart
+  setPartnerVeikart: (p: PartnerVeikart) => void
 
   // Actions
   setProfile: (profile: EmploymentProfile) => void
@@ -229,6 +234,8 @@ export const useEconomyStore = create<EconomyState>()(
       ivfTransactions: INITIAL_IVF_TRANSACTIONS,
       ivfSettings: DEFAULT_IVF_SETTINGS,
       fondPortfolio: DEFAULT_FOND_PORTFOLIO,
+      partnerVeikart: { enabled: false, annualIncome: 0, equity: 0, monthlySavings: 0 },
+      setPartnerVeikart: (p) => set({ partnerVeikart: p }),
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),

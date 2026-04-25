@@ -596,3 +596,11 @@ export interface UserPreferences {
   enabledTabs: EconomyTab[]
   payDay?: number  // dag i måneden lønn utbetales (1-28), standard 12
 }
+
+/** Partners tall brukt i Veikart og Dashboard */
+export interface PartnerVeikart {
+  enabled: boolean
+  annualIncome: number   // årslønn
+  equity: number         // sparekonto + BSU + fond
+  monthlySavings: number // mnd. sparing eks. BSU
+}

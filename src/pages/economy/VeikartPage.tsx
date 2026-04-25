@@ -297,7 +297,7 @@ function SparePlanChart({
 
 // ── Hoved ─────────────────────────────────────────────────────
 export function VeikartPage() {
-  const { savingsAccounts, fondPortfolio, debts, profile } = useEconomyStore()
+  const { savingsAccounts, fondPortfolio, debts, profile, partnerVeikart, setPartnerVeikart } = useEconomyStore()
 
   // ── Defaults fra store ────────────────────────────────────
   const _now = useMemo(() => new Date(), [])
@@ -334,18 +334,25 @@ export function VeikartPage() {
 
   // ── Lokale inputs ─────────────────────────────────────────
   const [arslonn, setArslonn] = useState(() => storeArslonn > 0 ? String(Math.round(storeArslonn)) : '')
-  const [partnerEnabled, setPartnerEnabled] = useState(false)
-  const [partnerArslonn, setPartnerArslonn] = useState('')
-  const [partnerEK, setPartnerEK] = useState('')
   const [sparekonto, setSparekonto] = useState(() => storeEquity > 0 ? String(Math.round(storeEquity)) : '')
   const [fond, setFond] = useState(() => storeFond > 0 ? String(Math.round(storeFond)) : '')
   const [bsu, setBsu] = useState(() => storeBsu > 0 ? String(Math.round(storeBsu)) : '')
   const [alder, setAlder] = useState(() => storeAlder > 0 ? String(storeAlder) : '')
   const [mndSparing, setMndSparing] = useState(() => storeMndSparing > 0 ? String(Math.round(storeMndSparing)) : '')
-  const [partnerMndSparing, setPartnerMndSparing] = useState('')
   const [arligBSU, setArligBSU] = useState(() => storeArligBSU > 0 ? String(Math.round(storeArligBSU)) : '')
   const [malPrisInput, setMalPrisInput] = useState('')
   const [showInfo, setShowInfo] = useState(false)
+
+  // Partner fra store (deles med Dashboard)
+  const partnerEnabled = partnerVeikart.enabled
+  const partnerArslonn = partnerVeikart.annualIncome > 0 ? String(partnerVeikart.annualIncome) : ''
+  const partnerEK = partnerVeikart.equity > 0 ? String(partnerVeikart.equity) : ''
+  const partnerMndSparing = partnerVeikart.monthlySavings > 0 ? String(partnerVeikart.monthlySavings) : ''
+
+  function setPartnerEnabled(v: boolean) { setPartnerVeikart({ ...partnerVeikart, enabled: v }) }
+  function setPartnerArslonn(v: string) { setPartnerVeikart({ ...partnerVeikart, annualIncome: parseFloat(v) || 0 }) }
+  function setPartnerEK(v: string) { setPartnerVeikart({ ...partnerVeikart, equity: parseFloat(v) || 0 }) }
+  function setPartnerMndSparing(v: string) { setPartnerVeikart({ ...partnerVeikart, monthlySavings: parseFloat(v) || 0 }) }
 
   function hentFraSparefanen() {
     setArslonn(storeArslonn > 0 ? String(Math.round(storeArslonn)) : '')
@@ -355,11 +362,7 @@ export function VeikartPage() {
     setMndSparing(storeMndSparing > 0 ? String(Math.round(storeMndSparing)) : '')
     setArligBSU(storeArligBSU > 0 ? String(Math.round(storeArligBSU)) : '')
     if (storeAlder > 0) setAlder(String(storeAlder))
-    // Nullstill partner-feltene siden sparefanen ikke har partnerdata
-    setPartnerEnabled(false)
-    setPartnerArslonn('')
-    setPartnerEK('')
-    setPartnerMndSparing('')
+    // Behold partner-data — den nullstilles ikke av sparefanen
   }
 
   // ── Beregning ─────────────────────────────────────────────
