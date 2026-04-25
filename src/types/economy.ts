@@ -110,6 +110,10 @@ export interface EmploymentProfile {
     amount: number
     /** Tidsbegrenset tillegg — skjules ved "uten tillegg"-visning */
     isTemporary?: boolean
+    /** Startmåned for tillegget (ISO "YYYY-MM") */
+    fromDate?: string
+    /** Sluttmåned for tillegget (ISO "YYYY-MM"). Undefined = løpende */
+    toDate?: string
   }[]
   lastKnownTaxWithholding: number     // siste kjente skattetrekk
   extraTaxWithholding: number          // ekstra forskuddstrekk (1620)
