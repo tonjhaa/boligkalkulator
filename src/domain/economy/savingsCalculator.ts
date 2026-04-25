@@ -9,6 +9,43 @@ import type {
 import { BSU_MAX_YEARLY, BSU_MAX_TOTAL } from '@/config/economy.config'
 
 // ------------------------------------------------------------
+// EFFEKTIV SALDO — ÉN FELLES IMPLEMENTASJON
+// ------------------------------------------------------------
+
+/**
+ * Beregner effektiv saldo: siste registrerte saldo + alle innskudd/uttak
+ * datert ETTER den perioden, frem til og med `asOf`.
+ *
+ * Dette er kilden til sannhet for "hva er kontoen verdt nå?"
+ * Brukes likt på tvers av Sparing-fanen, Veikart, Dashboard og Sparemål.
+ */
+export function computeEffectiveBalance(account: SavingsAccount, asOf: Date = new Date()): number {
+  const asOfISO = asOf.toISOString().split('T')[0]
+  const sortedHistory = [...account.balanceHistory].sort((a, b) =>
+    a.year !== b.year ? a.year - b.year : a.month - b.month
+  )
+  const lastEntry = sortedHistory.at(-1)
+  let base: number
+  let afterISO: string
+
+  if (lastEntry) {
+    base = lastEntry.balance
+    const y = lastEntry.month === 12 ? lastEntry.year + 1 : lastEntry.year
+    const m = lastEntry.month === 12 ? 1 : lastEntry.month + 1
+    afterISO = `${y}-${String(m).padStart(2, '0')}-01`
+  } else {
+    base = account.openingBalance
+    afterISO = account.openingDate
+  }
+
+  const pending = [
+    ...(account.contributions ?? []).filter((c) => c.date >= afterISO && c.date <= asOfISO),
+    ...(account.withdrawals ?? []).filter((w) => w.date >= afterISO && w.date <= asOfISO),
+  ]
+  return base + pending.reduce((s, t) => s + t.amount, 0)
+}
+
+// ------------------------------------------------------------
 // INNSKUDDS-HJELPERE
 // ------------------------------------------------------------
 

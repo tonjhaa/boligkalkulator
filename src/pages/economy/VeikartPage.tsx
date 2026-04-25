@@ -8,6 +8,7 @@ import {
   calcMaxPurchase, monthlyPayment,
   BSU_MAX_YEARLY, BSU_MAX_TOTAL, BSU_TAX_BENEFIT, EK_KRAV, MAX_GJELDSGRAD,
 } from '@/hooks/useVeikart'
+import { computeEffectiveBalance } from '@/domain/economy/savingsCalculator'
 import { cn } from '@/lib/utils'
 
 const CURRENT_RATE = 0.0425
@@ -299,19 +300,14 @@ export function VeikartPage() {
   const { savingsAccounts, fondPortfolio, debts, profile } = useEconomyStore()
 
   // ── Defaults fra store ────────────────────────────────────
+  const _now = useMemo(() => new Date(), [])
   const storeEquity = useMemo(() => savingsAccounts
     .filter(a => a.type === 'sparekonto')
-    .reduce((s, a) => {
-      const sorted = [...a.balanceHistory].sort((x, y) => x.year !== y.year ? y.year - x.year : y.month - x.month)
-      return s + (sorted[0]?.balance ?? a.openingBalance)
-    }, 0), [savingsAccounts])
+    .reduce((s, a) => s + computeEffectiveBalance(a, _now), 0), [savingsAccounts, _now])
 
   const storeBsu = useMemo(() => savingsAccounts
     .filter(a => a.type === 'BSU')
-    .reduce((s, a) => {
-      const sorted = [...a.balanceHistory].sort((x, y) => x.year !== y.year ? y.year - x.year : y.month - x.month)
-      return s + (sorted[0]?.balance ?? a.openingBalance)
-    }, 0), [savingsAccounts])
+    .reduce((s, a) => s + computeEffectiveBalance(a, _now), 0), [savingsAccounts, _now])
 
   const storeFond = useMemo(() => {
     const snaps = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
@@ -636,6 +632,21 @@ export function VeikartPage() {
                 placeholder="0"
                 className="h-7 text-xs"
               />
+              {inputs.income > 0 && (() => {
+                const bruttoMnd = inputs.income / 12
+                const pct = bruttoMnd > 0 ? Math.round((inputs.savings / bruttoMnd) * 100) : 0
+                const ref10 = Math.round(bruttoMnd * 0.10)
+                const gap = ref10 - inputs.savings
+                return (
+                  <p className={cn(
+                    'text-[10px] leading-tight',
+                    gap > 2000 ? 'text-amber-400' : 'text-muted-foreground',
+                  )}>
+                    {pct}% av brutto
+                    {gap > 2000 && ` · 10%-mål: +${Math.round(gap / 100) * 100} kr/mnd`}
+                  </p>
+                )
+              })()}
             </div>
           </div>
           <div className="space-y-1">

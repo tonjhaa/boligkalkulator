@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useEconomyStore } from '@/application/useEconomyStore'
+import { computeEffectiveBalance } from '@/domain/economy/savingsCalculator'
 
 // ── Norsk boliglånsforskrift 2025 ────────────────────────────
 const EK_KRAV = 0.10           // 10% egenkapital
@@ -68,24 +69,15 @@ export function useVeikart(): VeikartData {
   const { savingsAccounts, fondPortfolio, debts, profile } = useEconomyStore()
 
   return useMemo(() => {
-    // Egenkapital fra sparekonto (ikke BSU)
+    const now = new Date()
+    // Egenkapital fra sparekonto (ikke BSU) — bruker effektiv saldo inkl. bidrag etter siste snapshot
     const equity = savingsAccounts
       .filter((a) => a.type === 'sparekonto')
-      .reduce((s, a) => {
-        const sorted = [...a.balanceHistory].sort((x, y) =>
-          x.year !== y.year ? y.year - x.year : y.month - x.month
-        )
-        return s + (sorted[0]?.balance ?? a.openingBalance)
-      }, 0)
+      .reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
 
     const bsu = savingsAccounts
       .filter((a) => a.type === 'BSU')
-      .reduce((s, a) => {
-        const sorted = [...a.balanceHistory].sort((x, y) =>
-          x.year !== y.year ? y.year - x.year : y.month - x.month
-        )
-        return s + (sorted[0]?.balance ?? a.openingBalance)
-      }, 0)
+      .reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
 
     const fondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
     const fond = fondSnapshots[0]?.totalValue ?? 0

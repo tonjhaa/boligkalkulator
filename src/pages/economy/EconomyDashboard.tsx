@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useEconomyStore } from '@/application/useEconomyStore'
-import { calculateGoalProgress } from '@/domain/economy/savingsCalculator'
+import { calculateGoalProgress, computeEffectiveBalance } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import type { AbsenceStatus } from '@/types/economy'
@@ -11,6 +11,7 @@ import { sumATFByYear } from '@/domain/economy/atfCalculator'
 import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
+import { useVeikart } from '@/hooks/useVeikart'
 import { cn } from '@/lib/utils'
 import { HeroBand, calcHealthScore } from '@/components/economy/widgets/HeroBand'
 import { FormueChart } from '@/components/economy/charts/FormueChart'
@@ -131,13 +132,11 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ? appAnalyses[activeScenario.id]?.maxPurchase?.maxPurchasePrice
     : null
 
+  // Veikart-data for dashbord-chip
+  const veikartData = useVeikart()
+
   // ── Formue ────────────────────────────────────────────────
-  const sparingKontoer = savingsAccounts.reduce((s, a) => {
-    const sorted = [...a.balanceHistory].sort((x, y) =>
-      x.year !== y.year ? y.year - x.year : y.month - x.month
-    )
-    return s + (sorted[0]?.balance ?? a.openingBalance)
-  }, 0)
+  const sparingKontoer = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
   const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondVerdi = sortedFondSnapshots[0]?.totalValue ?? 0
   const totalSparing = sparingKontoer + fondVerdi
@@ -218,6 +217,15 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   }
   if (atfSum > 0) {
     chips.push({ icon: '🎖️', text: `ATF-bonus i år: ${Math.round(atfSum).toLocaleString('no-NO')} kr` })
+  }
+  // Boligkjøp-chip fra Veikart (vises når bruker har registrert inntekt og sparing)
+  if (veikartData.maxPurchase > 0) {
+    const now12mScenario = veikartData.scenarios.find(s => s.years === 1)
+    chips.push({
+      icon: '🏠',
+      text: `Kjøpekraft nå: ${(veikartData.maxPurchase / 1_000_000).toFixed(1)} mill — om 1 år: ${now12mScenario ? (now12mScenario.maxPurchase / 1_000_000).toFixed(1) : '?'} mill`,
+      accent: 'green',
+    })
   }
   if (absenceDays >= 16) {
     chips.push({ icon: '⚠️', text: `${absenceDays}/24 egenmeldingsdager brukt`, accent: 'red' })
