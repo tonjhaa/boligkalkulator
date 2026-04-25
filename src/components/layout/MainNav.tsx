@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Calculator, Wallet, BadgePercent, LogOut, User } from 'lucide-react'
+import { Calculator, Wallet, BadgePercent, LogOut, User, Map } from 'lucide-react'
 import { useAppStore, type AppView } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { cn } from '@/lib/utils'
@@ -8,6 +8,7 @@ const NAV_ITEMS: { view: AppView; label: string; Icon: React.FC<{ className?: st
   { view: 'economy',           label: 'Økonomi',          Icon: Wallet },
   { view: 'calculator',        label: 'Boligkalkulator',  Icon: Calculator },
   { view: 'skattekalkulator',  label: 'Skattekalkulator', Icon: BadgePercent },
+  { view: 'veikart',           label: 'Boligveikart',     Icon: Map },
 ]
 
 export function MainNav() {

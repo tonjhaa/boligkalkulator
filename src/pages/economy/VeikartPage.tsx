@@ -528,55 +528,56 @@ export function VeikartPage() {
               className="h-7 text-xs"
             />
           </div>
+        </div>
 
-          {/* Partner toggle */}
-          <div>
-            <button
-              onClick={() => setPartnerEnabled(!partnerEnabled)}
-              className={cn(
-                'flex items-center gap-2 text-xs px-2 py-1.5 rounded-md border w-full transition-colors',
-                partnerEnabled ? 'border-primary/40 bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Users className={cn('h-3 w-3', partnerEnabled ? 'text-primary' : '')} />
-              <span>+ Partner</span>
-              <ChevronDown className={cn('h-3 w-3 ml-auto transition-transform', partnerEnabled && 'rotate-180')} />
-            </button>
-            {partnerEnabled && (
-              <div className="mt-2 space-y-2">
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Partners årslønn</Label>
-                  <Input
-                    type="number"
-                    value={partnerArslonn}
-                    onChange={e => setPartnerArslonn(e.target.value)}
-                    placeholder="f.eks. 550000"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Partners EK (sparekonto + BSU + fond)</Label>
-                  <Input
-                    type="number"
-                    value={partnerEK}
-                    onChange={e => setPartnerEK(e.target.value)}
-                    placeholder="f.eks. 150000"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px]">Partners mnd. sparing (eks. BSU)</Label>
-                  <Input
-                    type="number"
-                    value={partnerMndSparing}
-                    onChange={e => setPartnerMndSparing(e.target.value)}
-                    placeholder="0"
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </div>
+        {/* Partner */}
+        <div className="space-y-2">
+          <button
+            onClick={() => setPartnerEnabled(!partnerEnabled)}
+            className={cn(
+              'flex items-center gap-2 text-xs px-2 py-1.5 rounded-md border w-full transition-colors',
+              partnerEnabled ? 'border-amber-500/40 bg-amber-500/5 text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
             )}
-          </div>
+          >
+            <Users className={cn('h-3 w-3', partnerEnabled ? 'text-amber-400' : '')} />
+            <span className="font-medium">{partnerEnabled ? 'Partner aktivert' : '+ Legg til partner'}</span>
+            <ChevronDown className={cn('h-3 w-3 ml-auto transition-transform', partnerEnabled && 'rotate-180')} />
+          </button>
+          {partnerEnabled && (
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+              <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Partners tall</p>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Årslønn</Label>
+                <Input
+                  type="number"
+                  value={partnerArslonn}
+                  onChange={e => setPartnerArslonn(e.target.value)}
+                  placeholder="f.eks. 550000"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Egenkapital (sparekonto + BSU + fond)</Label>
+                <Input
+                  type="number"
+                  value={partnerEK}
+                  onChange={e => setPartnerEK(e.target.value)}
+                  placeholder="f.eks. 150000"
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Månedlig sparing (eks. BSU)</Label>
+                <Input
+                  type="number"
+                  value={partnerMndSparing}
+                  onChange={e => setPartnerMndSparing(e.target.value)}
+                  placeholder="0"
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Egenkapital */}
@@ -740,6 +741,54 @@ export function VeikartPage() {
               </div>
               <KjøpekraftChart points={chartPoints} klarMonth={klarMonth} malPris={inputs.mal} />
             </div>
+
+            {/* Partner-effekt */}
+            {partnerEnabled && (() => {
+              const soloEq = parseFloat(sparekonto) || 0
+              const soloBsu = inputs.bsuVal
+              const soloFond = inputs.fondVal
+              const soloIncome = parseFloat(arslonn) || 0
+              const soloSavings = parseFloat(mndSparing) || 0
+              const soloBsuMonthly = inputs.bsuMonthly
+              const soloNow = calcKjøpekraft(soloEq, soloBsu, soloFond, soloIncome, inputs.debt, soloSavings, soloBsuMonthly, 0)
+              const combinedNow = calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, 0)
+              const gain = combinedNow - soloNow
+              const pct = soloNow > 0 ? Math.round((gain / soloNow) * 100) : 0
+              return (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                  <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-2.5">
+                    Kjøpekraft · din vs. felles
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Din alene</p>
+                      <p className="text-sm font-bold font-mono">{(soloNow / 1_000_000).toFixed(2)} mill</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Felles</p>
+                      <p className="text-sm font-bold font-mono text-amber-400">{(combinedNow / 1_000_000).toFixed(2)} mill</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Økning</p>
+                      <p className="text-sm font-bold font-mono text-green-400">+{(gain / 1_000_000).toFixed(2)} mill</p>
+                      <p className="text-[10px] text-green-400/70">+{pct}%</p>
+                    </div>
+                  </div>
+                  {inputs.mal > 0 && (
+                    <p className={cn(
+                      'mt-2 text-[10px] text-center',
+                      combinedNow >= inputs.mal ? 'text-green-400' : soloNow >= inputs.mal ? 'text-muted-foreground' : 'text-amber-400',
+                    )}>
+                      {combinedNow >= inputs.mal && soloNow < inputs.mal
+                        ? '✓ Dere når målet sammen — du når det ikke alene'
+                        : combinedNow >= inputs.mal && soloNow >= inputs.mal
+                        ? '✓ Begge når målet'
+                        : `Mangler ${((inputs.mal - combinedNow) / 1_000_000).toFixed(2)} mill felles`}
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Scenario cards */}
             <div className="grid grid-cols-5 gap-2">

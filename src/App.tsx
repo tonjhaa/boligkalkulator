@@ -15,6 +15,12 @@ const EconomyPage = lazy(() =>
   }))
 )
 
+const VeikartPage = lazy(() =>
+  import('@/pages/economy/VeikartPage').then((m) => ({
+    default: m.VeikartPage,
+  }))
+)
+
 const TaxCalculatorPage = lazy(() =>
   import('@/pages/TaxCalculatorPage').then((m) => ({
     default: m.TaxCalculatorPage as ComponentType,
@@ -45,6 +51,11 @@ function AppContent() {
         {currentView === 'skattekalkulator' && (
           <Suspense fallback={<PageFallback />}>
             <TaxCalculatorPage />
+          </Suspense>
+        )}
+        {currentView === 'veikart' && (
+          <Suspense fallback={<PageFallback />}>
+            <VeikartPage />
           </Suspense>
         )}
       </div>
