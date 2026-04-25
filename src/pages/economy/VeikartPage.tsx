@@ -828,26 +828,44 @@ export function VeikartPage() {
                 ekKrav={inputs.mal > 0 ? inputs.mal * EK_KRAV : 0}
                 partnerEnabled={partnerEnabled}
               />
-              {/* Yearly milestones */}
-              <div className="mt-2 grid grid-cols-6 gap-1 border-t border-border/30 pt-2">
-                {[0, 12, 24, 36, 48, 60].map(m => {
-                  const d = sparePlanData[m]
-                  const yr = new Date().getFullYear() + Math.floor(m / 12)
-                  const ekKravMet = inputs.mal > 0 && d.total >= inputs.mal * EK_KRAV
-                  return (
-                    <div key={m} className="text-center">
-                      <p className="text-[9px] text-muted-foreground">{m === 0 ? 'Nå' : yr}</p>
-                      <p className={cn('text-[11px] font-mono font-semibold', ekKravMet ? 'text-green-400' : 'text-foreground')}>
-                        {fmtNOK(d.total, true)}
-                      </p>
-                      {inputs.mal > 0 && (
-                        <p className="text-[9px] text-muted-foreground">
-                          {Math.round(d.total / (inputs.mal * EK_KRAV) * 100)}%
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
+              {/* Spareplan-tabell per år */}
+              <div className="mt-2 border-t border-border/30 pt-2 overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b border-border/30">
+                      <th className="text-left py-1 pr-2 text-muted-foreground font-medium">År</th>
+                      <th className="text-right py-1 px-1 text-blue-400 font-medium">BSU</th>
+                      <th className="text-right py-1 px-1 text-violet-400 font-medium">Fond</th>
+                      <th className="text-right py-1 px-1 text-teal-400 font-medium">Sparekonto</th>
+                      {partnerEnabled && <th className="text-right py-1 px-1 text-amber-400 font-medium">Partner</th>}
+                      <th className="text-right py-1 px-1 text-foreground font-semibold">Total EK</th>
+                      <th className="text-right py-1 pl-2 text-green-400 font-medium">Max kjøpesum</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[0, 12, 24, 36, 48, 60].map(m => {
+                      const d = sparePlanData[m]
+                      const yr = new Date().getFullYear() + Math.floor(m / 12)
+                      const bsu = d.s1
+                      const fond = d.s2 - d.s1
+                      const sparekonto = d.s3 - d.s2
+                      const partner = d.s4 - d.s3
+                      const maxKjøp = calcMaxPurchase(d.total, inputs.income, inputs.debt)
+                      const ekKravMet = inputs.mal > 0 && d.total >= inputs.mal * EK_KRAV
+                      return (
+                        <tr key={m} className="border-b border-border/20 last:border-0 hover:bg-muted/10">
+                          <td className="py-1 pr-2 text-muted-foreground">{m === 0 ? 'Nå' : yr}</td>
+                          <td className="py-1 px-1 text-right font-mono text-blue-400/80">{fmtNOK(bsu, true)}</td>
+                          <td className="py-1 px-1 text-right font-mono text-violet-400/80">{fmtNOK(fond, true)}</td>
+                          <td className="py-1 px-1 text-right font-mono text-teal-400/80">{fmtNOK(sparekonto, true)}</td>
+                          {partnerEnabled && <td className="py-1 px-1 text-right font-mono text-amber-400/80">{fmtNOK(partner, true)}</td>}
+                          <td className={cn('py-1 px-1 text-right font-mono font-semibold', ekKravMet ? 'text-green-400' : '')}>{fmtNOK(d.total, true)}</td>
+                          <td className="py-1 pl-2 text-right font-mono text-green-400/80">{(maxKjøp / 1_000_000).toFixed(2)} mill</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
 
