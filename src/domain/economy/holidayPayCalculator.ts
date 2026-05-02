@@ -97,7 +97,7 @@ export function forecastJune(
   year: number,
   monthHistory: MonthRecord[],
   profile: EmploymentProfile,
-  _atfEntries: ATFEntry[] = [],
+  atfEntries: ATFEntry[] = [],
   temporaryPayEntries: TemporaryPayEntry[] = [],
 ): JuneForecast {
   // --- FERIEPENGEGRUNNLAG (opptjent forrige år) ---
@@ -142,7 +142,31 @@ export function forecastJune(
   // men lønn, ATF, fungering og øvelse-betaling i juni er fortsatt skattepliktig.
   // Skattegrunnlag = (lønn + tillegg + ATF + fungering) - ferietrekk
   const skattepliktigJuni = juneMaanedslonn + juneFixedTillegg
-  const juneATF = getJuneATF(year, monthHistory)
+
+  // ATF i juni: hent fra slipp hvis låst, ellers fra atfEntries (samme logikk som budgetTableComputer)
+  const juneATFFromSlip = getJuneATF(year, monthHistory)
+  const juneATFFromEntries = (() => {
+    if (juneATFFromSlip > 0) return 0  // slipp har prioritet
+    let total = 0
+    for (const entry of atfEntries.filter((e) => !e.excludeFromBudget)) {
+      let payoutYear: number, payoutMonth: number
+      if (entry.payoutMonth !== undefined && entry.payoutYear !== undefined) {
+        payoutYear = entry.payoutYear
+        payoutMonth = entry.payoutMonth
+      } else if (entry.tilDateISO) {
+        const til = new Date(entry.tilDateISO)
+        const d = new Date(til.getFullYear(), til.getMonth() + 1, 1)
+        payoutYear = d.getFullYear()
+        payoutMonth = d.getMonth() + 1
+      } else {
+        payoutYear = entry.year
+        payoutMonth = 12
+      }
+      if (payoutYear === year && payoutMonth === 6) total += entry.beregnetBeløp
+    }
+    return total
+  })()
+  const juneATF = juneATFFromSlip > 0 ? juneATFFromSlip : juneATFFromEntries
 
   // Fungering (10P2) i juni: hent fra slipp hvis tilgjengelig, ellers beregn fra prognose
   const juneFungeringFromSlip = juneSlip?.slipData?.fungeringBeløp ?? 0
