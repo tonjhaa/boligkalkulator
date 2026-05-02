@@ -245,6 +245,12 @@ export function TaxSettlementPage() {
 
 
 
+  // KPI-tall for header
+  const withheldYTD = skattetrekkYTD + ekstraTrekkYTD
+  const expectedTax = taxForecast?.expectedTax ?? null
+  const projectedGap = expectedTax !== null ? projectedWithheld - expectedTax : null
+  const avgHistorical = analysis.records.length > 0 ? Math.round(analysis.avgYearlyRefund) : null
+
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <div className="flex items-center justify-between">
@@ -269,6 +275,62 @@ export function TaxSettlementPage() {
           <Button size="sm" onClick={() => setShowAddForm(true)}>
             + Legg til
           </Button>
+        </div>
+      </div>
+
+      {/* KPI-chips */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Betalt hittil {currentYear}</p>
+          <p className="text-sm font-semibold font-mono tabular-nums">
+            {withheldYTD > 0 ? fmtNOK(withheldYTD) : '—'}
+          </p>
+          {slipMonth > 0 && <p className="text-[10px] text-muted-foreground">{slipMonth} mnd med slip</p>}
+        </div>
+        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Årsestimert skattetrekk</p>
+          <p className="text-sm font-semibold font-mono tabular-nums">
+            {projectedWithheld > 0 ? fmtNOK(projectedWithheld) : '—'}
+          </p>
+          {projectedWithheld > 0 && expectedTax === null && (
+            <p className="text-[10px] text-amber-400/80">Ingen prognose lagt inn</p>
+          )}
+        </div>
+        <div className={`rounded-lg border px-3 py-2.5 ${
+          projectedGap === null ? 'border-border bg-card/60' :
+          projectedGap > 500 ? 'border-green-500/30 bg-green-500/5' :
+          projectedGap < -500 ? 'border-red-500/30 bg-red-500/5' :
+          'border-border bg-card/60'
+        }`}>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Forventet saldo</p>
+          {projectedGap !== null ? (
+            <>
+              <p className={`text-sm font-semibold font-mono tabular-nums ${projectedGap >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                {projectedGap >= 0 ? '+' : ''}{fmtNOK(projectedGap)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{projectedGap >= 0 ? 'til gode' : 'restskatt'}</p>
+            </>
+          ) : (
+            <p className="text-sm font-semibold text-muted-foreground">—</p>
+          )}
+        </div>
+        <div className={`rounded-lg border px-3 py-2.5 ${
+          avgHistorical === null ? 'border-border bg-card/60' :
+          avgHistorical > 500 ? 'border-green-500/30 bg-green-500/5' :
+          avgHistorical < -500 ? 'border-red-500/30 bg-red-500/5' :
+          'border-border bg-card/60'
+        }`}>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Snitt siste {analysis.records.length} år</p>
+          {avgHistorical !== null ? (
+            <>
+              <p className={`text-sm font-semibold font-mono tabular-nums ${avgHistorical >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                {avgHistorical >= 0 ? '+' : ''}{fmtNOK(avgHistorical)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{avgHistorical >= 0 ? 'tilbake i snitt' : 'restskatt i snitt'}</p>
+            </>
+          ) : (
+            <p className="text-sm font-semibold text-muted-foreground">—</p>
+          )}
         </div>
       </div>
 

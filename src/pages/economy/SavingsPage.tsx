@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ import {
   computeBSUForecast,
   computeEffectiveBalance,
 } from '@/domain/economy/savingsCalculator'
+import { calcMaxPurchase, BSU_MAX_TOTAL } from '@/hooks/useVeikart'
 import type {
   SavingsAccount,
   SavingsGoal,
@@ -29,8 +30,12 @@ import type {
   RateHistoryEntry,
   SavingsContribution,
   WithdrawalEntry,
+  PartnerVeikart,
+  EmploymentProfile,
+  DebtAccount,
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
+import { cn } from '@/lib/utils'
 
 function fmtNOK(n: number) {
   return Math.round(n).toLocaleString('no-NO') + ' kr'
@@ -54,6 +59,8 @@ const ACCOUNT_TYPE_LABELS: Record<SavingsAccountType, string> = {
 // MAIN PAGE
 // ------------------------------------------------------------
 
+type SavingsSubTab = 'kontoer' | 'spareplan'
+
 export function SavingsPage() {
   const {
     savingsAccounts,
@@ -71,6 +78,9 @@ export function SavingsPage() {
     addSavingsGoal,
     removeSavingsGoal,
     fondPortfolio,
+    partnerVeikart,
+    profile,
+    debts,
   } = useEconomyStore()
 
   const SAVINGS_CATS = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
@@ -85,6 +95,7 @@ export function SavingsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showAddGoal, setShowAddGoal] = useState(false)
+  const [subTab, setSubTab] = useState<SavingsSubTab>('kontoer')
 
   const now = new Date()
   const currentYear = now.getFullYear()
@@ -107,7 +118,40 @@ export function SavingsPage() {
     .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear, true), 0)
 
   return (
-    <div className="p-4 space-y-4 overflow-y-auto h-full">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Sub-nav */}
+      <div className="flex items-center gap-1 border-b border-border bg-card/40 px-4 shrink-0">
+        {(['kontoer', 'spareplan'] as SavingsSubTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize whitespace-nowrap',
+              subTab === t
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+            )}
+          >
+            {t === 'spareplan' && <Users className="h-3 w-3" />}
+            {t === 'kontoer' ? 'Kontoer & Mål' : 'Felles spareplan'}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'spareplan' && (
+        <SparePlanTab
+          savingsAccounts={savingsAccounts}
+          fondCurrentValue={fondCurrentValue}
+          fondMonthlyDeposit={fondMonthlyDeposit}
+          partnerVeikart={partnerVeikart}
+          profile={profile}
+          debts={debts}
+          now={now}
+        />
+      )}
+
+      {subTab === 'kontoer' && (
+      <div className="p-4 space-y-4 overflow-y-auto flex-1">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Sparing</h2>
@@ -266,6 +310,7 @@ export function SavingsPage() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+
                   <Progress value={progress.percent} className="h-2" />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>{fmtNOK(progress.currentTotal)} / {fmtNOK(progress.targetAmount)}</span>
@@ -286,6 +331,194 @@ export function SavingsPage() {
           })}
         </div>
       )}
+      </div>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------
+// SPAREPLAN TAB
+// ------------------------------------------------------------
+
+interface SparePlanTabProps {
+  savingsAccounts: SavingsAccount[]
+  fondCurrentValue: number
+  fondMonthlyDeposit: number
+  partnerVeikart: PartnerVeikart
+  profile: EmploymentProfile | null
+  debts: DebtAccount[]
+  now: Date
+}
+
+function fmtM(n: number) {
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} mill`
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1000)} k`
+  return Math.round(n).toLocaleString('no-NO')
+}
+
+function projectBalance(startBalance: number, monthlyContrib: number, annualRate: number, years: number): number {
+  // Simple compound: balance * (1+r)^y + monthly*12 * sum
+  const r = annualRate / 100
+  if (r === 0) return startBalance + monthlyContrib * 12 * years
+  // FV = PV*(1+r)^y + PMT*12 * ((1+r)^y - 1)/r
+  const factor = Math.pow(1 + r, years)
+  return startBalance * factor + monthlyContrib * 12 * (factor - 1) / r
+}
+
+function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, partnerVeikart, profile, debts, now }: SparePlanTabProps) {
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+
+  const bsuAccount = savingsAccounts.find(a => a.type === 'BSU')
+  const sparekontoAccount = savingsAccounts.find(a => a.type === 'sparekonto')
+
+  const userBSUBalance = bsuAccount ? computeEffectiveBalance(bsuAccount, now) : 0
+  const userBSUMonthly = bsuAccount?.monthlyContribution ?? 0
+  const userSpareBalance = sparekontoAccount ? computeEffectiveBalance(sparekontoAccount, now) : 0
+  const userSpareMonthly = sparekontoAccount?.monthlyContribution ?? 0
+  const userSpareRate = sparekontoAccount?.rateHistory?.length
+    ? [...sparekontoAccount.rateHistory].sort((a,b) => a.fromDate.localeCompare(b.fromDate)).at(-1)!.rate
+    : 0
+
+  const partnerEnabled = partnerVeikart?.enabled ?? false
+  const partnerBSU = partnerVeikart?.bsu ?? 0
+  const partnerBSUMonthly = partnerVeikart?.bsuMonthlyContribution ?? 0
+  const partnerEquity = partnerVeikart?.equity ?? 0
+  const partnerMonthly = partnerVeikart?.monthlySavings ?? 0
+
+  const userAnnualIncome = profile?.baseMonthly ? profile.baseMonthly * 12 : 0
+  const partnerAnnualIncome = partnerVeikart?.annualIncome ?? 0
+  const combinedIncome = userAnnualIncome + partnerAnnualIncome
+
+  const activeDebts = debts.filter(d => d.status !== 'nedbetalt')
+  const userDebt = activeDebts.reduce((s, d) => s + d.currentBalance, 0)
+
+  // Months remaining in current year
+  const monthsThisYear = 12 - currentMonth + 1
+
+  // For year Y (offset from current), compute end-of-year balances
+  function computeYear(yearOffset: number) {
+    // Total months from now to end of (currentYear + yearOffset)
+    const totalMonths = monthsThisYear + yearOffset * 12
+
+    const userBSU = Math.min(BSU_MAX_TOTAL, userBSUBalance + userBSUMonthly * totalMonths)
+    const userSpare = projectBalance(userSpareBalance, userSpareMonthly, userSpareRate, totalMonths / 12)
+    const userFond = fondCurrentValue + fondMonthlyDeposit * totalMonths
+    const pBSU = Math.min(BSU_MAX_TOTAL, partnerBSU + partnerBSUMonthly * totalMonths)
+    const pEquity = partnerEquity + partnerMonthly * totalMonths
+
+    const userEK = userBSU + userSpare + userFond
+    const partnerEK = pBSU + pEquity
+    const combinedEK = userEK + (partnerEnabled ? partnerEK : 0)
+
+    const maxPurchase = combinedIncome > 0
+      ? calcMaxPurchase(combinedEK, combinedIncome, userDebt)
+      : 0
+
+    return {
+      year: currentYear + yearOffset,
+      userBSU, userSpare, userFond, userEK,
+      partnerBSU: pBSU, partnerEquity: pEquity, partnerEK,
+      combinedEK, maxPurchase,
+    }
+  }
+
+  const years = [0, 1, 2, 3].map(computeYear)
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div>
+        <h3 className="font-semibold text-sm">Felles spareplan</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Projeksjon basert på nåværende saldo og månedlige bidrag. Oppdateres automatisk fra kontooversikten.
+        </p>
+      </div>
+
+      {!partnerEnabled && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+          Partner er ikke aktivert. Aktiver i Innstillinger for å se kombinert kjøpekraft.
+        </div>
+      )}
+
+      {/* Årsvis projeksjonstabell */}
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border">
+                <th className="text-left px-3 py-2 font-medium whitespace-nowrap">År</th>
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">BSU</th>
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Sparekonto</th>
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Fond</th>
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-300">Din EK</th>
+                {partnerEnabled && <>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">BSU partner</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">Spk/fond partner</th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-300">Partner EK</th>
+                </>}
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Samlet EK</th>
+                {combinedIncome > 0 && <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-green-400">Max kjøpesum</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {years.map((y, i) => (
+                <tr key={y.year} className={`border-b border-border last:border-0 ${i === 0 ? 'bg-primary/3' : ''}`}>
+                  <td className="px-3 py-2.5 font-semibold">
+                    {y.year}
+                    {i === 0 && <span className="ml-1 text-[9px] text-muted-foreground">(i år)</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userBSU)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userSpare)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userFond)}</td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold text-blue-300">{fmtM(y.userEK)}</td>
+                  {partnerEnabled && <>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerBSU)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerEquity)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold text-purple-300">{fmtM(y.partnerEK)}</td>
+                  </>}
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold">{fmtM(y.combinedEK)}</td>
+                  {combinedIncome > 0 && (
+                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold text-green-400">{fmtM(y.maxPurchase)}</td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Nøkkeltall */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Din EK nå</p>
+          <p className="text-sm font-semibold font-mono">{fmtM(years[0].userEK)}</p>
+          <p className="text-[10px] text-muted-foreground">BSU + spare + fond</p>
+        </div>
+        {partnerEnabled && (
+          <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Partner EK nå</p>
+            <p className="text-sm font-semibold font-mono">{fmtM(years[0].partnerEK)}</p>
+            <p className="text-[10px] text-muted-foreground">BSU + spare</p>
+          </div>
+        )}
+        {combinedIncome > 0 && (
+          <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2.5">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Max kjøpesum nå</p>
+            <p className="text-sm font-semibold font-mono text-green-400">{fmtM(years[0].maxPurchase)}</p>
+            <p className="text-[10px] text-muted-foreground">10% EK-krav, 5× inntekt</p>
+          </div>
+        )}
+        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Mnd. sparing totalt</p>
+          <p className="text-sm font-semibold font-mono">{fmtM(userBSUMonthly + userSpareMonthly + fondMonthlyDeposit + (partnerEnabled ? partnerBSUMonthly + partnerMonthly : 0))}</p>
+          <p className="text-[10px] text-muted-foreground">alle kontoer{partnerEnabled ? ' begge' : ''}</p>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground px-1">
+        Kjøpekraft beregnet med 10% egenkapitalkrav og maks 5× samlet bruttoinntekt. Prognose forutsetter uendret månedlig sparing og eksisterende gjeldsnivå.
+      </p>
     </div>
   )
 }

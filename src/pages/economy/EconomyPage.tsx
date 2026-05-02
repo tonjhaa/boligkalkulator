@@ -19,6 +19,7 @@ import {
   Umbrella,
   Settings,
   BarChart2,
+  Map,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -88,6 +89,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'subscriptions', label: 'Abo & Fors.', Icon: RefreshCw },
   { page: 'ivf', label: 'Prosjekt', Icon: HeartPulse },
   { page: 'vacation', label: 'Ferie', Icon: Umbrella },
+  { page: 'veikart', label: 'Veikart', Icon: Map },
   { page: 'settings', label: 'Innstillinger', Icon: Settings },
 ]
 
