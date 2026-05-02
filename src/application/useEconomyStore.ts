@@ -119,6 +119,7 @@ interface EconomyState {
   updateDebt: (id: string, updates: Partial<DebtAccount>) => void
   updateDebtRate: (debtId: string, entry: DebtRateHistory) => void
   removeDebt: (id: string) => void
+  markDebtPaid: (id: string, date: string) => void
 
   addAbsenceRecord: (record: AbsenceRecord) => void
   updateAbsenceRecord: (period: string, updates: Partial<AbsenceRecord>) => void
@@ -234,7 +235,16 @@ export const useEconomyStore = create<EconomyState>()(
       ivfTransactions: INITIAL_IVF_TRANSACTIONS,
       ivfSettings: DEFAULT_IVF_SETTINGS,
       fondPortfolio: DEFAULT_FOND_PORTFOLIO,
-      partnerVeikart: { enabled: false, annualIncome: 0, equity: 0, monthlySavings: 0 },
+      partnerVeikart: {
+        enabled: false,
+        annualIncome: 0,
+        annualNetIncome: 0,
+        equity: 0,
+        bsu: 0,
+        bsuMonthlyContribution: 0,
+        bsuBirthYear: undefined,
+        monthlySavings: 0,
+      },
       setPartnerVeikart: (p) => set({ partnerVeikart: p }),
 
       // --- Profil ---
@@ -534,6 +544,12 @@ export const useEconomyStore = create<EconomyState>()(
           }),
         })),
       removeDebt: (id) => set((s) => ({ debts: s.debts.filter((d) => d.id !== id) })),
+      markDebtPaid: (id, date) =>
+        set((s) => ({
+          debts: s.debts.map((d) =>
+            d.id === id ? { ...d, status: 'nedbetalt' as const, paidOffDate: date } : d
+          ),
+        })),
 
       // --- Fravær ---
       addAbsenceRecord: (record) =>
@@ -851,7 +867,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 6,
+      version: 8,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -911,6 +927,18 @@ export const useEconomyStore = create<EconomyState>()(
             prefs.enabledTabs = [...prefs.enabledTabs, 'veikart']
           }
         }
+        // v7 → v8: legg til status-felt på eksisterende gjeld (bakoverkompatibelt, ingen endring nødvendig)
+        if (fromVersion < 8) {
+          // Ingen datamigrering nødvendig — status er optional og undefined = aktiv
+        }
+        // v6 → v7: utvid PartnerVeikart med nye felt + persister den
+        if (fromVersion < 7) {
+          const p = (state.partnerVeikart ?? {}) as Record<string, unknown>
+          if (p.annualNetIncome === undefined) p.annualNetIncome = 0
+          if (p.bsu === undefined) p.bsu = 0
+          if (p.bsuMonthlyContribution === undefined) p.bsuMonthlyContribution = 0
+          state.partnerVeikart = p
+        }
         // Alltid: sørg for fond
         if (!state.fondPortfolio) state.fondPortfolio = DEFAULT_FOND_PORTFOLIO
         return state
@@ -938,6 +966,7 @@ export const useEconomyStore = create<EconomyState>()(
         ivfSettings: state.ivfSettings,
         fondPortfolio: state.fondPortfolio,
         budgetOverrides: state.budgetOverrides,
+        partnerVeikart: state.partnerVeikart,
       }),
     }
   )

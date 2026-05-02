@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Download, Upload, Trash2, Smartphone } from 'lucide-react'
+import { Download, Upload, Trash2, Smartphone, User, Users } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { MODULES } from './OnboardingWizard'
+import { cn } from '@/lib/utils'
 import type { EconomyTab } from '@/types/economy'
 
 const LAST_EXPORT_KEY = 'min-okonomi-last-export'
@@ -29,6 +30,250 @@ function Section({ title, description, children }: {
       </div>
       <div className="space-y-2">{children}</div>
     </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// Personalia
+// ----------------------------------------------------------------
+
+function HousingToggle({ value, onChange }: { value: 'leier' | 'eier' | undefined; onChange: (v: 'leier' | 'eier') => void }) {
+  return (
+    <div className="flex rounded-md border border-border overflow-hidden w-fit">
+      {(['leier', 'eier'] as const).map((opt) => (
+        <button
+          key={opt}
+          onClick={() => onChange(opt)}
+          className={cn(
+            'px-3 py-1 text-xs font-medium transition-colors',
+            value === opt
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/40',
+          )}
+        >
+          {opt === 'leier' ? 'Leier' : 'Eier bolig'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PersonaliaSection() {
+  const userPreferences = useEconomyStore((s) => s.userPreferences)
+  const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
+  const partnerVeikart = useEconomyStore((s) => s.partnerVeikart)
+  const setPartnerVeikart = useEconomyStore((s) => s.setPartnerVeikart)
+
+  const [birthYearInput, setBirthYearInput] = useState(
+    userPreferences?.birthYear ? String(userPreferences.birthYear) : ''
+  )
+
+  function saveBirthYear() {
+    const yr = parseInt(birthYearInput)
+    if (!yr || yr < 1950 || yr > 2010) return
+    setUserPreferences({
+      onboardingCompleted: userPreferences?.onboardingCompleted ?? true,
+      enabledTabs: userPreferences?.enabledTabs ?? [],
+      payDay: userPreferences?.payDay,
+      birthYear: yr,
+      housingStatus: userPreferences?.housingStatus,
+    })
+  }
+
+  function setHousingStatus(v: 'leier' | 'eier') {
+    setUserPreferences({
+      onboardingCompleted: userPreferences?.onboardingCompleted ?? true,
+      enabledTabs: userPreferences?.enabledTabs ?? [],
+      payDay: userPreferences?.payDay,
+      birthYear: userPreferences?.birthYear,
+      housingStatus: v,
+    })
+  }
+
+  const p = partnerVeikart
+
+  function updatePartner(updates: Partial<typeof p>) {
+    setPartnerVeikart({ ...p, ...updates })
+  }
+
+  const bsuAgeOk = !p.bsuBirthYear || (new Date().getFullYear() - p.bsuBirthYear) <= 33
+  const myBsuAgeOk = !userPreferences?.birthYear || (new Date().getFullYear() - userPreferences.birthYear) <= 33
+
+  return (
+    <Section title="Personalia" description="Grunnoppsett for deg og eventuell partner. Brukes av Boligveikart og andre beregninger på tvers av verktøyet.">
+      {/* Deg */}
+      <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <User className="h-3.5 w-3.5" />
+          Deg
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Fødselsår</Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="number"
+                value={birthYearInput}
+                onChange={(e) => setBirthYearInput(e.target.value)}
+                onBlur={saveBirthYear}
+                placeholder="f.eks. 1995"
+                className="h-8 text-sm w-28"
+              />
+              {userPreferences?.birthYear && (
+                <span className={cn(
+                  'text-[11px]',
+                  myBsuAgeOk ? 'text-blue-400' : 'text-muted-foreground',
+                )}>
+                  {myBsuAgeOk
+                    ? `BSU OK (${new Date().getFullYear() - userPreferences.birthYear} år)`
+                    : `Over BSU-alder (${new Date().getFullYear() - userPreferences.birthYear} år)`}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Boligstatus</Label>
+            <HousingToggle value={userPreferences?.housingStatus} onChange={setHousingStatus} />
+          </div>
+        </div>
+      </div>
+
+      {/* Partner */}
+      <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <Users className="h-3.5 w-3.5" />
+            Partner
+          </div>
+          <button
+            onClick={() => updatePartner({ enabled: !p.enabled })}
+            className={cn(
+              'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border transition-colors',
+              p.enabled
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                : 'border-border text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {p.enabled ? 'Aktivert' : 'Ikke aktivert'}
+          </button>
+        </div>
+
+        {!p.enabled && (
+          <p className="text-xs text-muted-foreground italic">
+            Aktiver partner for å legge inn deres tall. Brukes i Boligveikart og Dashboard.
+          </p>
+        )}
+
+        {p.enabled && (
+          <div className="space-y-4">
+            {/* Personalia */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Fødselsår</Label>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="number"
+                    value={p.bsuBirthYear ?? ''}
+                    onChange={(e) => updatePartner({ bsuBirthYear: parseInt(e.target.value) || undefined })}
+                    placeholder="f.eks. 1996"
+                    className="h-8 text-sm w-28"
+                  />
+                  {p.bsuBirthYear && (
+                    <span className={cn(
+                      'text-[11px]',
+                      bsuAgeOk ? 'text-blue-400' : 'text-muted-foreground',
+                    )}>
+                      {bsuAgeOk
+                        ? `BSU OK (${new Date().getFullYear() - p.bsuBirthYear} år)`
+                        : `Over BSU-alder`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Inntekt */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Inntekt</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Årslønn brutto</Label>
+                  <Input
+                    type="number"
+                    value={p.annualIncome || ''}
+                    onChange={(e) => updatePartner({ annualIncome: parseFloat(e.target.value) || 0 })}
+                    placeholder="f.eks. 600000"
+                    className="h-8 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Brukes til låneevne</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Årslønn netto</Label>
+                  <Input
+                    type="number"
+                    value={p.annualNetIncome || ''}
+                    onChange={(e) => updatePartner({ annualNetIncome: parseFloat(e.target.value) || 0 })}
+                    placeholder={p.annualIncome ? String(Math.round(p.annualIncome * 0.67)) : 'f.eks. 420000'}
+                    className="h-8 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Brukes til sparekraft</p>
+                </div>
+              </div>
+            </div>
+
+            {/* EK og sparing */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Egenkapital og sparing</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Sparekonto + fond</Label>
+                  <Input
+                    type="number"
+                    value={p.equity || ''}
+                    onChange={(e) => updatePartner({ equity: parseFloat(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Månedlig sparing (eks. BSU)</Label>
+                  <Input
+                    type="number"
+                    value={p.monthlySavings || ''}
+                    onChange={(e) => updatePartner({ monthlySavings: parseFloat(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">BSU-saldo</Label>
+                  <Input
+                    type="number"
+                    value={p.bsu || ''}
+                    onChange={(e) => updatePartner({ bsu: parseFloat(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">BSU-innskudd per mnd</Label>
+                  <Input
+                    type="number"
+                    value={p.bsuMonthlyContribution || ''}
+                    onChange={(e) => updatePartner({ bsuMonthlyContribution: parseFloat(e.target.value) || 0 })}
+                    placeholder={bsuAgeOk ? 'maks 2 292' : '0 (over alder)'}
+                    disabled={!bsuAgeOk}
+                    className="h-8 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
   )
 }
 
@@ -549,6 +794,9 @@ export function EconomySettingsPage() {
           Konfigurer lønnsprofil, moduler og datahåndtering.
         </p>
       </div>
+
+      <Separator />
+      <PersonaliaSection />
 
       <Separator />
       <LønningsdatoSection />

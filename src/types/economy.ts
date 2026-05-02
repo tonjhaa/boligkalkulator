@@ -334,6 +334,9 @@ export interface DebtAccount {
   effectiveRate?: number
   loanSubtype?: string                            // f.eks. "Omgjøringslån"
   paymentHistory?: { date: string; amount: number }[]  // fakturaarkiv
+  /** 'nedbetalt' = soft-slettet med dato, vises i historikk men teller ikke i beregninger */
+  status?: 'aktiv' | 'nedbetalt'
+  paidOffDate?: string  // "YYYY-MM-DD"
 }
 
 export interface RepaymentRow {
@@ -594,13 +597,19 @@ export type EconomyTab =
 export interface UserPreferences {
   onboardingCompleted: boolean
   enabledTabs: EconomyTab[]
-  payDay?: number  // dag i måneden lønn utbetales (1-28), standard 12
+  payDay?: number       // dag i måneden lønn utbetales (1-28), standard 12
+  birthYear?: number    // fødselsår — brukes til BSU-aldersgrense og andre beregninger
+  housingStatus?: 'leier' | 'eier'  // nåværende boligsituasjon
 }
 
 /** Partners tall brukt i Veikart og Dashboard */
 export interface PartnerVeikart {
   enabled: boolean
-  annualIncome: number   // årslønn
-  equity: number         // sparekonto + BSU + fond
-  monthlySavings: number // mnd. sparing eks. BSU
+  annualIncome: number         // årslønn (brutto) — brukes til låneevne
+  annualNetIncome: number      // årslønn (netto) — brukes til sparekraft
+  equity: number               // sparekonto + fond (IKKE BSU)
+  bsu: number                  // BSU-saldo
+  bsuMonthlyContribution: number // BSU-innskudd per måned
+  bsuBirthYear?: number        // fødselsår — for BSU-aldersgrense
+  monthlySavings: number       // mnd. sparing eks. BSU
 }

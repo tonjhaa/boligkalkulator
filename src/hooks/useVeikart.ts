@@ -86,7 +86,7 @@ export function useVeikart(): VeikartData {
       (profile?.baseMonthly ?? 0) * 12 +
       (profile?.fixedAdditions.reduce((s, a) => s + a.amount, 0) ?? 0) * 12
 
-    const existingDebt = debts.reduce((s, d) => s + d.currentBalance, 0)
+    const existingDebt = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
 
     // Månedlig sparerate fra kontoer
     const monthlySavings = savingsAccounts.reduce((s, a) => {

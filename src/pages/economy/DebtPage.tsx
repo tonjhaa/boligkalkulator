@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,16 +31,21 @@ const DEBT_TYPE_LABELS: Record<DebtAccount['type'], string> = {
 }
 
 export function DebtPage() {
-  const { debts, addDebt, removeDebt, updateDebtRate } = useEconomyStore()
+  const { debts, addDebt, removeDebt, updateDebtRate, markDebtPaid } = useEconomyStore()
   const [showAddForm, setShowAddForm] = useState(false)
   const [updatingRateFor, setUpdatingRateFor] = useState<string | null>(null)
   const [showAmortFor, setShowAmortFor] = useState<string | null>(null)
+  const [confirmDeleteFor, setConfirmDeleteFor] = useState<string | null>(null)
+  const [paidOffDate, setPaidOffDate] = useState(new Date().toISOString().split('T')[0])
 
-  const totalMonthly = calculateTotalMonthlyDebtCost(debts)
-  const totalBalance = debts.reduce((s, d) => s + d.currentBalance, 0)
+  const activeDebts = debts.filter((d) => d.status !== 'nedbetalt')
+  const paidDebts = debts.filter((d) => d.status === 'nedbetalt')
+
+  const totalMonthly = calculateTotalMonthlyDebtCost(activeDebts)
+  const totalBalance = activeDebts.reduce((s, d) => s + d.currentBalance, 0)
 
   // Forventet rentekostnad neste 12 måneder (sum av interest fra nedbetalingsplan)
-  const annualInterest = debts.reduce((sum, d) => {
+  const annualInterest = activeDebts.reduce((sum, d) => {
     const plan = buildRepaymentPlan(d)
     return sum + plan.rows.slice(0, 12).reduce((s, r) => s + r.interest, 0)
   }, 0)
@@ -48,7 +53,7 @@ export function DebtPage() {
   // Samlet gjeld ved slutten av inneværende år
   const now = new Date()
   const monthsLeftThisYear = 12 - now.getMonth() // måneder igjen inkl. inneværende
-  const balanceEndOfYear = debts.reduce((sum, d) => {
+  const balanceEndOfYear = activeDebts.reduce((sum, d) => {
     const plan = buildRepaymentPlan(d)
     const row = plan.rows[monthsLeftThisYear - 1]
     return sum + (row?.balance ?? 0)
@@ -57,7 +62,7 @@ export function DebtPage() {
   // Graf: samlet gjeld over tid (neste 5 år)
   const maxMonths = 60
   const chartData = Array.from({ length: maxMonths + 1 }, (_, i) => {
-    const totalBal = debts.reduce((s, d) => {
+    const totalBal = activeDebts.reduce((s, d) => {
       const plan = buildRepaymentPlan(d)
       const row = plan.rows[i - 1]
       return s + (i === 0 ? d.currentBalance : (row?.balance ?? 0))
@@ -83,7 +88,7 @@ export function DebtPage() {
       )}
 
       {/* Oversikt */}
-      {debts.length > 0 && (
+      {activeDebts.length > 0 && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card>
@@ -137,21 +142,22 @@ export function DebtPage() {
       )}
 
       {/* Lån-kort */}
-      {debts.length === 0 && !showAddForm ? (
+      {activeDebts.length === 0 && !showAddForm ? (
         <Card>
           <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground mb-3">Ingen lån registrert.</p>
+            <p className="text-sm text-muted-foreground mb-3">Ingen aktive lån registrert.</p>
             <Button size="sm" onClick={() => setShowAddForm(true)}>Legg til lån</Button>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {debts.map((debt) => {
+          {activeDebts.map((debt) => {
             const currentRate = getCurrentRate(debt)
             const plan = buildRepaymentPlan(debt)
             const payoffYear = plan.payoffDate.getFullYear()
             const payoffMonth = plan.payoffDate.getMonth() + 1
             const interestNext12 = plan.rows.slice(0, 12).reduce((s, r) => s + r.interest, 0)
+            const isConfirming = confirmDeleteFor === debt.id
 
             return (
               <Card key={debt.id}>
@@ -161,15 +167,56 @@ export function DebtPage() {
                       <CardTitle className="text-sm">{debt.creditor}</CardTitle>
                       <p className="text-xs text-muted-foreground">{DEBT_TYPE_LABELS[debt.type]}</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
-                      onClick={() => removeDebt(debt.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {!isConfirming && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
+                        onClick={() => { setPaidOffDate(new Date().toISOString().split('T')[0]); setConfirmDeleteFor(debt.id) }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
+                  {isConfirming && (
+                    <div className="mt-2 p-3 rounded-md bg-muted/40 border border-border space-y-2">
+                      <p className="text-xs font-medium">Hva vil du gjøre med {debt.creditor}?</p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          className="h-7 text-xs w-36"
+                          value={paidOffDate}
+                          onChange={(e) => setPaidOffDate(e.target.value)}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { markDebtPaid(debt.id, paidOffDate); setConfirmDeleteFor(null) }}
+                        >
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Marker som nedbetalt
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => { removeDebt(debt.id); setConfirmDeleteFor(null) }}
+                        >
+                          Slett permanent
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setConfirmDeleteFor(null)}
+                        >
+                          Avbryt
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
@@ -314,6 +361,39 @@ export function DebtPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* Nedbetalt gjeld */}
+      {paidDebts.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+            Nedbetalt gjeld
+          </h3>
+          {paidDebts.map((debt) => (
+            <div
+              key={debt.id}
+              className="flex items-center justify-between rounded-md border border-border/50 px-3 py-2 bg-muted/20"
+            >
+              <div>
+                <p className="text-sm text-muted-foreground line-through">{debt.creditor}</p>
+                <p className="text-xs text-muted-foreground">
+                  {DEBT_TYPE_LABELS[debt.type]}
+                  {debt.paidOffDate && ` · nedbetalt ${debt.paidOffDate}`}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
+                onClick={() => removeDebt(debt.id)}
+                title="Slett permanent"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
         </div>
       )}
     </div>

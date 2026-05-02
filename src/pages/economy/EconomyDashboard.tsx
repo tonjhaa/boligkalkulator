@@ -141,7 +141,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
   const fondVerdi = sortedFondSnapshots[0]?.totalValue ?? 0
   const totalSparing = sparingKontoer + fondVerdi
-  const totalGjeld = debts.reduce((s, d) => s + d.currentBalance, 0)
+  const totalGjeld = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
   const nettoFormue = totalSparing - totalGjeld
 
   // ── Inntektstrend ─────────────────────────────────────────
@@ -514,7 +514,7 @@ function GjeldCard({
   debts: ReturnType<typeof useEconomyStore.getState>['debts']
   onNavigate: (page: string) => void
 }) {
-  const total = debts.reduce((s, d) => s + d.currentBalance, 0)
+  const total = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
   return (
     <div className="rounded-xl border border-border/50 bg-card/60 flex flex-col overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-border/30">
