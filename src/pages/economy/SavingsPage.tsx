@@ -22,7 +22,7 @@ import {
   computeEffectiveBalance,
   projectBalanceMonthly,
 } from '@/domain/economy/savingsCalculator'
-import { BSU_MAX_TOTAL } from '@/hooks/useVeikart'
+import { calcMaxPurchase, BSU_MAX_TOTAL } from '@/hooks/useVeikart'
 import type {
   SavingsAccount,
   SavingsGoal,
@@ -571,7 +571,7 @@ function SparePlanTab({
       const partnerEK = computeEK(partnerRows, i)
       const combined = meEK + (partnerEnabled ? partnerEK : 0)
       const maxPurchase = combinedIncome > 0
-        ? Math.min(combined / 0.1, combinedIncome * 12 * 5)
+        ? calcMaxPurchase(combined, combinedIncome * 12, userDebt)
         : 0
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
       const label = d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' })
