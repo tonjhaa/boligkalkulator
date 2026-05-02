@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { BSU_MAX_YEARLY } from '@/config/economy.config'
@@ -224,6 +224,7 @@ export function SavingsPage() {
               account={account}
               now={now}
               onRemove={() => removeSavingsAccount(account.id)}
+              onUpdate={(patch) => updateSavingsAccount(account.id, patch)}
               onUpdateBalance={(entry) => updateSavingsBalance(account.id, entry)}
               onUpdateRate={(entry) => updateSavingsRate(account.id, entry)}
               onAddContribution={(c) => addContribution(account.id, c)}
@@ -358,12 +359,39 @@ function fmtM(n: number) {
 }
 
 function projectBalance(startBalance: number, monthlyContrib: number, annualRate: number, years: number): number {
-  // Simple compound: balance * (1+r)^y + monthly*12 * sum
   const r = annualRate / 100
-  if (r === 0) return startBalance + monthlyContrib * 12 * years
-  // FV = PV*(1+r)^y + PMT*12 * ((1+r)^y - 1)/r
+  if (r === 0 || years === 0) return startBalance + monthlyContrib * 12 * years
   const factor = Math.pow(1 + r, years)
   return startBalance * factor + monthlyContrib * 12 * (factor - 1) / r
+}
+
+function AssumptionField({ label, value, onChange, step = 1 }: {
+  label: string; value: number; onChange: (v: number) => void; step?: number
+}) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <input
+        type="number"
+        step={step}
+        min={0}
+        className="h-7 w-full rounded border border-border bg-background px-2 text-xs"
+        value={value || ''}
+        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+      />
+    </div>
+  )
+}
+
+type Assumptions = {
+  userBSUMonthly: number
+  userSpareMonthly: number
+  userSpareRate: number
+  fondMonthly: number
+  fondAvkastning: number
+  partnerBSUMonthly: number
+  partnerSpareMonthly: number
+  partnerSpareRate: number
 }
 
 function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, partnerVeikart, profile, debts, now }: SparePlanTabProps) {
@@ -374,65 +402,97 @@ function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, p
   const sparekontoAccount = savingsAccounts.find(a => a.type === 'sparekonto')
 
   const userBSUBalance = bsuAccount ? computeEffectiveBalance(bsuAccount, now) : 0
-  const userBSUMonthly = bsuAccount?.monthlyContribution ?? 0
   const userSpareBalance = sparekontoAccount ? computeEffectiveBalance(sparekontoAccount, now) : 0
-  const userSpareMonthly = sparekontoAccount?.monthlyContribution ?? 0
-  const userSpareRate = sparekontoAccount?.rateHistory?.length
-    ? [...sparekontoAccount.rateHistory].sort((a,b) => a.fromDate.localeCompare(b.fromDate)).at(-1)!.rate
-    : 0
+  const defaultSpareRate = sparekontoAccount?.rateHistory?.length
+    ? [...sparekontoAccount.rateHistory].sort((a, b) => a.fromDate.localeCompare(b.fromDate)).at(-1)!.rate
+    : 3.0
 
   const partnerEnabled = partnerVeikart?.enabled ?? false
-  const partnerBSU = partnerVeikart?.bsu ?? 0
-  const partnerBSUMonthly = partnerVeikart?.bsuMonthlyContribution ?? 0
-  const partnerEquity = partnerVeikart?.equity ?? 0
-  const partnerMonthly = partnerVeikart?.monthlySavings ?? 0
+  const partnerBSUBalance = partnerVeikart?.bsu ?? 0
+  const partnerEquityBalance = partnerVeikart?.equity ?? 0
 
   const userAnnualIncome = profile?.baseMonthly ? profile.baseMonthly * 12 : 0
   const partnerAnnualIncome = partnerVeikart?.annualIncome ?? 0
   const combinedIncome = userAnnualIncome + partnerAnnualIncome
-
-  const activeDebts = debts.filter(d => d.status !== 'nedbetalt')
-  const userDebt = activeDebts.reduce((s, d) => s + d.currentBalance, 0)
-
-  // Months remaining in current year
+  const userDebt = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
   const monthsThisYear = 12 - currentMonth + 1
 
-  // For year Y (offset from current), compute end-of-year balances
-  function computeYear(yearOffset: number) {
-    // Total months from now to end of (currentYear + yearOffset)
-    const totalMonths = monthsThisYear + yearOffset * 12
+  const defaultAssumptions: Assumptions = {
+    userBSUMonthly: bsuAccount?.monthlyContribution ?? 0,
+    userSpareMonthly: sparekontoAccount?.monthlyContribution ?? 0,
+    userSpareRate: defaultSpareRate,
+    fondMonthly: fondMonthlyDeposit,
+    fondAvkastning: 6,
+    partnerBSUMonthly: partnerVeikart?.bsuMonthlyContribution ?? 0,
+    partnerSpareMonthly: partnerVeikart?.monthlySavings ?? 0,
+    partnerSpareRate: 3.0,
+  }
+  const [a, setA] = useState<Assumptions>(defaultAssumptions)
+  const [showAssumptions, setShowAssumptions] = useState(false)
+  const [targetPrice, setTargetPrice] = useState('')
 
-    const userBSU = Math.min(BSU_MAX_TOTAL, userBSUBalance + userBSUMonthly * totalMonths)
-    const userSpare = projectBalance(userSpareBalance, userSpareMonthly, userSpareRate, totalMonths / 12)
-    const userFond = fondCurrentValue + fondMonthlyDeposit * totalMonths
-    const pBSU = Math.min(BSU_MAX_TOTAL, partnerBSU + partnerBSUMonthly * totalMonths)
-    const pEquity = partnerEquity + partnerMonthly * totalMonths
-
-    const userEK = userBSU + userSpare + userFond
-    const partnerEK = pBSU + pEquity
-    const combinedEK = userEK + (partnerEnabled ? partnerEK : 0)
-
-    const maxPurchase = combinedIncome > 0
-      ? calcMaxPurchase(combinedEK, combinedIncome, userDebt)
-      : 0
-
-    return {
-      year: currentYear + yearOffset,
-      userBSU, userSpare, userFond, userEK,
-      partnerBSU: pBSU, partnerEquity: pEquity, partnerEK,
-      combinedEK, maxPurchase,
-    }
+  function setField<K extends keyof Assumptions>(key: K, val: number) {
+    setA(prev => ({ ...prev, [key]: val }))
   }
 
-  const years = [0, 1, 2, 3].map(computeYear)
+  // Monthly projection data — index 0 = now, index N = N months from now (up to 48)
+  const monthlyData = Array.from({ length: 49 }, (_, i) => {
+    const months = i
+    const years = months / 12
+    const userBSU = Math.min(BSU_MAX_TOTAL, userBSUBalance + a.userBSUMonthly * months)
+    const userSpare = projectBalance(userSpareBalance, a.userSpareMonthly, a.userSpareRate, years)
+    const userFond = projectBalance(fondCurrentValue, a.fondMonthly, a.fondAvkastning, years)
+    const userEK = userBSU + userSpare + userFond
+    const pBSU = Math.min(BSU_MAX_TOTAL, partnerBSUBalance + a.partnerBSUMonthly * months)
+    const pSpare = projectBalance(partnerEquityBalance, a.partnerSpareMonthly, a.partnerSpareRate, years)
+    const partnerEK = pBSU + pSpare
+    const combinedEK = userEK + (partnerEnabled ? partnerEK : 0)
+    const maxPurchase = combinedIncome > 0 ? calcMaxPurchase(combinedEK, combinedIncome, userDebt) : 0
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    return { months: i, d, userEK, partnerEK, combinedEK, maxPurchase }
+  })
+
+  // Yearly rows: end-of-year snapshot for current + next 3 years
+  const yearRows = [0, 1, 2, 3].map(offset => {
+    const idx = Math.min(monthsThisYear + offset * 12, 48)
+    return { year: currentYear + offset, isCurrentYear: offset === 0, ...monthlyData[idx] }
+  })
+
+  // Goal calculator
+  const parsedTarget = parseFloat(targetPrice.replace(/\s/g, '')) || 0
+  const requiredEK = parsedTarget > 0
+    ? Math.max(parsedTarget * 0.1, Math.max(0, parsedTarget - combinedIncome * 5))
+    : 0
+  const reachIndex = requiredEK > 0 ? monthlyData.findIndex(d => d.combinedEK >= requiredEK) : -1
+  const reachEntry = reachIndex >= 0 ? monthlyData[reachIndex] : null
+
+  // Chart data (skip index 0 = now)
+  const chartData = monthlyData.slice(1).map(d => ({
+    name: d.d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' }),
+    userEK: Math.round(d.userEK),
+    combinedEK: Math.round(d.combinedEK),
+  }))
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      <div>
-        <h3 className="font-semibold text-sm">Felles spareplan</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Projeksjon basert på nåværende saldo og månedlige bidrag. Oppdateres automatisk fra kontooversikten.
-        </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-sm">Felles spareplan</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Rentersrente på spare og fond. Juster forutsetninger for å simulere scenarier.</p>
+        </div>
+        <button
+          onClick={() => setShowAssumptions(v => !v)}
+          className={cn(
+            'text-xs px-2.5 py-1.5 rounded border font-medium transition-colors flex items-center gap-1.5 shrink-0',
+            showAssumptions
+              ? 'border-primary/40 text-primary bg-primary/5'
+              : 'border-border text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Pencil className="h-3 w-3" />
+          Forutsetninger
+        </button>
       </div>
 
       {!partnerEnabled && (
@@ -441,46 +501,121 @@ function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, p
         </div>
       )}
 
-      {/* Årsvis projeksjonstabell */}
+      {/* Assumptions panel */}
+      {showAssumptions && (
+        <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Din sparing</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <AssumptionField label="BSU mnd (kr)" value={a.userBSUMonthly} onChange={v => setField('userBSUMonthly', v)} />
+            <AssumptionField label="Sparekonto mnd (kr)" value={a.userSpareMonthly} onChange={v => setField('userSpareMonthly', v)} />
+            <AssumptionField label="Sparerente %" value={a.userSpareRate} onChange={v => setField('userSpareRate', v)} step={0.1} />
+            <AssumptionField label="Fond mnd (kr)" value={a.fondMonthly} onChange={v => setField('fondMonthly', v)} />
+            <AssumptionField label="Fondavkastning % p.a." value={a.fondAvkastning} onChange={v => setField('fondAvkastning', v)} step={0.5} />
+          </div>
+          {partnerEnabled && (
+            <>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide pt-1">Partner</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <AssumptionField label="BSU mnd (kr)" value={a.partnerBSUMonthly} onChange={v => setField('partnerBSUMonthly', v)} />
+                <AssumptionField label="Spare/fond mnd (kr)" value={a.partnerSpareMonthly} onChange={v => setField('partnerSpareMonthly', v)} />
+                <AssumptionField label="Avkastning % p.a." value={a.partnerSpareRate} onChange={v => setField('partnerSpareRate', v)} step={0.5} />
+              </div>
+            </>
+          )}
+          <button
+            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+            onClick={() => setA(defaultAssumptions)}
+          >
+            Reset til kontoinnstillinger
+          </button>
+        </div>
+      )}
+
+      {/* Goal calculator */}
+      <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
+        <p className="text-xs font-medium">Når har jeg råd til boligen?</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-xs text-muted-foreground whitespace-nowrap">Boligpris:</label>
+          <input
+            type="number"
+            step={50000}
+            placeholder="f.eks. 3 500 000"
+            className="h-8 flex-1 min-w-32 rounded border border-border bg-background px-2 text-xs"
+            value={targetPrice}
+            onChange={e => setTargetPrice(e.target.value)}
+          />
+          {parsedTarget > 0 && (
+            <p className="text-xs text-muted-foreground whitespace-nowrap">
+              Nødvendig EK: <span className="font-mono font-medium text-foreground">{fmtNOK(requiredEK)}</span>
+            </p>
+          )}
+        </div>
+        {parsedTarget > 0 && (
+          reachEntry ? (
+            <div className="rounded-md bg-green-500/8 border border-green-500/20 px-3 py-2 text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-green-400 font-medium">
+                Du når {fmtM(parsedTarget)}-boligen om {reachEntry.months} mnd
+                ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
+              </span>
+              <span className="text-muted-foreground">EK ved den tid: {fmtNOK(reachEntry.combinedEK)}</span>
+            </div>
+          ) : (
+            <p className="text-xs text-amber-400">
+              Ikke nok EK innen 4 år med nåværende tempo — mangler{' '}
+              <span className="font-mono">{fmtNOK(requiredEK - monthlyData[48].combinedEK)}</span> ved 4 år.
+            </p>
+          )
+        )}
+      </div>
+
+      {/* EK-vekst graf */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-1.5">EK-vekst neste 4 år</p>
+        <ResponsiveContainer width="100%" height={150}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={11} />
+            <YAxis tickFormatter={v => fmtM(Number(v))} tick={{ fontSize: 9 }} width={46} />
+            <Tooltip
+              formatter={(v, name) => [fmtNOK(Number(v)), name === 'combinedEK' ? 'Samlet EK' : 'Din EK']}
+              contentStyle={{ fontSize: 11 }}
+            />
+            <Area type="monotone" dataKey="userEK" stroke="#3B82F6" fill="#3B82F620" strokeWidth={1.5} dot={false} name="userEK" />
+            {partnerEnabled && (
+              <Area type="monotone" dataKey="combinedEK" stroke="#8B5CF6" fill="#8B5CF615" strokeWidth={1.5} dot={false} name="combinedEK" />
+            )}
+            {requiredEK > 0 && (
+              <ReferenceLine y={requiredEK} stroke="#22C55E" strokeDasharray="4 2"
+                label={{ value: 'Mål EK', position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Årsvis tabell */}
       <div className="rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 <th className="text-left px-3 py-2 font-medium whitespace-nowrap">År</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">BSU</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Sparekonto</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Fond</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-300">Din EK</th>
-                {partnerEnabled && <>
-                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">BSU partner</th>
-                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">Spk/fond partner</th>
-                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-300">Partner EK</th>
-                </>}
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Din EK</th>
+                {partnerEnabled && <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">Partner EK</th>}
                 <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Samlet EK</th>
                 {combinedIncome > 0 && <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-green-400">Max kjøpesum</th>}
               </tr>
             </thead>
             <tbody>
-              {years.map((y, i) => (
-                <tr key={y.year} className={`border-b border-border last:border-0 ${i === 0 ? 'bg-primary/3' : ''}`}>
+              {yearRows.map((y, i) => (
+                <tr key={y.year} className={cn('border-b border-border last:border-0', i === 0 && 'bg-primary/3')}>
                   <td className="px-3 py-2.5 font-semibold">
                     {y.year}
                     {i === 0 && <span className="ml-1 text-[9px] text-muted-foreground">(i år)</span>}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userBSU)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userSpare)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userFond)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold text-blue-300">{fmtM(y.userEK)}</td>
-                  {partnerEnabled && <>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerBSU)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerEquity)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-semibold text-purple-300">{fmtM(y.partnerEK)}</td>
-                  </>}
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userEK)}</td>
+                  {partnerEnabled && <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerEK)}</td>}
                   <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold">{fmtM(y.combinedEK)}</td>
-                  {combinedIncome > 0 && (
-                    <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold text-green-400">{fmtM(y.maxPurchase)}</td>
-                  )}
+                  {combinedIncome > 0 && <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold text-green-400">{fmtM(y.maxPurchase)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -488,36 +623,76 @@ function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, p
         </div>
       </div>
 
-      {/* Nøkkeltall */}
+      {/* Månedlig breakdown */}
+      <div>
+        <p className="text-xs font-medium mb-1.5">Månedlig breakdown</p>
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto max-h-52 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-card/95 backdrop-blur-sm z-10">
+                <tr className="border-b border-border">
+                  <th className="text-left px-3 py-1.5 font-medium">Måned</th>
+                  <th className="text-right px-3 py-1.5 font-medium text-blue-400">Din EK</th>
+                  {partnerEnabled && <th className="text-right px-3 py-1.5 font-medium text-purple-400">Partner EK</th>}
+                  <th className="text-right px-3 py-1.5 font-medium">Samlet EK</th>
+                  {combinedIncome > 0 && <th className="text-right px-3 py-1.5 font-medium text-green-400">Max kjøpesum</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyData.slice(1).map((d, i) => {
+                  const isGoal = reachIndex > 0 && i + 1 === reachIndex
+                  return (
+                    <tr key={i} className={cn('border-b border-border/40 last:border-0', isGoal && 'bg-green-500/8')}>
+                      <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
+                        {d.d.toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}
+                        {isGoal && <span className="ml-1.5 text-[9px] bg-green-500/20 text-green-400 px-1 py-0.5 rounded">mål</span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-blue-400">{fmtM(d.userEK)}</td>
+                      {partnerEnabled && <td className="px-3 py-1.5 text-right font-mono tabular-nums text-purple-400">{fmtM(d.partnerEK)}</td>}
+                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">{fmtM(d.combinedEK)}</td>
+                      {combinedIncome > 0 && <td className="px-3 py-1.5 text-right font-mono tabular-nums text-green-400">{fmtM(d.maxPurchase)}</td>}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* KPI-kort */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Din EK nå</p>
-          <p className="text-sm font-semibold font-mono">{fmtM(years[0].userEK)}</p>
+          <p className="text-sm font-semibold font-mono">{fmtM(monthlyData[0].userEK)}</p>
           <p className="text-[10px] text-muted-foreground">BSU + spare + fond</p>
         </div>
         {partnerEnabled && (
           <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Partner EK nå</p>
-            <p className="text-sm font-semibold font-mono">{fmtM(years[0].partnerEK)}</p>
+            <p className="text-sm font-semibold font-mono">{fmtM(monthlyData[0].partnerEK)}</p>
             <p className="text-[10px] text-muted-foreground">BSU + spare</p>
           </div>
         )}
         {combinedIncome > 0 && (
           <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2.5">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Max kjøpesum nå</p>
-            <p className="text-sm font-semibold font-mono text-green-400">{fmtM(years[0].maxPurchase)}</p>
+            <p className="text-sm font-semibold font-mono text-green-400">{fmtM(monthlyData[0].maxPurchase)}</p>
             <p className="text-[10px] text-muted-foreground">10% EK-krav, 5× inntekt</p>
           </div>
         )}
         <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Mnd. sparing totalt</p>
-          <p className="text-sm font-semibold font-mono">{fmtM(userBSUMonthly + userSpareMonthly + fondMonthlyDeposit + (partnerEnabled ? partnerBSUMonthly + partnerMonthly : 0))}</p>
+          <p className="text-sm font-semibold font-mono">
+            {fmtM(a.userBSUMonthly + a.userSpareMonthly + a.fondMonthly + (partnerEnabled ? a.partnerBSUMonthly + a.partnerSpareMonthly : 0))}
+          </p>
           <p className="text-[10px] text-muted-foreground">alle kontoer{partnerEnabled ? ' begge' : ''}</p>
         </div>
       </div>
 
       <p className="text-[10px] text-muted-foreground px-1">
-        Kjøpekraft beregnet med 10% egenkapitalkrav og maks 5× samlet bruttoinntekt. Prognose forutsetter uendret månedlig sparing og eksisterende gjeldsnivå.
+        Kjøpekraft beregnet med 10% egenkapitalkrav og maks 5× samlet bruttoinntekt. Rentersrente beregnes for spare og fond.
+        {a.fondAvkastning !== 6 && ` Fondavkastning satt til ${a.fondAvkastning}% p.a.`}
       </p>
     </div>
   )
@@ -533,6 +708,7 @@ function AccountCard({
   account,
   now,
   onRemove,
+  onUpdate,
   onUpdateBalance,
   onUpdateRate,
   onAddContribution,
@@ -545,6 +721,7 @@ function AccountCard({
   account: SavingsAccount
   now: Date
   onRemove: () => void
+  onUpdate: (patch: Partial<SavingsAccount>) => void
   onUpdateBalance: (e: BalanceHistoryEntry) => void
   onUpdateRate: (e: RateHistoryEntry) => void
   onAddContribution: (c: SavingsContribution) => void
@@ -556,6 +733,7 @@ function AccountCard({
 }) {
   const [activeTab, setActiveTab] = useState<AccountTab | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [editingAccount, setEditingAccount] = useState(false)
   const [editingMonthlySaving, setEditingMonthlySaving] = useState(false)
   const [monthlySavingInput, setMonthlySavingInput] = useState('')
   const [bsuPickYear, setBsuPickYear] = useState<string>(String(now.getFullYear() + 2))
@@ -615,17 +793,34 @@ function AccountCard({
               {account.accountNumber && ` · ${account.accountNumber}`}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
-            onClick={onRemove}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+              onClick={() => setEditingAccount(v => !v)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
+              onClick={onRemove}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {editingAccount && (
+          <EditAccountForm
+            account={account}
+            onSave={(patch) => { onUpdate(patch); setEditingAccount(false) }}
+            onCancel={() => setEditingAccount(false)}
+          />
+        )}
         {/* Stats grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <MiniStat label="Saldo" value={fmtNOK(currentBalance)} highlight />
@@ -1288,6 +1483,57 @@ function AddAccountForm({ onSave, onCancel }: { onSave: (a: SavingsAccount) => v
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
           <Button size="sm" onClick={handleSave} disabled={!form.label.trim()}>Lagre</Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EditAccountForm({ account, onSave, onCancel }: {
+  account: SavingsAccount
+  onSave: (patch: Partial<SavingsAccount>) => void
+  onCancel: () => void
+}) {
+  const [label, setLabel] = useState(account.label)
+  const [accountNumber, setAccountNumber] = useState(account.accountNumber ?? '')
+  const [type, setType] = useState<SavingsAccountType>(account.type)
+
+  return (
+    <Card className="border-primary/20 bg-primary/3">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Rediger konto</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 space-y-1">
+            <Label className="text-xs">Navn</Label>
+            <Input value={label} onChange={e => setLabel(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Type</Label>
+            <Select value={type} onValueChange={v => setType(v as SavingsAccountType)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(ACCOUNT_TYPE_LABELS) as SavingsAccountType[]).map(t => (
+                  <SelectItem key={t} value={t} className="text-xs">{ACCOUNT_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Kontonummer</Label>
+            <Input
+              value={accountNumber}
+              onChange={e => setAccountNumber(e.target.value)}
+              placeholder="xxxx.xx.xxxxx"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
+          <Button size="sm" onClick={() => onSave({ label: label.trim(), accountNumber: accountNumber || undefined, type })} disabled={!label.trim()}>
+            Lagre
+          </Button>
         </div>
       </CardContent>
     </Card>
