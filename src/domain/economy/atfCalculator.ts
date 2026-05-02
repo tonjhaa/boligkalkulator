@@ -1,4 +1,4 @@
-import type { ATFEntry, ATFPeriode, ATFResult, ATFBreakdown, ATFLønnskode, ATFDatoRad, KnownATFRate } from '@/types/economy'
+import type { ATFEntry, ATFPeriode, ATFResult, ATFBreakdown, ATFLønnskode, ATFDatoRad, KnownATFRate, PlanningStatus } from '@/types/economy'
 import {
   ATF_HELGE_TILLEGG_PER_TIME,
   ATF_TIMER_PER_DAG,
@@ -473,4 +473,122 @@ export function sumATFDatoRader(rows: ATFDatoRad[]): number {
 // Tidskompensasjon: full days × 7.5h
 export function beregnTidskompensasjonFromRows(rows: ATFDatoRad[]): number {
   return rows.filter(r => r.enhet === 'døgn').length * ATF_TIDSKOMPENSASJON_PER_DAG
+}
+
+// ------------------------------------------------------------
+// IKKE-PLANLAGT AKTIVITET (ATF pkt 5.2.1)
+// ------------------------------------------------------------
+
+/**
+ * Brukes på rader fra beregnATFFromDates for ikke-planlagt DØGNBASERT aktivitet.
+ * Første kalenderdag (alle rader med same dato som rows[0]) får 50 % forhøyet
+ * økonomisk kompensasjon. Avspas/tidskompensasjon er uendret.
+ *
+ * ATF pkt 5.2.1: "for det første døgnet av aktiviteten forhøyes den
+ * økonomiske kompensasjonen med 50 %."
+ */
+export function applyFørsteDøgnTillegg(rows: ATFDatoRad[]): ATFDatoRad[] {
+  if (rows.length === 0) return rows
+  const firstDate = rows[0].dato
+  return rows.map(row => {
+    if (row.dato !== firstDate) return row
+    const newSats = r2(row.sats * 1.5)
+    const newBelop = r2(row.belop * 1.5)
+    return {
+      ...row,
+      sats: newSats,
+      belop: newBelop,
+      beskrivelse: row.beskrivelse + ' (+50 % ikke-planlagt)',
+      isFirstDayBonus: true,
+    }
+  })
+}
+
+/**
+ * Beregner HTA-overtid (OT 100 %) for ikke-planlagt timebasert aktivitet.
+ * Brukes i stedet for ATF-timesatser når aktiviteten ikke fremgår av arbeidsplanen.
+ * ATF pkt 5.2.1: ikke-planlagt, ikke-døgnbasert → beregn som overtid etter HTA.
+ */
+export function beregnHTAOvertidFromDates(
+  fra: Date,
+  til: Date,
+  annualSalary: number,
+): ATFDatoRad[] {
+  const rows: ATFDatoRad[] = []
+  const timesats = annualSalary / 1850
+  const ot100 = timesats * 2.0
+  const fraDay = startOfDay(fra)
+  const tilDay = startOfDay(til)
+  const fraMin = minsInDay(fra)
+  const tilMin = minsInDay(til)
+
+  const cur = new Date(fraDay)
+  while (cur.getTime() <= tilDay.getTime()) {
+    const isFirst = cur.getTime() === fraDay.getTime()
+    const isLast = cur.getTime() === tilDay.getTime()
+    let hours: number
+    if (isFirst && isLast) hours = (tilMin - fraMin) / 60
+    else if (isFirst) hours = (24 * 60 - fraMin) / 60
+    else if (isLast) hours = tilMin / 60
+    else hours = 7
+    hours = Math.max(0, Math.min(hours, 24))
+    if (hours > 0.01) {
+      const dayType = getDayType(cur)
+      rows.push({
+        dato: dateStr(cur),
+        dagType: dayType,
+        artskode: 'HTA-OT',
+        beskrivelse: `HTA-overtid (OT 100 %) ${dayType}`,
+        antall: r1(hours),
+        enhet: 'timer',
+        sats: r2(ot100),
+        belop: r2(ot100 * hours),
+      })
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  return rows
+}
+
+export type AppliedATFRule =
+  | 'planned_atf'
+  | 'unplanned_daily_atf_first50'
+  | 'unplanned_hourly_hta_ot'
+
+/**
+ * Hoved-inngang for datobasert ATF-beregning med planleggingsstatus.
+ * Delegerer til beregnATFFromDates for planlagte aktiviteter,
+ * og til spesialiserte funksjoner for ikke-planlagte.
+ */
+export function beregnATFMedPlanstatus(
+  fra: Date,
+  til: Date,
+  annualSalary: number,
+  fixedAdditions = 0,
+  type: 'døgn' | 'time' = 'døgn',
+  knownATFRates?: Record<string, KnownATFRate>,
+  planningStatus: PlanningStatus = 'planned',
+): { rows: ATFDatoRad[]; appliedRule: AppliedATFRule } {
+  // Ikke-planlagt + timebasert → HTA-overtid
+  if (planningStatus === 'unplanned' && type === 'time') {
+    return {
+      rows: beregnHTAOvertidFromDates(fra, til, annualSalary),
+      appliedRule: 'unplanned_hourly_hta_ot',
+    }
+  }
+
+  // Ikke-planlagt + døgnbasert → ATF med 50 % bonus første døgn
+  if (planningStatus === 'unplanned' && type === 'døgn') {
+    const baseRows = beregnATFFromDates(fra, til, annualSalary, fixedAdditions, type, knownATFRates)
+    return {
+      rows: applyFørsteDøgnTillegg(baseRows),
+      appliedRule: 'unplanned_daily_atf_first50',
+    }
+  }
+
+  // Planlagt → normal ATF
+  return {
+    rows: beregnATFFromDates(fra, til, annualSalary, fixedAdditions, type, knownATFRates),
+    appliedRule: 'planned_atf',
+  }
 }

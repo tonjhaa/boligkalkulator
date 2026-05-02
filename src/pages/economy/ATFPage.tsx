@@ -12,12 +12,13 @@ import {
   sumATFByYear,
   calculateATFRates,
   getATFRatesSourceLabel,
-  beregnATFFromDates,
   sumATFDatoRader,
   beregnTidskompensasjonFromRows,
+  beregnATFMedPlanstatus,
+  type AppliedATFRule,
 } from '@/domain/economy/atfCalculator'
 import { estimateSalaryTrend, projectMonthlySalary } from '@/domain/economy/salaryCalculator'
-import type { ATFEntry, ATFDatoRad, KnownATFRate } from '@/types/economy'
+import type { ATFEntry, ATFDatoRad, KnownATFRate, PlanningStatus } from '@/types/economy'
 
 // ------------------------------------------------------------
 // FORMATTING HELPERS
@@ -80,18 +81,26 @@ function DagTypeDot({ type }: { type: 'hverdag' | 'helg' | 'helligdag' }) {
   )
 }
 
+const RULE_LABELS: Record<AppliedATFRule, { text: string; color: string }> = {
+  planned_atf:                 { text: 'Planlagt ATF — normal sats', color: 'text-blue-400 bg-blue-500/10 border-blue-500/30' },
+  unplanned_daily_atf_first50: { text: 'Ikke-planlagt døgnbasert ATF — første døgn +50 % øk. komp. (ATF pkt 5.2.1)', color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+  unplanned_hourly_hta_ot:     { text: 'Ikke-planlagt timebasert — HTA-overtid OT 100 % (ATF pkt 5.2.1)', color: 'text-orange-400 bg-orange-500/10 border-orange-500/30' },
+}
+
 function BreakdownTable({
   rows,
   annualSalary,
   taxPercent,
   taxPercentSource,
   payoutMonth,
+  appliedRule,
 }: {
   rows: ATFDatoRad[]
   annualSalary: number
   taxPercent?: number
   taxPercentSource?: 'slipp' | 'fallback'
   payoutMonth?: number
+  appliedRule?: AppliedATFRule
 }) {
   const effectivePct = taxPercent ?? DEFAULT_TAX_PCT
   const brutto = sumATFDatoRader(rows)
@@ -100,8 +109,15 @@ function BreakdownTable({
   const tidskompensasjon = beregnTidskompensasjonFromRows(rows)
   const isFallback = !taxPercent || taxPercentSource === 'fallback'
 
+  const ruleInfo = appliedRule ? RULE_LABELS[appliedRule] : null
+
   return (
     <div className="space-y-2">
+      {ruleInfo && (
+        <div className={cn('rounded border px-2.5 py-1.5 text-xs font-medium', ruleInfo.color)}>
+          {ruleInfo.text}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -117,7 +133,7 @@ function BreakdownTable({
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-b border-border/50">
+              <tr key={i} className={cn('border-b border-border/50', row.isFirstDayBonus && 'bg-amber-500/5')}>
                 <td className="py-1 pr-2 font-mono">{formatDate(row.dato)}</td>
                 <td className="py-1 pr-2">
                   <span className="flex items-center">
@@ -126,7 +142,12 @@ function BreakdownTable({
                   </span>
                 </td>
                 <td className="py-1 pr-2 font-mono text-muted-foreground">{row.artskode}</td>
-                <td className="py-1 pr-2">{row.beskrivelse}</td>
+                <td className="py-1 pr-2">
+                  {row.beskrivelse}
+                  {row.isFirstDayBonus && (
+                    <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-400 px-1 py-0.5 rounded">+50%</span>
+                  )}
+                </td>
                 <td className="py-1 pr-2 text-right font-mono">
                   {row.antall} {row.enhet === 'timer' ? 't' : 'døgn'}
                 </td>
@@ -266,6 +287,7 @@ function NyØvelseModal({
   )
   const [notat, setNotat] = useState(initialEntry?.notat ?? '')
   const [excludeFromBudget, setExcludeFromBudget] = useState(initialEntry?.excludeFromBudget ?? false)
+  const [planningStatus, setPlanningStatus] = useState<PlanningStatus>(initialEntry?.planningStatus ?? 'planned')
   const [showBreakdown, setShowBreakdown] = useState(false)
 
   // Parse dates
@@ -288,10 +310,13 @@ function NyØvelseModal({
 
   // Live computation
   let rows: ATFDatoRad[] = []
+  let appliedRule: AppliedATFRule | undefined
   let computeError: string | null = null
   if (fra && til && datesValid && parsedSalary > 0) {
     try {
-      rows = beregnATFFromDates(fra, til, parsedSalary, parsedTillegg, øvelsestype, knownATFRates)
+      const result = beregnATFMedPlanstatus(fra, til, parsedSalary, parsedTillegg, øvelsestype, knownATFRates, planningStatus)
+      rows = result.rows
+      appliedRule = result.appliedRule
     } catch (err) {
       computeError = err instanceof Error ? err.message : 'Beregningsfeil'
       rows = []
@@ -330,6 +355,8 @@ function NyØvelseModal({
       årslønnInput: parsedSalary || undefined,
       fasteTilleggInput: parsedTillegg || undefined,
       excludeFromBudget: excludeFromBudget || undefined,
+      planningStatus,
+      appliedRule,
     })
   }
 
@@ -364,6 +391,44 @@ function NyØvelseModal({
                 <SelectItem value="time">Øving pr time</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Planleggingsstatus */}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Planleggingsstatus (ATF pkt 5.2.1)</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPlanningStatus('planned')}
+                className={cn(
+                  'flex-1 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
+                  planningStatus === 'planned'
+                    ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
+                    : 'border-border text-muted-foreground hover:border-border/80'
+                )}
+              >
+                Planlagt
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlanningStatus('unplanned')}
+                className={cn(
+                  'flex-1 rounded border px-3 py-1.5 text-xs font-medium transition-colors',
+                  planningStatus === 'unplanned'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                    : 'border-border text-muted-foreground hover:border-border/80'
+                )}
+              >
+                Ikke-planlagt
+              </button>
+            </div>
+            {planningStatus === 'unplanned' && (
+              <p className="text-xs text-amber-400/80 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1.5">
+                {øvelsestype === 'døgn'
+                  ? 'Ikke-planlagt døgnbasert: første døgn får +50 % forhøyet økonomisk kompensasjon (ATF pkt 5.2.1).'
+                  : 'Ikke-planlagt timebasert: beregnes som HTA-overtid OT 100 % i stedet for ATF-timesatser (ATF pkt 5.2.1).'}
+              </p>
+            )}
           </div>
 
           {/* Fra */}
@@ -466,6 +531,7 @@ function NyØvelseModal({
                   taxPercent={tableTaxPercent}
                   taxPercentSource={tableTaxPercent ? 'slipp' : 'fallback'}
                   payoutMonth={payoutMonth}
+                  appliedRule={appliedRule}
                 />
               )}
             </div>
@@ -613,7 +679,14 @@ export function ATFPage() {
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       )}
                       <div>
-                        <span className="font-medium text-sm">{entry.øvelsesnavn}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-sm">{entry.øvelsesnavn}</span>
+                          {entry.planningStatus === 'unplanned' && (
+                            <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/30 font-medium">
+                              Ikke-planlagt
+                            </span>
+                          )}
+                        </div>
                         {entry.fraDateISO && entry.tilDateISO && (
                           <p className="text-xs text-muted-foreground">
                             {formatDateRange(entry.fraDateISO, entry.tilDateISO)}
@@ -674,6 +747,7 @@ export function ATFPage() {
                           taxPercent={tableTaxPercent}
                           taxPercentSource={tableTaxPercent ? 'slipp' : 'fallback'}
                           payoutMonth={entry.payoutMonth}
+                          appliedRule={entry.appliedRule}
                         />
                       ) : oldResult ? (
                         <div className="space-y-2">

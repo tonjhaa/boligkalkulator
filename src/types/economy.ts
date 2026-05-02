@@ -199,13 +199,17 @@ export interface ATFPeriode {
 export interface ATFDatoRad {
   dato: string            // "2026-03-09"
   dagType: 'hverdag' | 'helg' | 'helligdag'
-  artskode: string        // "2230", "2232", "2236", "2242" etc.
+  artskode: string        // "2230", "2232", "2236", "2242", "HTA-OT" etc.
   beskrivelse: string
   antall: number          // hours or days
   enhet: 'timer' | 'døgn'
   sats: number
   belop: number
+  /** Markerer at denne raden har fått 50 % forhøyet sats (første døgn, ikke-planlagt) */
+  isFirstDayBonus?: boolean
 }
+
+export type PlanningStatus = 'planned' | 'unplanned'
 
 export interface ATFEntry {
   id: string
@@ -229,6 +233,18 @@ export interface ATFEntry {
   fasteTilleggInput?: number
   /** Skjul denne øvelsens ATF-sum fra budsjettberegninger */
   excludeFromBudget?: boolean
+  /**
+   * Planleggingsstatus (ATF pkt 5.2.1).
+   * planned  = fremgår av arbeidsplanen → beregn normalt etter ATF.
+   * unplanned = fremgår IKKE av arbeidsplanen →
+   *   - døgnbasert: ATF-sats, første døgn +50 % på øk. komp.
+   *   - timebasert: rutes til HTA-overtid (OT 100 %).
+   */
+  planningStatus?: PlanningStatus
+  /**
+   * Hvilken regel ble brukt for beregningen (satt av kalkulator).
+   */
+  appliedRule?: 'planned_atf' | 'unplanned_daily_atf_first50' | 'unplanned_hourly_hta_ot'
 }
 
 // ------------------------------------------------------------
