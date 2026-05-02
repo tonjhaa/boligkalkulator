@@ -428,6 +428,7 @@ export interface TaxSettlementRecord {
   skattTilGodeEllerRest: number   // positivt = til gode (du får penger), negativt = restskatt (du skylder)
   skattBetalt?: number
   nettoInntekt?: number
+  displayOverride?: number        // manuell overstyring — brukes i stedet for skattTilGodeEllerRest i beregninger/visning
 }
 
 export interface TaxSettlementAnalysis {

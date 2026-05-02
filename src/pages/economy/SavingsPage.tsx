@@ -326,6 +326,7 @@ function AccountCard({
   const [editingMonthlySaving, setEditingMonthlySaving] = useState(false)
   const [monthlySavingInput, setMonthlySavingInput] = useState('')
   const [bsuPickYear, setBsuPickYear] = useState<string>(String(now.getFullYear() + 2))
+  const [bsuPickMonth, setBsuPickMonth] = useState<number>(now.getMonth() + 1)
   const [bsuPostRate, setBsuPostRate] = useState(3.0)
   const [editingBirthYear, setEditingBirthYear] = useState(false)
   const [birthYearInput, setBirthYearInput] = useState('')
@@ -509,12 +510,23 @@ function AccountCard({
               const pickY = parseInt(bsuPickYear)
               const validPickY = pickY && pickY >= currentYear && pickY <= 2060 ? pickY : null
               const displayYear = validPickY ?? bsuForecast.cutoffYear
-              const contribs = bsuForecast.contributionsAtYear(displayYear)
-              const interest = bsuForecast.interestAtYear(displayYear)
-              const balance = bsuForecast.balanceAtYear(displayYear)
-              const maxContribs = bsuMaxForecast!.contributionsAtYear(displayYear)
-              const maxInterest = bsuMaxForecast!.interestAtYear(displayYear)
-              const maxBalance = bsuMaxForecast!.balanceAtYear(displayYear)
+              const displayMonth = bsuPickMonth // 1–12
+
+              // Lineær interpolasjon mellom år-slutt verdier for månedlig prognose
+              function interpolate(atYear: (y: number) => number, year: number, month: number) {
+                const prev = year === currentYear ? currentBalance : atYear(year - 1)
+                const next = atYear(year)
+                return Math.round(prev + (next - prev) * (month / 12))
+              }
+
+              const balance = interpolate(bsuForecast.balanceAtYear, displayYear, displayMonth)
+              const contribs = interpolate(bsuForecast.contributionsAtYear, displayYear, displayMonth)
+              const interest = interpolate(bsuForecast.interestAtYear, displayYear, displayMonth)
+              const maxBalance = interpolate(bsuMaxForecast!.balanceAtYear, displayYear, displayMonth)
+              const maxContribs = interpolate(bsuMaxForecast!.contributionsAtYear, displayYear, displayMonth)
+              const maxInterest = interpolate(bsuMaxForecast!.interestAtYear, displayYear, displayMonth)
+
+              const MONTH_NAMES_NO = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des']
               return (
                 <div className="rounded-md border border-border/50 mt-2 overflow-hidden">
                   <div className="bg-muted/20 px-3 py-1.5 text-xs font-medium text-muted-foreground flex items-center justify-between">
@@ -537,15 +549,26 @@ function AccountCard({
                     <thead>
                       <tr className="border-b border-border/30">
                         <th className="text-left px-3 py-1.5 font-normal text-muted-foreground w-1/2">
-                          Ved utgangen av
-                          <input
-                            type="number"
-                            min={currentYear}
-                            max={2060}
-                            className="ml-1.5 h-5 w-16 rounded border border-border bg-background px-1.5 font-normal text-foreground"
-                            value={bsuPickYear}
-                            onChange={(e) => setBsuPickYear(e.target.value)}
-                          />
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span>Per</span>
+                            <select
+                              className="h-5 text-xs rounded border border-border bg-background px-1 font-normal text-foreground"
+                              value={bsuPickMonth}
+                              onChange={(e) => setBsuPickMonth(parseInt(e.target.value))}
+                            >
+                              {MONTH_NAMES_NO.map((mn, i) => (
+                                <option key={i + 1} value={i + 1}>{mn}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              min={currentYear}
+                              max={2060}
+                              className="h-5 w-14 rounded border border-border bg-background px-1.5 font-normal text-foreground text-xs"
+                              value={bsuPickYear}
+                              onChange={(e) => setBsuPickYear(e.target.value)}
+                            />
+                          </div>
                         </th>
                         <th className="text-right px-3 py-1.5 font-normal text-muted-foreground">Ditt tempo</th>
                         <th className="text-right px-3 py-1.5 font-normal text-muted-foreground">Maks (27 500/år)</th>

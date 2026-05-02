@@ -27,6 +27,7 @@ export function TaxSettlementPage() {
   const {
     taxSettlements,
     addTaxSettlement,
+    updateTaxSettlement,
     removeTaxSettlement,
     addBudgetLine,
     budgetTemplate,
@@ -45,9 +46,11 @@ export function TaxSettlementPage() {
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [budgetPickFor, setBudgetPickFor] = useState<number | null>(null) // settlement year
+  const [budgetPickFor, setBudgetPickFor] = useState<number | null>(null)
   const [budgetPickMonth, setBudgetPickMonth] = useState(new Date().getMonth() + 1)
   const [budgetPickYear, setBudgetPickYear] = useState(new Date().getFullYear())
+  const [editingOverride, setEditingOverride] = useState<number | null>(null) // year
+  const [overrideInput, setOverrideInput] = useState('')
   const [importMsg, setImportMsg] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -74,8 +77,13 @@ export function TaxSettlementPage() {
     }
   }
 
+  function effectiveAmount(r: TaxSettlementRecord) {
+    return r.displayOverride !== undefined ? r.displayOverride : r.skattTilGodeEllerRest
+  }
+
   function addSettlementToBudget(r: TaxSettlementRecord, month: number, year: number) {
-    const isRestskatt = r.skattTilGodeEllerRest < 0
+    const amount = effectiveAmount(r)
+    const isRestskatt = amount < 0
     const settlementLabel = isRestskatt ? `Restskatt ${r.year}` : `Skattetilgode ${r.year}`
     const exists = budgetTemplate.lines.some((l) => l.label === settlementLabel)
     if (exists) return
@@ -83,7 +91,7 @@ export function TaxSettlementPage() {
       id: crypto.randomUUID(),
       label: settlementLabel,
       category: 'skatteoppgjor',
-      amount: r.skattTilGodeEllerRest,
+      amount,
       isRecurring: false,
       source: 'manual',
       isLocked: false,
@@ -99,7 +107,7 @@ export function TaxSettlementPage() {
     .sort((a, b) => a.year - b.year)
     .map((r) => ({
       year: r.year,
-      beløp: r.skattTilGodeEllerRest,
+      beløp: effectiveAmount(r),
     }))
 
   function handleReduceExtra() {
@@ -410,15 +418,56 @@ export function TaxSettlementPage() {
                   {[...taxSettlements]
                     .sort((a, b) => b.year - a.year)
                     .map((r) => {
-                      const tilgode = r.skattTilGodeEllerRest
+                      const tilgode = effectiveAmount(r)
+                      const isOverridden = r.displayOverride !== undefined
                       return (
                         <tr key={r.year} className="border-b border-border last:border-0">
                           <td className="px-3 py-2 text-xs font-medium">{r.year}</td>
                           <td className="px-3 py-2 text-right font-mono text-xs">
                             {r.pensjonsgivendeInntekt ? fmtNOK(r.pensjonsgivendeInntekt) : '—'}
                           </td>
-                          <td className={`px-3 py-2 text-right font-mono text-xs font-medium ${tilgode >= 0 ? 'text-green-500' : 'text-red-400'}`}>
-                            {tilgode >= 0 ? '+' : ''}{fmtNOK(tilgode)}
+                          <td className="px-3 py-2 text-right text-xs">
+                            {editingOverride === r.year ? (
+                              <div className="flex items-center gap-1 justify-end">
+                                <input
+                                  type="number"
+                                  className="h-6 w-24 rounded border border-border bg-background px-1.5 text-xs font-mono text-right"
+                                  value={overrideInput}
+                                  onChange={(e) => setOverrideInput(e.target.value)}
+                                  placeholder="f.eks. -4200"
+                                  autoFocus
+                                />
+                                <button className="text-green-400 hover:text-green-300 text-xs px-1"
+                                  onClick={() => {
+                                    const val = parseFloat(overrideInput)
+                                    if (!isNaN(val)) updateTaxSettlement(r.year, { displayOverride: val })
+                                    setEditingOverride(null)
+                                  }}>✓</button>
+                                <button className="text-muted-foreground hover:text-foreground text-xs px-1"
+                                  onClick={() => setEditingOverride(null)}>✕</button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 justify-end group">
+                                <span className={`font-mono font-medium ${tilgode >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                                  {tilgode >= 0 ? '+' : ''}{fmtNOK(tilgode)}
+                                </span>
+                                {isOverridden && (
+                                  <span className="text-[9px] text-amber-400/70">(overstyrt)</span>
+                                )}
+                                <button
+                                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity text-[10px] ml-0.5"
+                                  title="Endre beløp"
+                                  onClick={() => { setOverrideInput(String(tilgode)); setEditingOverride(r.year) }}
+                                >✎</button>
+                                {isOverridden && (
+                                  <button
+                                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity text-[10px]"
+                                    title="Tilbakestill til originalverdi"
+                                    onClick={() => updateTaxSettlement(r.year, { displayOverride: undefined })}
+                                  >↩</button>
+                                )}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             {(() => {

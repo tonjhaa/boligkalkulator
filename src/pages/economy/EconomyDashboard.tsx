@@ -144,12 +144,35 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const totalGjeld = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
   const nettoFormue = totalSparing - totalGjeld
 
-  // ── Inntektstrend ─────────────────────────────────────────
-  const trendData = [...monthHistory]
-    .filter((m) => m.slipData != null)
+  // ── Inntektstrend — siste 3 faktiske + 6 projiserte ─────
+  const sortedSlips = [...monthHistory]
+    .filter((m) => m.slipData != null && m.nettoUtbetalt > 0)
     .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
-    .slice(-12)
-    .map((m) => ({ m: MONTH_NAMES[m.month], v: m.nettoUtbetalt }))
+
+  const last3Slips = sortedSlips.slice(-3)
+  const trendData = last3Slips.map((m) => ({ m: MONTH_NAMES[m.month], v: m.nettoUtbetalt }))
+
+  // Projisert netto: snitt av siste 3 slips, fallback til profil
+  const projectedMonthlyNet = last3Slips.length >= 1
+    ? Math.round(last3Slips.reduce((s, m) => s + m.nettoUtbetalt, 0) / last3Slips.length)
+    : (profile?.baseMonthly ?? 0) > 0
+      ? Math.round((profile!.baseMonthly + (profile!.fixedAdditions.reduce((s, a) => s + a.amount, 0))) *
+          (1 - Math.min(0.50, ((profile!.lastKnownTaxWithholding ?? 0) + (profile!.extraTaxWithholding ?? 0)) /
+            Math.max(1, profile!.baseMonthly + profile!.fixedAdditions.reduce((s, a) => s + a.amount, 0)))))
+      : 0
+
+  const projectedTrend: { m: string; v: number }[] = projectedMonthlyNet > 0
+    ? (() => {
+        const MONTH_SHORT = ['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des']
+        const lastEntry = sortedSlips[sortedSlips.length - 1]
+        const startMonth = lastEntry ? lastEntry.month : now.getMonth() + 1
+        const startYear = lastEntry ? lastEntry.year : now.getFullYear()
+        return Array.from({ length: 6 }, (_, i) => {
+          const d = new Date(startYear, startMonth - 1 + i + 1, 1)
+          return { m: MONTH_SHORT[d.getMonth()], v: projectedMonthlyNet }
+        })
+      })()
+    : []
 
   // ── Budsjett ──────────────────────────────────────────────
   const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
@@ -236,7 +259,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   if (sparerate12m !== null) {
     chips.push({
       icon: '💰',
-      text: `Sparerate: ${sparerate12m}% av netto (siste 12 mnd)`,
+      text: `Din sparerate: ${sparerate12m}% av netto (siste 12 mnd)`,
       accent: sparerate12m >= 20 ? 'green' : sparerate12m >= 10 ? 'yellow' : 'red',
     })
   } else if (nettoFraBudsjett > 0 && overskuddFraBudsjett !== null) {
@@ -314,6 +337,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         />
         <FormueChart
           history={trendData}
+          projected={projectedTrend}
           nettoFormue={nettoFormue}
         />
         <PengePulsCard chips={chips} />

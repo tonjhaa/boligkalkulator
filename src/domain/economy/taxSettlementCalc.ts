@@ -26,8 +26,8 @@ export function analyzeTaxSettlements(
     .sort((a, b) => b.year - a.year)
     .slice(0, 3)
 
-  // positivt = tilgode, negativt = restskatt
-  const refunds = recent.map((r) => r.skattTilGodeEllerRest)
+  // positivt = tilgode, negativt = restskatt — bruker displayOverride om satt
+  const refunds = recent.map((r) => r.displayOverride !== undefined ? r.displayOverride : r.skattTilGodeEllerRest)
   const avgYearlyRefund = refunds.reduce((s, r) => s + r, 0) / refunds.length
 
   let recommendation: TaxSettlementAnalysis['recommendation']
