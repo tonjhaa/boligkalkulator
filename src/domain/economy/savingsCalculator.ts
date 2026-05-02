@@ -78,6 +78,31 @@ export function computeYTDContributions(account: SavingsAccount, year: number): 
 }
 
 /**
+ * Projiserer saldo måned for måned med rentersrente.
+ * BSU-typen tar hensyn til BSU_MAX_TOTAL-taket.
+ */
+export function projectBalanceMonthly(
+  start: number,
+  monthly: number,
+  annualRate: number,
+  months: number,
+  isBSU = false
+): number {
+  if (isBSU) {
+    let bal = start
+    for (let i = 0; i < months; i++) {
+      bal = Math.min(bal + monthly, BSU_MAX_TOTAL)
+    }
+    return bal
+  }
+  const years = months / 12
+  const r = annualRate / 100
+  if (r === 0) return start + monthly * months
+  const factor = Math.pow(1 + r, years)
+  return start * factor + monthly * 12 * (factor - 1) / r
+}
+
+/**
  * Sum av innskudd for en gitt måned (year + month).
  */
 export function computeMonthContributions(account: SavingsAccount, year: number, month: number): number {

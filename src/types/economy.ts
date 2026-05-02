@@ -297,6 +297,10 @@ export interface SavingsAccount {
   accountNumber?: string
   /** Fødselsår – brukes for BSU aldersgrense (siste innskuddsår = fødselsår + 33) */
   birthYear?: number
+  /** Forventet årlig avkastning i prosent. Brukes i simulering for fond/krypto. */
+  expectedReturn?: number
+  /** Faktisk oppnådd avkastning siste 12 mnd i prosent. Null = ikke registrert. */
+  actualReturn?: number | null
 }
 
 export interface SavingsGoal {
@@ -629,4 +633,17 @@ export interface PartnerVeikart {
   bsuMonthlyContribution: number // BSU-innskudd per måned
   bsuBirthYear?: number        // fødselsår — for BSU-aldersgrense
   monthlySavings: number       // mnd. sparing eks. BSU
+}
+
+// ─── SPARESCENARIO ─────────────────────────────────────────────
+
+export interface SavingsScenario {
+  id: string
+  label: string
+  color: string
+  /** Overstyrer expectedReturn per konto-id. Mangler = bruk kontoens default */
+  returnOverrides: Record<string, number>
+  /** Overstyrer månedlig innskudd per konto-id */
+  monthlyOverrides: Record<string, number>
+  createdAt: number
 }

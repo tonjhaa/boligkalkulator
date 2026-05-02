@@ -30,6 +30,7 @@ import type {
   UserPreferences,
   LonnsoppgjorRecord,
   PartnerVeikart,
+  SavingsScenario,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -86,6 +87,16 @@ interface EconomyState {
   // Partner (Veikart + Dashboard)
   partnerVeikart: PartnerVeikart
   setPartnerVeikart: (p: PartnerVeikart) => void
+
+  // Spareplan
+  savingsScenarios: SavingsScenario[]
+  savingsPlanTarget: number
+  savingsPlanHorizon: number
+  addSavingsScenario: (s: SavingsScenario) => void
+  updateSavingsScenario: (id: string, patch: Partial<SavingsScenario>) => void
+  removeSavingsScenario: (id: string) => void
+  setSavingsPlanTarget: (price: number) => void
+  setSavingsPlanHorizon: (months: number) => void
 
   // Actions
   setProfile: (profile: EmploymentProfile) => void
@@ -246,6 +257,20 @@ export const useEconomyStore = create<EconomyState>()(
         monthlySavings: 0,
       },
       setPartnerVeikart: (p) => set({ partnerVeikart: p }),
+
+      // --- Spareplan ---
+      savingsScenarios: [],
+      savingsPlanTarget: 0,
+      savingsPlanHorizon: 48,
+      addSavingsScenario: (s) => set((state) => ({ savingsScenarios: [...state.savingsScenarios, s] })),
+      updateSavingsScenario: (id, patch) => set((state) => ({
+        savingsScenarios: state.savingsScenarios.map((s) => s.id === id ? { ...s, ...patch } : s),
+      })),
+      removeSavingsScenario: (id) => set((state) => ({
+        savingsScenarios: state.savingsScenarios.filter((s) => s.id !== id),
+      })),
+      setSavingsPlanTarget: (price) => set({ savingsPlanTarget: price }),
+      setSavingsPlanHorizon: (months) => set({ savingsPlanHorizon: months }),
 
       // --- Profil ---
       setProfile: (profile) => set({ profile }),
@@ -1017,6 +1042,9 @@ export const useEconomyStore = create<EconomyState>()(
         fondPortfolio: state.fondPortfolio,
         budgetOverrides: state.budgetOverrides,
         partnerVeikart: state.partnerVeikart,
+        savingsScenarios: state.savingsScenarios,
+        savingsPlanTarget: state.savingsPlanTarget,
+        savingsPlanHorizon: state.savingsPlanHorizon,
       }),
     }
   )
