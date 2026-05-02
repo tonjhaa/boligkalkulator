@@ -152,28 +152,6 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const last3Slips = sortedSlips.slice(-3)
   const trendData = last3Slips.map((m) => ({ m: MONTH_NAMES[m.month], v: m.nettoUtbetalt }))
 
-  // Projisert netto: snitt av siste 3 slips, fallback til profil
-  const projectedMonthlyNet = last3Slips.length >= 1
-    ? Math.round(last3Slips.reduce((s, m) => s + m.nettoUtbetalt, 0) / last3Slips.length)
-    : (profile?.baseMonthly ?? 0) > 0
-      ? Math.round((profile!.baseMonthly + (profile!.fixedAdditions.reduce((s, a) => s + a.amount, 0))) *
-          (1 - Math.min(0.50, ((profile!.lastKnownTaxWithholding ?? 0) + (profile!.extraTaxWithholding ?? 0)) /
-            Math.max(1, profile!.baseMonthly + profile!.fixedAdditions.reduce((s, a) => s + a.amount, 0)))))
-      : 0
-
-  const projectedTrend: { m: string; v: number }[] = projectedMonthlyNet > 0
-    ? (() => {
-        const MONTH_SHORT = ['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des']
-        const lastEntry = sortedSlips[sortedSlips.length - 1]
-        const startMonth = lastEntry ? lastEntry.month : now.getMonth() + 1
-        const startYear = lastEntry ? lastEntry.year : now.getFullYear()
-        return Array.from({ length: 6 }, (_, i) => {
-          const d = new Date(startYear, startMonth - 1 + i + 1, 1)
-          return { m: MONTH_SHORT[d.getMonth()], v: projectedMonthlyNet }
-        })
-      })()
-    : []
-
   // ── Budsjett ──────────────────────────────────────────────
   const juneForecast = profile ? forecastJune(currentYear, monthHistory, profile, atfEntries) : null
 
@@ -193,10 +171,30 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
   const allBudgetRows = budgetTable?.sections.flatMap((s) => s.rows) ?? []
   const monthIdx = currentMonth - 1
-  const nettoCell = allBudgetRows.find((r) => r.id === 'netto')?.cells[monthIdx]
+  const nettoRow = allBudgetRows.find((r) => r.id === 'netto')
+  const nettoCell = nettoRow?.cells[monthIdx]
   const overskuddCell = allBudgetRows.find((r) => r.id === 'overskudd')?.cells[monthIdx]
   const nettoFraBudsjett = nettoCell ? (nettoCell.actual ?? nettoCell.budget) : 0
   const overskuddFraBudsjett = overskuddCell ? (overskuddCell.actual ?? overskuddCell.budget) : null
+
+  // ── Inntektstrend projeksjon — bruk budsjettabellens netto for fremtidige måneder ─────
+  const projectedTrend: { m: string; v: number }[] = (() => {
+    const MONTH_SHORT = ['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des']
+    const lastEntry = sortedSlips[sortedSlips.length - 1]
+    const startMonth = lastEntry ? lastEntry.month : currentMonth
+    const startYear = lastEntry ? lastEntry.year : currentYear
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(startYear, startMonth - 1 + i + 1, 1)
+      // Bruk budsjettabellens netto-celle for måneder i inneværende år, ellers siste kjente
+      const cellIdx = d.getMonth() // 0-based
+      const budgetNetto = nettoRow && d.getFullYear() === currentYear
+        ? (nettoRow.cells[cellIdx]?.budget ?? 0)
+        : 0
+      const v = budgetNetto > 0 ? budgetNetto : nettoFraBudsjett
+      if (v <= 0) return null
+      return { m: MONTH_SHORT[d.getMonth()], v }
+    }).filter((p): p is { m: string; v: number } => p !== null)
+  })()
 
   // ── Sparerate siste 12 mnd (faktisk sparevekst / total netto) ────
   const sparerate12m = (() => {

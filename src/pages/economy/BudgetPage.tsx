@@ -746,6 +746,11 @@ function OversiktView({
                 const budgetPct = g.budget / maxCatBudget
                 const actualPct = g.actual !== null ? g.actual / maxCatBudget : null
                 const overrun = g.actual !== null && g.actual > g.budget
+                const isSaving = g.label === 'Sparing'
+                // Sparing: overskridelse er bra (grønn). Utgifter: overskridelse er dårlig (rød).
+                const overrunColor = isSaving ? 'text-green-400' : 'text-red-400'
+                const overrunBg = isSaving ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
+                const barColor = overrun ? (isSaving ? 'bg-green-400' : 'bg-red-400') : (isSaving ? 'bg-green-500' : 'bg-blue-500')
                 return (
                   <div key={g.label} className="space-y-1">
                     <div className="flex justify-between text-[11px]">
@@ -753,13 +758,13 @@ function OversiktView({
                       <div className="flex items-center gap-2">
                         {g.actual !== null ? (
                           <>
-                            <span className={cn('font-mono', overrun ? 'text-red-400' : 'text-foreground')}>
+                            <span className={cn('font-mono', overrun ? overrunColor : 'text-foreground')}>
                               {fmt(g.actual)}
                             </span>
                             <span className="text-muted-foreground/50">/</span>
                             <span className="font-mono text-muted-foreground">{fmt(g.budget)}</span>
                             {overrun && (
-                              <span className="text-[9px] bg-red-500/15 text-red-400 px-1 py-0.5 rounded-sm leading-none">
+                              <span className={cn('text-[9px] px-1 py-0.5 rounded-sm leading-none', overrunBg)}>
                                 +{fmt(g.actual - g.budget)}
                               </span>
                             )}
@@ -772,15 +777,12 @@ function OversiktView({
                     {/* Bar */}
                     <div className="relative h-1.5 rounded-full bg-muted/30">
                       <div
-                        className="absolute inset-y-0 left-0 rounded-full bg-blue-500/40"
+                        className={cn('absolute inset-y-0 left-0 rounded-full', isSaving ? 'bg-green-500/30' : 'bg-blue-500/40')}
                         style={{ width: `${budgetPct * 100}%` }}
                       />
                       {actualPct !== null && (
                         <div
-                          className={cn(
-                            'absolute inset-y-0 left-0 rounded-full',
-                            overrun ? 'bg-red-400' : 'bg-blue-500',
-                          )}
+                          className={cn('absolute inset-y-0 left-0 rounded-full', barColor)}
                           style={{ width: `${actualPct * 100}%` }}
                         />
                       )}
