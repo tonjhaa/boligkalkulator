@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { BSU_MAX_YEARLY } from '@/config/economy.config'
@@ -460,7 +460,7 @@ function Sparkline({ data, color = '#60a5fa', height = 48 }: {
 function projectDebtBalance(debt: DebtAccount, months: number): number {
   if (debt.status === 'nedbetalt') return 0
   const sorted = [...debt.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
-  const annualRate = sorted[0]?.rate ?? 0
+  const annualRate = sorted[0]?.nominalRate ?? 0
   const r = annualRate / 100 / 12
   const P = debt.monthlyPayment
   const B = debt.currentBalance
@@ -1176,7 +1176,7 @@ function SparePlanChart({
     { key: 'totalInterest', color: '#fbbf24', label: 'Rente/avk.', w: 2 },
   ]
 
-  type EnrichedRow = typeof data[0] & Record<string, number>
+  type EnrichedRow = typeof data[0] & { [key: string]: unknown }
   const enriched: EnrichedRow[] = data.map((d) => ({
     ...d,
     ...Object.fromEntries(scenarios.map((sc) => [`sc_${sc.id}`, d.scenarioEKs?.[sc.id] ?? 0])),
