@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useEconomyStore } from '@/application/useEconomyStore'
-import { calculateGoalProgress, computeEffectiveBalance } from '@/domain/economy/savingsCalculator'
+import { calculateGoalProgress, computeEffectiveBalance, checkBSULimits } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
 import type { AbsenceStatus } from '@/types/economy'
@@ -108,6 +108,17 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     (m) => m.year === currentYear && m.month === currentMonth
   )
   const nettoInn = currentMonthRecord?.nettoUtbetalt ?? 0
+
+  // Netto inn delta: sammenlign med forrige måneds slipp
+  const prevMonthRecord = (() => {
+    const prev = currentMonth === 1
+      ? { year: currentYear - 1, month: 12 }
+      : { year: currentYear, month: currentMonth - 1 }
+    return monthHistory.find(m => m.year === prev.year && m.month === prev.month && m.nettoUtbetalt > 0)
+  })()
+  const nettoInnDelta = currentMonthRecord && prevMonthRecord
+    ? currentMonthRecord.nettoUtbetalt - prevMonthRecord.nettoUtbetalt
+    : undefined
 
   const fasteUt = budgetTemplate.lines
     .filter((l) => l.isRecurring && ['bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk'].includes(l.category))
@@ -308,6 +319,45 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     })
   }
 
+  // BSU-kvotering
+  const bsuAccount = savingsAccounts.find(a => a.type === 'BSU')
+  if (bsuAccount) {
+    const bsuStatus = checkBSULimits(bsuAccount, currentYear)
+    if (!bsuStatus.isMaxed && bsuStatus.remainingYearlyQuota > 0) {
+      chips.push({
+        icon: '🏦',
+        text: `BSU-kvote igjen i år: ${fmtNOK(bsuStatus.remainingYearlyQuota)}`,
+        accent: bsuStatus.remainingYearlyQuota < 5000 ? 'yellow' : undefined,
+      })
+    } else if (bsuStatus.isMaxed) {
+      chips.push({ icon: '🏦', text: 'BSU er fylt opp', accent: 'green' })
+    }
+  }
+
+  // Importpåminnelse: ingen slipp importert denne måneden
+  if (!currentMonthRecord || currentMonthRecord.source !== 'imported_slip') {
+    chips.push({ icon: '📥', text: 'Husk å importere lønnsslipp for denne måneden', accent: 'yellow' })
+  }
+
+  // Gjeldsmilepæl: ett lån er < 10 % igjen
+  const nearlyPaidDebt = debts.find(d => d.status !== 'nedbetalt' && d.originalAmount > 0 && d.currentBalance / d.originalAmount < 0.1)
+  if (nearlyPaidDebt) {
+    chips.push({
+      icon: '🎉',
+      text: `«${nearlyPaidDebt.creditor}» er snart nedbetalt (${fmtNOK(nearlyPaidDebt.currentBalance)} igjen)`,
+      accent: 'green',
+    })
+  }
+
+  // Budsjettunderskudd
+  if (overskuddFraBudsjett !== null && overskuddFraBudsjett < -500) {
+    chips.push({
+      icon: '📉',
+      text: `Budsjettunderskudd denne måneden: ${fmtNOK(Math.abs(overskuddFraBudsjett))}`,
+      accent: 'red',
+    })
+  }
+
   // ── Render ────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
@@ -319,6 +369,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
         totalSparing={totalSparing}
         totalGjeld={totalGjeld}
         nettoInn={nettoFraBudsjett}
+        nettoInnDelta={nettoInnDelta}
         sparerate={sparerate}
         daysToPayday={daysToPayday}
         nextPayday={nextPayday}

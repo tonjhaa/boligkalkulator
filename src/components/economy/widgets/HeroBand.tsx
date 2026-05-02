@@ -62,21 +62,30 @@ function HealthRing({ score }: { score: number }) {
 
 // ── Metrikkfelt med venstrekant ──────────────────────────────
 function MetricCell({
-  label, value, colorClass, sub, sign,
+  label, value, colorClass, sub, sign, delta,
 }: {
   label: string
   value: number
   colorClass?: string
   sub?: string
   sign?: boolean
+  delta?: number
 }) {
   const prefix = sign && value > 0 ? '+' : sign && value < 0 ? '−' : ''
+  const showDelta = delta !== undefined && Math.abs(delta) > 200
   return (
     <div className="flex flex-col justify-center border-l border-border/40 px-5 min-w-0 flex-1">
       <p className="text-[10px] text-muted-foreground uppercase tracking-wider truncate">{label}</p>
-      <p className={cn('text-base font-semibold font-mono tabular-nums mt-0.5 truncate', colorClass ?? 'text-foreground')}>
-        {prefix}{Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
-      </p>
+      <div className="flex items-baseline gap-1.5 mt-0.5">
+        <p className={cn('text-base font-semibold font-mono tabular-nums truncate', colorClass ?? 'text-foreground')}>
+          {prefix}{Math.round(Math.abs(value)).toLocaleString('no-NO')} kr
+        </p>
+        {showDelta && (
+          <span className={cn('text-[9px] font-semibold tabular-nums shrink-0', delta! > 0 ? 'text-green-400' : 'text-red-400')}>
+            {delta! > 0 ? '↑' : '↓'} {Math.round(Math.abs(delta!)).toLocaleString('no-NO')}
+          </span>
+        )}
+      </div>
       {sub && <p className="text-[10px] text-muted-foreground truncate">{sub}</p>}
     </div>
   )
@@ -90,6 +99,7 @@ export interface HeroBandProps {
   totalSparing: number
   totalGjeld: number
   nettoInn: number
+  nettoInnDelta?: number
   sparerate: number
   daysToPayday: number
   nextPayday: Date
@@ -119,6 +129,7 @@ export function HeroBand({
   totalSparing,
   totalGjeld,
   nettoInn,
+  nettoInnDelta,
   sparerate,
   daysToPayday,
   nextPayday,
@@ -162,6 +173,7 @@ export function HeroBand({
         value={nettoInn}
         colorClass={nettoInn > 0 ? 'text-foreground' : 'text-muted-foreground'}
         sub={sparerate > 0 ? `Sparerate: ${sparerate}%` : 'Ingen slipp lastet'}
+        delta={nettoInnDelta}
       />
 
       {/* Cell 5: Neste lønning */}

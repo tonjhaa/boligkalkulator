@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, CheckCircle2, Calculator } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -357,6 +357,12 @@ export function DebtPage() {
                       </table>
                     </div>
                   )}
+
+                  <ExtraPaymentCalc
+                    debt={debt}
+                    basePlan={{ months: plan.rows.length, totalInterestCost: plan.totalInterestCost }}
+                    currentRate={currentRate}
+                  />
                 </CardContent>
               </Card>
             )
@@ -519,6 +525,70 @@ function AddDebtForm({ onSave, onCancel }: { onSave: (d: DebtAccount) => void; o
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ------------------------------------------------------------
+// EKSTRA INNBETALING-KALKULATOR
+// ------------------------------------------------------------
+
+function simulateExtra(debt: DebtAccount, extraMonthly: number, currentRate: number): { months: number; interestCost: number } {
+  const monthlyRate = currentRate / 100 / 12
+  let balance = debt.currentBalance
+  let interestCost = 0
+  const totalPayment = debt.monthlyPayment + extraMonthly
+  let months = 0
+  const maxMonths = 600
+  while (balance > 0.01 && months < maxMonths) {
+    const interest = balance * monthlyRate
+    let principal = totalPayment - interest - debt.termFee
+    if (principal > balance) principal = balance
+    balance = Math.max(0, balance - principal)
+    interestCost += interest
+    months++
+  }
+  return { months, interestCost: Math.round(interestCost) }
+}
+
+function ExtraPaymentCalc({ debt, basePlan, currentRate }: { debt: DebtAccount; basePlan: { months: number; totalInterestCost: number }; currentRate: number }) {
+  const [extra, setExtra] = useState(0)
+  if (debt.monthlyPayment <= 0) return null
+
+  const result = extra > 0 ? simulateExtra(debt, extra, currentRate) : null
+  const savedMonths = result ? basePlan.months - result.months : 0
+  const savedInterest = result ? basePlan.totalInterestCost - result.interestCost : 0
+
+  return (
+    <div className="rounded-md border border-border/50 bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium">Ekstra innbetaling</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-muted-foreground whitespace-nowrap">kr/mnd ekstra</Label>
+          <Input
+            type="number"
+            className="h-7 text-xs w-28"
+            placeholder="f.eks. 500"
+            value={extra || ''}
+            onChange={(e) => setExtra(Math.max(0, parseFloat(e.target.value) || 0))}
+          />
+        </div>
+        {result && extra > 0 && (
+          <div className="flex gap-4 text-xs">
+            <span className="text-green-400 font-medium">
+              {savedMonths > 0 ? `−${savedMonths} mnd` : 'Ingen effekt'}
+            </span>
+            {savedInterest > 0 && (
+              <span className="text-green-400">
+                Spar {fmtNOK(savedInterest)} renter
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

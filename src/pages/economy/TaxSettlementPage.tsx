@@ -374,6 +374,15 @@ export function TaxSettlementPage() {
         }}
       />
 
+      {/* Skattemelding-sjekkliste */}
+      <SkattemeldingSjekkliste
+        autoFill={taxAutoFill}
+        hasBsu={!!bsuAccount}
+        atfSum={atfEntries.filter(e => e.year === currentYear).reduce((s, e) => s + e.beregnetBeløp, 0)}
+        hasDebt={debts.filter(d => d.status !== 'nedbetalt').length > 0}
+        currentYear={currentYear}
+      />
+
       {/* Anbefaling */}
       {analysis.recommendation !== 'keep' && taxSettlements.length >= 2 && (
         <div className={`rounded-md p-3 border text-sm ${
@@ -1112,6 +1121,132 @@ function AddSettlementForm({
           >
             Lagre
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Skattemelding-sjekkliste ──────────────────────────────────
+
+const SKATTEETATEN_URL = 'https://www.skatteetaten.no/person/skatt/skattemelding/'
+
+function SkattemeldingSjekkliste({
+  autoFill,
+  hasBsu,
+  atfSum,
+  hasDebt,
+  currentYear,
+}: {
+  autoFill: { fagforeningskontingent: number; bsuInnskuddThisYear: number; gjeldsrenter: number; renteinntekter: number }
+  hasBsu: boolean
+  atfSum: number
+  hasDebt: boolean
+  currentYear: number
+}) {
+  type Item = { id: string; text: string; detail?: string; done?: boolean; warn?: boolean }
+  const items: Item[] = [
+    {
+      id: 'bsu',
+      text: 'BSU-fradrag',
+      detail: hasBsu && autoFill.bsuInnskuddThisYear > 0
+        ? `Sjekk at BSU-innskudd (${Math.round(autoFill.bsuInnskuddThisYear).toLocaleString('no-NO')} kr) er med i skattemeldingen`
+        : 'Ingen BSU-konto registrert',
+      warn: !hasBsu || autoFill.bsuInnskuddThisYear === 0,
+    },
+    {
+      id: 'fagforening',
+      text: 'Fagforeningsfradrag',
+      detail: autoFill.fagforeningskontingent > 0
+        ? `Maks fradrag 8 000 kr/år — du har betalt ca. ${Math.round(autoFill.fagforeningskontingent).toLocaleString('no-NO')} kr`
+        : 'Ingen fagforeningskontingent registrert',
+      warn: autoFill.fagforeningskontingent === 0,
+    },
+    {
+      id: 'gjeld',
+      text: 'Renteutgifter (gjeldsrenter)',
+      detail: hasDebt && autoFill.gjeldsrenter > 0
+        ? `Estimerte renteutgifter: ${Math.round(autoFill.gjeldsrenter).toLocaleString('no-NO')} kr — sjekk at dette stemmer`
+        : hasDebt ? 'Gjeld registrert, men ingen renteutgifter beregnet' : 'Ingen gjeld registrert',
+      warn: hasDebt && autoFill.gjeldsrenter === 0,
+    },
+    {
+      id: 'atf',
+      text: 'ATF / militær godtgjørelse',
+      detail: atfSum > 0
+        ? `Du har ${Math.round(atfSum).toLocaleString('no-NO')} kr i ATF-bonus for ${currentYear} — sjekk at dette er innrapportert`
+        : `Ingen ATF-utbetalinger registrert for ${currentYear}`,
+      warn: false,
+    },
+    {
+      id: 'renter',
+      text: 'Renteinntekter',
+      detail: autoFill.renteinntekter > 0
+        ? `Estimerte renteinntekter: ${Math.round(autoFill.renteinntekter).toLocaleString('no-NO')} kr — forhåndsutfylt av banken`
+        : 'Ingen renteinntekter beregnet',
+      warn: false,
+    },
+  ]
+
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => setChecked(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  const done = checked.size
+  const total = items.length
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Skattemelding-sjekkliste {currentYear}</CardTitle>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{done}/{total} sjekket</span>
+            <a
+              href={SKATTEETATEN_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Åpne skattemelding
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+        <Progress value={(done / total) * 100} className="h-1 mt-2" />
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              className={cn(
+                'w-full flex items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors',
+                checked.has(item.id) ? 'bg-green-500/10' : item.warn ? 'bg-yellow-500/5' : 'bg-muted/20',
+                'hover:bg-muted/40',
+              )}
+              onClick={() => toggle(item.id)}
+            >
+              {checked.has(item.id) ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+              ) : item.warn ? (
+                <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
+              ) : (
+                <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <p className={cn('text-xs font-medium', checked.has(item.id) && 'line-through text-muted-foreground')}>{item.text}</p>
+                {item.detail && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{item.detail}</p>
+                )}
+              </div>
+            </button>
+          ))}
         </div>
       </CardContent>
     </Card>

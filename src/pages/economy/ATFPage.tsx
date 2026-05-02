@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Pencil, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Pencil, ChevronDown, ChevronRight, Download } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -570,6 +570,36 @@ function NyØvelseModal({
 }
 
 // ------------------------------------------------------------
+// CSV EKSPORT
+// ------------------------------------------------------------
+
+function exportATFToCSV(entries: ATFEntry[], year: number) {
+  const rows: string[] = [
+    ['Øvelse', 'Periode fra', 'Periode til', 'Planleggingsstatus', 'Beregnet beløp (kr)', 'Tidskompensasjon (timer)'].join(';'),
+  ]
+  for (const e of entries) {
+    rows.push([
+      `"${e.øvelsesnavn.replace(/"/g, '""')}"`,
+      e.fraDateISO ?? '',
+      e.tilDateISO ?? '',
+      e.planningStatus === 'unplanned' ? 'Ikke-planlagt' : 'Planlagt',
+      Math.round(e.beregnetBeløp),
+      e.tidskompensasjonTimer,
+    ].join(';'))
+  }
+  const total = entries.reduce((s, e) => s + e.beregnetBeløp, 0)
+  rows.push(['', '', '', 'Sum', Math.round(total), ''].join(';'))
+
+  const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `ATF_${year}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ------------------------------------------------------------
 // MAIN PAGE
 // ------------------------------------------------------------
 
@@ -600,10 +630,22 @@ export function ATFPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">ATF-kalkulator</h2>
-        <Button size="sm" onClick={() => setShowModal(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Ny øvelse
-        </Button>
+        <div className="flex gap-2">
+          {yearEntries.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => exportATFToCSV(yearEntries, activeYear)}
+            >
+              <Download className="h-3.5 w-3.5 mr-1" />
+              Eksport CSV
+            </Button>
+          )}
+          <Button size="sm" onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Ny øvelse
+          </Button>
+        </div>
       </div>
 
       {/* Year tabs */}

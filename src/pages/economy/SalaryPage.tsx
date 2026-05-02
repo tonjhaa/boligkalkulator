@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2, TrendingUp, Pencil, Check, X, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, FileText, ExternalLink, Table2, Plus, Trash2, TrendingUp, Pencil, Check, X, RefreshCw, ChevronDown, ChevronUp, Calculator } from 'lucide-react'
 import { SalaryWaterfallHero } from '@/components/economy/widgets/SalaryWaterfallHero'
 import { SalaryGrowthChart } from '@/components/economy/charts/SalaryGrowthChart'
 import { MonthlyNettoChart } from '@/components/economy/charts/MonthlyNettoChart'
@@ -118,7 +118,6 @@ export function SalaryPage() {
   } = useEconomyStore()
 
   const [editingProfile, setEditingProfile] = useState(false)
-  const [viewingSlip, setViewingSlip] = useState<MonthRecord | null>(null)
   const [storageKB, setStorageKB] = useState(0)
   const [advanced, setAdvanced] = useState(false)
 
@@ -268,6 +267,20 @@ export function SalaryPage() {
           <TaxRateChart data={taxHistory} currentRate={currentTaxRate} />
         )}
 
+        {/* Lønnssimulator */}
+        {profile && (
+          <LønnssimulatorCard
+            profile={profile}
+            effectiveTaxRate={currentTaxRate}
+            latestNetto={latestSlipRecord?.slipData?.nettoUtbetalt ?? latestSlipRecord?.nettoUtbetalt ?? 0}
+          />
+        )}
+
+        {/* Lønnshistorikk – slip-tabell */}
+        {importedSlips.length > 0 && (
+          <LønnshistorikkTabell slips={importedSlips} />
+        )}
+
         {/* Lønnsoppgjør & lønnsvekst */}
         <Card>
           <CardHeader className="pb-2">
@@ -298,51 +311,15 @@ export function SalaryPage() {
           </CardContent>
         </Card>
 
-        {/* Slipp-historikk */}
-        {importedSlips.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Importerte slipper</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {storageKB > 4500 && (
-                <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 p-2 text-xs text-yellow-400">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  Lagringsplass nærmer seg grensen ({storageKB} KB / ~5 120 KB). PDF-er for eldre slipper er automatisk fjernet.
-                </div>
-              )}
-              <div className="space-y-1">
-                {importedSlips.map((m) => {
-                  const netto = m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt
-                  const brutto = m.slipData?.bruttoSum ?? 0
-                  return (
-                    <div key={`${m.year}-${m.month}`} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/10 text-xs">
-                      <span className="text-muted-foreground w-20 shrink-0">
-                        {MONTH_NAMES[m.month]} {m.year}
-                      </span>
-                      <span className="font-mono font-medium">Netto: {fmtNOK(netto)}</span>
-                      {brutto > 0 && (
-                        <span className="font-mono text-muted-foreground">Brutto: {fmtNOK(brutto)}</span>
-                      )}
-                      <span className="ml-auto">
-                        {(m.slipData || m.slipPdfBase64) && (
-                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1" onClick={() => setViewingSlip(m)}>
-                            <FileText className="h-3 w-3" />
-                            Vis
-                          </Button>
-                        )}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Lagringsplass-advarsel */}
+        {storageKB > 4500 && (
+          <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 p-2 text-xs text-yellow-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            Lagringsplass nærmer seg grensen ({storageKB} KB / ~5 120 KB). PDF-er for eldre slipper er automatisk fjernet.
+          </div>
         )}
       </div>
 
-      {/* Modal */}
-      {viewingSlip && <SlipDetailModal record={viewingSlip} onClose={() => setViewingSlip(null)} />}
     </div>
   )
 }
@@ -866,6 +843,172 @@ function LonnsoppgjorSection({
         </div>
       )}
     </div>
+  )
+}
+
+// ------------------------------------------------------------
+// LØNNSSIMULATOR
+// ------------------------------------------------------------
+
+function LønnssimulatorCard({
+  profile,
+  effectiveTaxRate,
+  latestNetto,
+}: {
+  profile: EmploymentProfile
+  effectiveTaxRate: number | null
+  latestNetto: number
+}) {
+  const tillegg = profile.fixedAdditions.reduce((s, a) => s + Math.max(0, a.amount), 0)
+  const [nyGrunnlonn, setNyGrunnlonn] = useState(profile.baseMonthly)
+
+  const brutto = nyGrunnlonn + tillegg
+  const pensjon = Math.round(brutto * (profile.pensionPercent / 100))
+  const fagforening = profile.unionFee
+  const husleie = profile.housingDeduction
+  const ekstraTrekk = profile.extraTaxWithholding
+  // Bruk faktisk skatteprosent fra siste slipp om tilgjengelig, ellers 30 %
+  const skatteRate = effectiveTaxRate !== null ? effectiveTaxRate / 100 : 0.30
+  const skatt = Math.round(brutto * skatteRate)
+  const estimertNetto = brutto - skatt - pensjon - fagforening - husleie - ekstraTrekk
+
+  const delta = latestNetto > 0 ? estimertNetto - latestNetto : null
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Calculator className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm">Lønnssimulator</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Label className="text-xs text-muted-foreground w-36 shrink-0">Ny grunnlønn/mnd</Label>
+            <Input
+              type="number"
+              className="h-7 text-xs w-36"
+              value={nyGrunnlonn || ''}
+              onChange={(e) => setNyGrunnlonn(parseFloat(e.target.value) || 0)}
+            />
+            {nyGrunnlonn !== profile.baseMonthly && (
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setNyGrunnlonn(profile.baseMonthly)}
+              >
+                Tilbakestill
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+            <InfoRow label="Brutto (inkl. tillegg)" value={fmtNOK(brutto)} />
+            <InfoRow label={`Skatt (~${Math.round(skatteRate * 100)} %)`} value={`−${fmtNOK(skatt)}`} />
+            <InfoRow label={`Pensjon (${profile.pensionPercent} %)`} value={`−${fmtNOK(pensjon)}`} />
+            {fagforening > 0 && <InfoRow label="Fagforening" value={`−${fmtNOK(fagforening)}`} />}
+            {husleie > 0 && <InfoRow label="Husleie" value={`−${fmtNOK(husleie)}`} />}
+            {ekstraTrekk > 0 && <InfoRow label="Ekstra trekk" value={`−${fmtNOK(ekstraTrekk)}`} />}
+          </div>
+          <div className="flex items-baseline justify-between border-t border-border pt-2">
+            <span className="text-xs font-medium">Estimert netto</span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono font-semibold text-sm">{fmtNOK(estimertNetto)}</span>
+              {delta !== null && Math.abs(delta) > 100 && (
+                <span className={`text-xs font-semibold tabular-nums ${delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {delta > 0 ? '+' : '−'}{fmtNOK(Math.abs(delta))}
+                </span>
+              )}
+            </div>
+          </div>
+          {effectiveTaxRate === null && (
+            <p className="text-[10px] text-muted-foreground">* Skatteestimat basert på 30 %. Importer slipp for nøyaktig sats.</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ------------------------------------------------------------
+// LØNNSHISTORIKK TABELL
+// ------------------------------------------------------------
+
+function LønnshistorikkTabell({
+  slips,
+}: {
+  slips: MonthRecord[]
+}) {
+  const [viewingSlip, setViewingSlip] = useState<MonthRecord | null>(null)
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Lønnshistorikk — importerte slipper</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto max-h-72 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-card">
+                <tr className="text-muted-foreground border-b border-border">
+                  <th className="text-left py-1 pr-3 font-normal">Måned</th>
+                  <th className="text-right py-1 pr-3 font-normal">Netto</th>
+                  <th className="text-right py-1 pr-3 font-normal">Δ netto</th>
+                  <th className="text-right py-1 pr-3 font-normal">Brutto</th>
+                  <th className="text-right py-1 pr-3 font-normal">Skattesats</th>
+                  <th className="py-1" />
+                </tr>
+              </thead>
+              <tbody>
+                {slips.map((m, i) => {
+                  const netto = m.slipData?.nettoUtbetalt ?? m.nettoUtbetalt
+                  const brutto = m.slipData?.bruttoSum ?? 0
+                  const taxRate = brutto > 0 && m.slipData ? (m.slipData.skattetrekk / brutto) * 100 : null
+                  const prevNetto = slips[i + 1]?.slipData?.nettoUtbetalt ?? slips[i + 1]?.nettoUtbetalt
+                  const delta = prevNetto ? netto - prevNetto : null
+                  return (
+                    <tr key={`${m.year}-${m.month}`} className="border-b border-border/40 hover:bg-muted/10">
+                      <td className="py-1.5 pr-3 text-muted-foreground">{MONTH_NAMES[m.month]} {m.year}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono font-medium">{fmtNOK(netto)}</td>
+                      <td className="py-1.5 pr-3 text-right font-mono">
+                        {delta !== null && Math.abs(delta) > 50 ? (
+                          <span className={delta > 0 ? 'text-green-400' : 'text-red-400'}>
+                            {delta > 0 ? '+' : '−'}{fmtNOK(Math.abs(delta))}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right font-mono text-muted-foreground">
+                        {brutto > 0 ? fmtNOK(brutto) : '—'}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right">
+                        {taxRate !== null ? (
+                          <span className="text-muted-foreground">{taxRate.toFixed(1)} %</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-1.5">
+                        {(m.slipData || m.slipPdfBase64) && (
+                          <button
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={() => setViewingSlip(m)}
+                          >
+                            <FileText className="h-3 w-3" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+      {viewingSlip && <SlipDetailModal record={viewingSlip} onClose={() => setViewingSlip(null)} />}
+    </>
   )
 }
 
