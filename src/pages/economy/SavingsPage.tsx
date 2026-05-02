@@ -1295,7 +1295,7 @@ function AccountTableRow({
       <td className="px-3 py-2 text-right">
         {isBSU ? (
           <div className="flex flex-col items-end gap-0.5">
-            <InlineCell value={Math.round(row.monthly * 12)} onChange={(v) => onChangeMonthly(Math.round(v / 12))} suffix=" kr/år" step={1000} />
+            <InlineCell value={Math.round(row.monthly * 12)} onChange={(v) => onChangeMonthly(v / 12)} suffix=" kr/år" step={1000} />
             <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(row.monthly)}/mnd</span>
           </div>
         ) : (
