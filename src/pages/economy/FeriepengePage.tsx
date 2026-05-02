@@ -91,7 +91,7 @@ function buildHistoricalRows(
 }
 
 export function FeriepengePage() {
-  const { profile, monthHistory, atfEntries } = useEconomyStore()
+  const { profile, monthHistory, atfEntries, temporaryPayEntries } = useEconomyStore()
   const [modalYear, setModalYear] = useState<number | null>(null)
 
   if (!profile) {
@@ -105,7 +105,7 @@ export function FeriepengePage() {
   const now = new Date()
   const currentYear = now.getFullYear()
 
-  const forecasts = forecastAllJunes(currentYear, monthHistory, profile, atfEntries, 3)
+  const forecasts = forecastAllJunes(currentYear, monthHistory, profile, atfEntries, 3, temporaryPayEntries)
   const [thisYear, nextYear, ...laterYears] = forecasts
 
   const opptjening = calculateAccruedHolidayBase(currentYear, monthHistory, profile)
@@ -424,7 +424,8 @@ function JuneDetailModal({ forecast, onClose }: { forecast: JuneForecast; onClos
     { label: `Ferietrekk (${forecast.ferietrekkDagsats.toLocaleString('no-NO')} kr/dag × 25)`, value: -forecast.ferietrekk, negative: true },
     { label: 'Skattepliktig lønn i juni', value: forecast.skattepliktigJuni, note: forecast.kilder.juneLonn },
     ...(forecast.juneATF > 0 ? [{ label: 'ATF i juni', value: forecast.juneATF, positive: true }] : []),
-    { label: 'Skattegrunnlag i juni', value: forecast.skattegrunnlag, note: 'max(0, lønn + ATF − ferietrekk)' },
+    ...(forecast.juneFungering > 0 ? [{ label: 'Fungering/øvelse i juni', value: forecast.juneFungering, positive: true }] : []),
+    { label: 'Skattegrunnlag i juni', value: forecast.skattegrunnlag, note: 'max(0, lønn + tillegg + ATF + fungering − ferietrekk)' },
     { label: 'Skattetrekk i juni', value: -forecast.skattetrekk, negative: true },
     { label: 'Andre trekk i juni', value: -forecast.andreJuneTrekk, negative: true },
     { label: 'Netto ekstra i juni', value: forecast.nettoEkstra, bold: true, signed: true },

@@ -593,6 +593,8 @@ export interface JuneForecast {
   ferietrekk: number
   skattepliktigJuni: number
   juneATF: number
+  /** Fungeringsinntekt i juni (fra slipp eller prognose fra midlertidig-stillings-data) */
+  juneFungering: number
   skattegrunnlag: number
   skattetrekk: number
   andreJuneTrekk: number

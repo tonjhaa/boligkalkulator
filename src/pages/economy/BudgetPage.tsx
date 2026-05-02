@@ -117,7 +117,7 @@ export function BudgetPage() {
   }, [budgetOverrides, activeYear])
 
   const juneForecast = profile
-    ? forecastJune(activeYear, monthHistory, profile, atfEntries)
+    ? forecastJune(activeYear, monthHistory, profile, atfEntries, temporaryPayEntries)
     : undefined
 
   const tableData = computeBudgetTable(

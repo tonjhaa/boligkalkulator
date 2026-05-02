@@ -4,6 +4,7 @@ import type {
   ATFEntry,
   JuneForecast,
   AccruedHolidayBase,
+  TemporaryPayEntry,
 } from '@/types/economy'
 import {
   FERIEPENGER_PROSENT,
@@ -97,6 +98,7 @@ export function forecastJune(
   monthHistory: MonthRecord[],
   profile: EmploymentProfile,
   _atfEntries: ATFEntry[] = [],
+  temporaryPayEntries: TemporaryPayEntry[] = [],
 ): JuneForecast {
   // --- FERIEPENGEGRUNNLAG (opptjent forrige år) ---
   const prevDecRecord = monthHistory.find(
@@ -136,9 +138,29 @@ export function forecastJune(
   const ferietrekk = ferietrekkDagsats * FERIEDAGER_TREKK
 
   // --- SKATTEPLIKTIG OG SKATTEGRUNNLAG ---
+  // Regel: feriepenger er unntatt forskuddstrekk (skattebetalingsloven § 5-4 (3)),
+  // men lønn, ATF, fungering og øvelse-betaling i juni er fortsatt skattepliktig.
+  // Skattegrunnlag = (lønn + tillegg + ATF + fungering) - ferietrekk
   const skattepliktigJuni = juneMaanedslonn + juneFixedTillegg
   const juneATF = getJuneATF(year, monthHistory)
-  const skattegrunnlag = Math.max(0, skattepliktigJuni + juneATF - ferietrekk)
+
+  // Fungering (10P2) i juni: hent fra slipp hvis tilgjengelig, ellers beregn fra prognose
+  const juneFungeringFromSlip = juneSlip?.slipData?.fungeringBeløp ?? 0
+  const juneFungeringFromForecast = (() => {
+    if (juneFungeringFromSlip > 0) return 0
+    const juneStart = new Date(year, 5, 1)   // 1. juni
+    const juneEnd   = new Date(year, 5, 30)  // 30. juni
+    const entry = temporaryPayEntries.find((e) => {
+      const from = new Date(e.fromDate)
+      const to   = new Date(e.toDate)
+      return from <= juneEnd && to >= juneStart
+    })
+    if (!entry) return 0
+    return Math.max(0, entry.maanedslonn - (profile.baseMonthly ?? 0))
+  })()
+  const juneFungering = juneFungeringFromSlip > 0 ? juneFungeringFromSlip : juneFungeringFromForecast
+
+  const skattegrunnlag = Math.max(0, skattepliktigJuni + juneATF + juneFungering - ferietrekk)
 
   // Utleder effektiv skatteprosent fra profil (kr/mnd → prosent)
   const taxPercent =
@@ -179,6 +201,7 @@ export function forecastJune(
     ferietrekk,
     skattepliktigJuni,
     juneATF,
+    juneFungering,
     skattegrunnlag,
     skattetrekk,
     andreJuneTrekk,
@@ -202,10 +225,11 @@ export function forecastAllJunes(
   profile: EmploymentProfile,
   atfEntries: ATFEntry[] = [],
   yearsAhead = 5,
+  temporaryPayEntries: TemporaryPayEntry[] = [],
 ): JuneForecast[] {
   const forecasts: JuneForecast[] = []
   for (let year = currentYear; year <= currentYear + yearsAhead; year++) {
-    forecasts.push(forecastJune(year, monthHistory, profile, atfEntries))
+    forecasts.push(forecastJune(year, monthHistory, profile, atfEntries, temporaryPayEntries))
   }
   return forecasts
 }
