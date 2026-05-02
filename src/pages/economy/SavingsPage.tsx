@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,8 +20,9 @@ import {
   computeYearlyInterestIncome,
   computeBSUForecast,
   computeEffectiveBalance,
+  projectBalanceMonthly,
 } from '@/domain/economy/savingsCalculator'
-import { calcMaxPurchase, BSU_MAX_TOTAL } from '@/hooks/useVeikart'
+import { BSU_MAX_TOTAL } from '@/hooks/useVeikart'
 import type {
   SavingsAccount,
   SavingsGoal,
@@ -33,6 +34,7 @@ import type {
   PartnerVeikart,
   EmploymentProfile,
   DebtAccount,
+  SavingsScenario,
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { cn } from '@/lib/utils'
@@ -358,342 +360,1074 @@ function fmtM(n: number) {
   return Math.round(n).toLocaleString('no-NO')
 }
 
-function projectBalance(startBalance: number, monthlyContrib: number, annualRate: number, years: number): number {
-  const r = annualRate / 100
-  if (r === 0 || years === 0) return startBalance + monthlyContrib * 12 * years
-  const factor = Math.pow(1 + r, years)
-  return startBalance * factor + monthlyContrib * 12 * (factor - 1) / r
+// ─── Inline-redigerbar celle ─────────────────────────────────
+function InlineCell({
+  value, onChange, suffix = '', step = 500, min = 0,
+}: {
+  value: number
+  onChange: (v: number) => void
+  suffix?: string
+  step?: number
+  min?: number
+}) {
+  const [editing, setEditing] = useState(false)
+  const [tmp, setTmp] = useState('')
+  const ref = useRef<HTMLInputElement>(null)
+
+  function start() {
+    setTmp(String(value || ''))
+    setEditing(true)
+    setTimeout(() => ref.current?.select(), 10)
+  }
+  function commit() {
+    onChange(parseFloat(tmp) || 0)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={ref}
+        type="number"
+        min={min}
+        step={step}
+        value={tmp}
+        onChange={(e) => setTmp(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        className="h-6 w-24 rounded border border-primary bg-background px-2 text-xs text-right font-mono outline-none"
+      />
+    )
+  }
+  return (
+    <button
+      onClick={start}
+      title="Klikk for å redigere"
+      className="group flex items-center gap-1 border-b border-dashed border-border hover:border-primary transition-colors text-xs font-mono"
+    >
+      {value ? value.toLocaleString('no-NO') : <span className="text-muted-foreground italic">–</span>}
+      {suffix}
+      <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50 transition-opacity" />
+    </button>
+  )
 }
 
-function AssumptionField({ label, value, onChange, step = 1 }: {
-  label: string; value: number; onChange: (v: number) => void; step?: number
-}) {
+// ─── Insight-kort ─────────────────────────────────────────────
+type InsightColor = 'green' | 'blue' | 'amber' | 'red'
+function InsightCard({ icon, text, color }: { icon: string; text: string; color: InsightColor }) {
+  const styles: Record<InsightColor, string> = {
+    green: 'bg-green-500/8 border-green-500/20 text-green-400',
+    blue: 'bg-blue-500/8 border-blue-500/20 text-blue-400',
+    amber: 'bg-amber-500/8 border-amber-500/30 text-amber-400',
+    red: 'bg-red-500/8 border-red-500/20 text-red-400',
+  }
   return (
-    <div className="space-y-0.5">
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <input
-        type="number"
-        step={step}
-        min={0}
-        className="h-7 w-full rounded border border-border bg-background px-2 text-xs"
-        value={value || ''}
-        onChange={e => onChange(parseFloat(e.target.value) || 0)}
-      />
+    <div className={cn('flex gap-3 items-start rounded-lg border px-3 py-2.5', styles[color])}>
+      <span className="text-base mt-0.5 shrink-0">{icon}</span>
+      <span className="text-xs leading-relaxed text-foreground">{text}</span>
     </div>
   )
 }
 
-type Assumptions = {
-  userBSUMonthly: number
-  userSpareMonthly: number
-  userSpareRate: number
-  fondMonthly: number
-  fondAvkastning: number
-  partnerBSUMonthly: number
-  partnerSpareMonthly: number
-  partnerSpareRate: number
+// ─── Mini SVG sparkline ────────────────────────────────────────
+function Sparkline({ data, color = '#60a5fa', height = 48 }: {
+  data: number[]
+  color?: string
+  height?: number
+}) {
+  if (data.length < 2) return null
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const W = 200, H = height
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * W
+    const y = H - ((v - min) / (max - min || 1)) * H
+    return `${x},${y}`
+  }).join(' ')
+  const area = `M0,${H} L${pts.split(' ').map(p => p).join(' L')} L${W},${H} Z`
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height }} preserveAspectRatio="none">
+      <path d={area} fill={color} opacity={0.15} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} />
+    </svg>
+  )
 }
 
-function SparePlanTab({ savingsAccounts, fondCurrentValue, fondMonthlyDeposit, partnerVeikart, profile, debts, now }: SparePlanTabProps) {
+// ─── TYPES ────────────────────────────────────────────────────
+type PlanSubTab = 'plan' | 'kontoer' | 'feedback'
+
+interface AccountRow {
+  id: string
+  label: string
+  type: SavingsAccountType
+  accountNumber?: string
+  balance: number
+  monthly: number
+  rate: number
+  expectedReturn: number
+  actualReturn: number | null
+  ytd: number
+  person: 'meg' | 'partner'
+}
+
+// ─── SPAREPLAN TAB (full ny versjon) ──────────────────────────
+function SparePlanTab({
+  savingsAccounts,
+  fondCurrentValue: _fondCurrentValue,
+  fondMonthlyDeposit: _fondMonthlyDeposit,
+  partnerVeikart,
+  profile,
+  debts,
+  now,
+}: SparePlanTabProps) {
+  const {
+    updateSavingsAccount,
+    savingsScenarios,
+    addSavingsScenario,
+    removeSavingsScenario,
+    savingsPlanTarget,
+    setSavingsPlanTarget,
+    savingsPlanHorizon,
+    setSavingsPlanHorizon,
+  } = useEconomyStore()
+
   const currentYear = now.getFullYear()
-  const currentMonth = now.getMonth() + 1
+  const currentMonth = now.getMonth()
 
-  const bsuAccount = savingsAccounts.find(a => a.type === 'BSU')
-  const sparekontoAccount = savingsAccounts.find(a => a.type === 'sparekonto')
+  // ── Sub-tab state ──────────────────────────────────────────
+  const [subTab, setSubTab] = useState<PlanSubTab>('plan')
+  const [chartTab, setChartTab] = useState<'vekst' | 'bidrag' | 'avkastning'>('vekst')
+  const [showWizard, setShowWizard] = useState(false)
+  const [showAddScenario, setShowAddScenario] = useState(false)
 
-  const userBSUBalance = bsuAccount ? computeEffectiveBalance(bsuAccount, now) : 0
-  const userSpareBalance = sparekontoAccount ? computeEffectiveBalance(sparekontoAccount, now) : 0
-  const defaultSpareRate = sparekontoAccount?.rateHistory?.length
-    ? [...sparekontoAccount.rateHistory].sort((a, b) => a.fromDate.localeCompare(b.fromDate)).at(-1)!.rate
-    : 3.0
-
+  // ── Income ────────────────────────────────────────────────
+  const userMonthlyIncome = profile?.baseMonthly ?? 0
+  const partnerMonthlyIncome = (partnerVeikart?.annualIncome ?? 0) / 12
+  const combinedIncome = userMonthlyIncome + partnerMonthlyIncome
   const partnerEnabled = partnerVeikart?.enabled ?? false
-  const partnerBSUBalance = partnerVeikart?.bsu ?? 0
-  const partnerEquityBalance = partnerVeikart?.equity ?? 0
 
-  const userAnnualIncome = profile?.baseMonthly ? profile.baseMonthly * 12 : 0
-  const partnerAnnualIncome = partnerVeikart?.annualIncome ?? 0
-  const combinedIncome = userAnnualIncome + partnerAnnualIncome
-  const userDebt = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
-  const monthsThisYear = 12 - currentMonth + 1
+  // ── Build flat account rows ────────────────────────────────
+  const userDebt = debts
+    .filter((d) => d.status !== 'nedbetalt')
+    .reduce((s, d) => s + d.currentBalance, 0)
 
-  const defaultAssumptions: Assumptions = {
-    userBSUMonthly: bsuAccount?.monthlyContribution ?? 0,
-    userSpareMonthly: sparekontoAccount?.monthlyContribution ?? 0,
-    userSpareRate: defaultSpareRate,
-    fondMonthly: fondMonthlyDeposit,
-    fondAvkastning: 6,
-    partnerBSUMonthly: partnerVeikart?.bsuMonthlyContribution ?? 0,
-    partnerSpareMonthly: partnerVeikart?.monthlySavings ?? 0,
-    partnerSpareRate: 3.0,
+  function makeRows(accounts: SavingsAccount[], person: 'meg' | 'partner'): AccountRow[] {
+    return accounts.map((a) => {
+      const balance = computeEffectiveBalance(a, now)
+      const currentRate = [...a.rateHistory].sort((x, y) =>
+        y.fromDate.localeCompare(x.fromDate))[0]?.rate ?? 0
+      const ytd = computeYTDContributions(a, currentYear)
+      return {
+        id: a.id,
+        label: a.label,
+        type: a.type,
+        accountNumber: a.accountNumber,
+        balance,
+        monthly: a.monthlyContribution,
+        rate: currentRate,
+        expectedReturn: a.expectedReturn ?? (a.type === 'fond' || a.type === 'krypto' ? 6 : currentRate),
+        actualReturn: a.actualReturn ?? null,
+        ytd,
+        person,
+      }
+    })
   }
-  const [a, setA] = useState<Assumptions>(defaultAssumptions)
-  const [showAssumptions, setShowAssumptions] = useState(false)
-  const [targetPrice, setTargetPrice] = useState('')
 
-  function setField<K extends keyof Assumptions>(key: K, val: number) {
-    setA(prev => ({ ...prev, [key]: val }))
+  const myRows = makeRows(savingsAccounts, 'meg')
+  const partnerRows: AccountRow[] = partnerEnabled ? [
+    { id: 'p-bsu', label: 'BSU', type: 'BSU', balance: partnerVeikart?.bsu ?? 0,
+      monthly: partnerVeikart?.bsuMonthlyContribution ?? 0, rate: 5.5,
+      expectedReturn: 5.5, actualReturn: null,
+      ytd: (partnerVeikart?.bsuMonthlyContribution ?? 0) * (currentMonth + 1), person: 'partner' },
+    { id: 'p-spare', label: 'Sparekonto', type: 'sparekonto',
+      balance: partnerVeikart?.equity ?? 0,
+      monthly: partnerVeikart?.monthlySavings ?? 0, rate: 3.0,
+      expectedReturn: 3.0, actualReturn: null,
+      ytd: (partnerVeikart?.monthlySavings ?? 0) * (currentMonth + 1), person: 'partner' },
+  ] : []
+
+  const allRows = [...myRows, ...partnerRows]
+
+  // ── Simulation engine ────────────────────────────────────
+  function computeEK(rows: AccountRow[], months: number): number {
+    return rows.reduce((sum, a) => {
+      const isFond = a.type === 'fond' || a.type === 'krypto'
+      const rate = isFond ? a.expectedReturn : a.rate
+      return sum + projectBalanceMonthly(a.balance, a.monthly, rate, months, a.type === 'BSU')
+    }, 0)
   }
 
-  // Monthly projection data — index 0 = now, index N = N months from now (up to 48)
-  const monthlyData = Array.from({ length: 49 }, (_, i) => {
-    const months = i
-    const years = months / 12
-    const userBSU = Math.min(BSU_MAX_TOTAL, userBSUBalance + a.userBSUMonthly * months)
-    const userSpare = projectBalance(userSpareBalance, a.userSpareMonthly, a.userSpareRate, years)
-    const userFond = projectBalance(fondCurrentValue, a.fondMonthly, a.fondAvkastning, years)
-    const userEK = userBSU + userSpare + userFond
-    const pBSU = Math.min(BSU_MAX_TOTAL, partnerBSUBalance + a.partnerBSUMonthly * months)
-    const pSpare = projectBalance(partnerEquityBalance, a.partnerSpareMonthly, a.partnerSpareRate, years)
-    const partnerEK = pBSU + pSpare
-    const combinedEK = userEK + (partnerEnabled ? partnerEK : 0)
-    const maxPurchase = combinedIncome > 0 ? calcMaxPurchase(combinedEK, combinedIncome, userDebt) : 0
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-    return { months: i, d, userEK, partnerEK, combinedEK, maxPurchase }
-  })
+  // Use store values (declared before useMemo so they're available in the closure)
+  const simHorizon = savingsPlanHorizon
+  const targetPrice = savingsPlanTarget
 
-  // Yearly rows: end-of-year snapshot for current + next 3 years
-  const yearRows = [0, 1, 2, 3].map(offset => {
-    const idx = Math.min(monthsThisYear + offset * 12, 48)
-    return { year: currentYear + offset, isCurrentYear: offset === 0, ...monthlyData[idx] }
-  })
+  const simData = useMemo(() => {
+    const steps = simHorizon + 1
+    return Array.from({ length: steps }, (_, i) => {
+      const meEK = computeEK(myRows, i)
+      const partnerEK = computeEK(partnerRows, i)
+      const combined = meEK + (partnerEnabled ? partnerEK : 0)
+      const maxPurchase = combinedIncome > 0
+        ? Math.min(combined / 0.1, combinedIncome * 12 * 5)
+        : 0
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      const label = d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' })
 
-  // Goal calculator
-  const parsedTarget = parseFloat(targetPrice.replace(/\s/g, '')) || 0
-  const requiredEK = parsedTarget > 0
-    ? Math.max(parsedTarget * 0.1, Math.max(0, parsedTarget - combinedIncome * 5))
+      const meContribAccum = myRows.reduce((s, a) => s + a.balance + a.monthly * i, 0)
+      const partnerContribAccum = partnerRows.reduce((s, a) => s + a.balance + a.monthly * i, 0)
+      const totalInterest = Math.max(0, combined - meContribAccum - (partnerEnabled ? partnerContribAccum : 0))
+
+      const scenarioEKs: Record<string, number> = {}
+      savingsScenarios.forEach((sc) => {
+        const scRows = allRows.map((a) => ({
+          ...a,
+          monthly: sc.monthlyOverrides[a.id] ?? a.monthly,
+          expectedReturn: sc.returnOverrides[a.id] ?? a.expectedReturn,
+        }))
+        scenarioEKs[sc.id] = computeEK(scRows, i)
+      })
+
+      return {
+        months: i, label, d,
+        meEK: Math.round(meEK),
+        partnerEK: Math.round(partnerEK),
+        combined: Math.round(combined),
+        maxPurchase: Math.round(maxPurchase),
+        totalInterest: Math.round(totalInterest),
+        meContrib: Math.round(myRows.reduce((s, a) => s + a.monthly * i, 0)),
+        partnerContrib: Math.round(partnerRows.reduce((s, a) => s + a.monthly * i, 0)),
+        scenarioEKs,
+      }
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savingsAccounts, partnerVeikart, savingsScenarios, savingsPlanHorizon, partnerEnabled])
+
+  // ── Goal calc ────────────────────────────────────────────
+  const requiredEK = targetPrice > 0
+    ? Math.max(targetPrice * 0.1, targetPrice - combinedIncome * 12 * 5)
     : 0
-  const reachIndex = requiredEK > 0 ? monthlyData.findIndex(d => d.combinedEK >= requiredEK) : -1
-  const reachEntry = reachIndex >= 0 ? monthlyData[reachIndex] : null
+  const reachIndex = requiredEK > 0
+    ? simData.findIndex((d) => d.combined >= requiredEK)
+    : -1
+  const reachEntry = reachIndex >= 0 ? simData[reachIndex] : null
 
-  // Chart data (skip index 0 = now)
-  const chartData = monthlyData.slice(1).map(d => ({
-    name: d.d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' }),
-    userEK: Math.round(d.userEK),
-    combinedEK: Math.round(d.combinedEK),
-  }))
+  const meTotalBalance = myRows.reduce((s, a) => s + a.balance, 0)
+  const partnerTotalBalance = partnerRows.reduce((s, a) => s + a.balance, 0)
+  const combinedTotal = meTotalBalance + (partnerEnabled ? partnerTotalBalance : 0)
+  const meTotalMonthly = myRows.reduce((s, a) => s + a.monthly, 0)
+  const partnerTotalMonthly = partnerRows.reduce((s, a) => s + a.monthly, 0)
+  const totalMonthly = meTotalMonthly + (partnerEnabled ? partnerTotalMonthly : 0)
+  const currentProgress = requiredEK > 0 ? Math.min(100, (combinedTotal / requiredEK) * 100) : 0
 
+  // ── Update handler: inline edit in table ────────────────
+  function handleAccountChange(row: AccountRow, field: keyof AccountRow, value: number) {
+    if (row.person !== 'meg') return
+    const patch: Partial<SavingsAccount> = {}
+    if (field === 'monthly') patch.monthlyContribution = value
+    if (field === 'expectedReturn') patch.expectedReturn = value
+    if (field === 'actualReturn') patch.actualReturn = value
+    if (Object.keys(patch).length > 0) updateSavingsAccount(row.id, patch)
+  }
+
+  // ── Insights ─────────────────────────────────────────────
+  const insights = useMemo(() => {
+    const list: { icon: string; color: InsightColor; text: string }[] = []
+    const pctIncome = combinedIncome > 0 ? (totalMonthly / combinedIncome) * 100 : 0
+
+    if (pctIncome >= 20)
+      list.push({ icon: '🏆', color: 'green', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt – godt over anbefalt 20 %.` })
+    else if (pctIncome >= 10)
+      list.push({ icon: '👍', color: 'blue', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt. Anbefalt minstemål er 20 % – øk med ${fmtNOK(combinedIncome * 0.2 - totalMonthly)}/mnd for å nå det.` })
+    else if (combinedIncome > 0)
+      list.push({ icon: '⚠️', color: 'amber', text: `Kun ${pctIncome.toFixed(0)} % av inntekten spares. Vurder å øke månedlig sparing.` })
+
+    const bsuAcc = savingsAccounts.find((a) => a.type === 'BSU')
+    if (bsuAcc) {
+      const balance = computeEffectiveBalance(bsuAcc, now)
+      const maxPerMonth = BSU_MAX_YEARLY / 12
+      if (balance >= BSU_MAX_TOTAL)
+        list.push({ icon: '✅', color: 'green', text: 'BSU er fylt opp! Flytt BSU-sparingen til fond eller sparekonto.' })
+      else if (bsuAcc.monthlyContribution < maxPerMonth * 0.9)
+        list.push({ icon: '💡', color: 'blue', text: `Du kan øke BSU til ${fmtNOK(Math.round(maxPerMonth))}/mnd. Skattefradrag: ${fmtNOK(Math.min(bsuAcc.monthlyContribution * 12, BSU_MAX_YEARLY) * 0.1)}/år.` })
+    }
+
+    const fondAcc = savingsAccounts.find((a) => a.type === 'fond')
+    if (fondAcc?.actualReturn != null) {
+      const diff = (fondAcc.actualReturn ?? 0) - (fondAcc.expectedReturn ?? 6)
+      if (diff > 1) list.push({ icon: '📈', color: 'green', text: `Fondet leverer ${fondAcc.actualReturn?.toFixed(1)} % – ${diff.toFixed(1)} % over forventet!` })
+      if (diff < -2) list.push({ icon: '📉', color: 'amber', text: `Fondet leverer ${fondAcc.actualReturn?.toFixed(1)} % – under forventet. Vurder å justere prognosen.` })
+    }
+
+    if (reachEntry)
+      list.push({ icon: '🏠', color: 'green', text: `Med nåværende tempo når dere EK-kravet for ${fmtNOK(targetPrice)}-boligen om ${reachEntry.months} måneder (${reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })}).` })
+    else if (targetPrice > 0) {
+      const gap = requiredEK - (simData[simData.length - 1]?.combined ?? 0)
+      list.push({ icon: '🚧', color: 'amber', text: `Dere når ikke EK-kravet innen ${simHorizon / 12} år. Mangler ${fmtNOK(gap)} ved horisonten.` })
+    }
+
+    if (userDebt > 0 && totalMonthly > 0) {
+      const debtToSavings = userDebt / (totalMonthly * 12)
+      if (debtToSavings > 5)
+        list.push({ icon: '⚖️', color: 'amber', text: `Gjelden (${fmtNOK(userDebt)}) er høy relativt til sparingen. Vurder ekstra nedbetaling av dyr gjeld.` })
+    }
+
+    return list
+  }, [savingsAccounts, totalMonthly, combinedIncome, reachEntry, targetPrice, userDebt])
+
+  // ── Chart data ────────────────────────────────────────────
+  const chartData = simData.slice(1).filter((_, i) =>
+    i % (simHorizon > 36 ? 3 : 1) === 0 || i === simData.length - 2
+  )
+
+  // ── Yearly rows ──────────────────────────────────────────
+  const monthsLeft = 12 - currentMonth
+  const yearRows = [0, 1, 2, 3, 4].map((offset) => {
+    const idx = Math.min(offset === 0 ? monthsLeft : monthsLeft + offset * 12, simHorizon)
+    const d = simData[idx] ?? simData[simData.length - 1]
+    return { year: currentYear + offset, ...d }
+  })
+
+  // ── Sparkline data per account ────────────────────────────
+  function sparklineForRow(row: AccountRow): number[] {
+    return Array.from({ length: 13 }, (_, i) => {
+      const isFond = row.type === 'fond' || row.type === 'krypto'
+      const rate = isFond ? row.expectedReturn : row.rate
+      return projectBalanceMonthly(row.balance, row.monthly, rate, i, row.type === 'BSU')
+    })
+  }
+
+  // ── Render ────────────────────────────────────────────────
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="font-semibold text-sm">Felles spareplan</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Rentersrente på spare og fond. Juster forutsetninger for å simulere scenarier.</p>
-        </div>
-        <button
-          onClick={() => setShowAssumptions(v => !v)}
-          className={cn(
-            'text-xs px-2.5 py-1.5 rounded border font-medium transition-colors flex items-center gap-1.5 shrink-0',
-            showAssumptions
-              ? 'border-primary/40 text-primary bg-primary/5'
-              : 'border-border text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Pencil className="h-3 w-3" />
-          Forutsetninger
-        </button>
+    <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Sub-tabs */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
+        {([['plan', 'Simulering'], ['kontoer', 'Kontoer & innskudd'], ['feedback', 'Råd & varsler']] as const).map(([k, l]) => (
+          <button
+            key={k}
+            onClick={() => setSubTab(k)}
+            className={cn(
+              'px-3 py-1.5 rounded text-xs font-medium transition-colors',
+              subTab === k
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground border border-border'
+            )}
+          >{l}</button>
+        ))}
+        <div className="flex-1" />
+        <span className="text-xs text-muted-foreground" title="Grunnlønn brutto – brukes til maks låneberegning (5× inntekt)">
+          Brutto: <span className="text-foreground font-mono">{fmtNOK(userMonthlyIncome)}/mnd</span>
+          {partnerEnabled && <span className="font-mono"> + {fmtNOK(partnerMonthlyIncome)}/mnd</span>}
+        </span>
       </div>
 
-      {!partnerEnabled && (
-        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
-          Partner er ikke aktivert. Aktiver i Innstillinger for å se kombinert kjøpekraft.
+      {/* ── PLAN TAB ── */}
+      {subTab === 'plan' && (
+        <div className="flex-1 overflow-hidden flex">
+          {/* Left sidebar */}
+          <div className="w-72 shrink-0 border-r border-border overflow-y-auto p-3 space-y-3">
+            {/* Goal */}
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <p className="text-xs font-semibold">🏠 Boligmål</p>
+              <div className="space-y-1">
+                <label className="text-[10px] text-muted-foreground">Ønsket boligpris</label>
+                <input
+                  type="number"
+                  step={50000}
+                  value={targetPrice || ''}
+                  placeholder="f.eks. 4 500 000"
+                  onChange={(e) => setSavingsPlanTarget(parseFloat(e.target.value) || 0)}
+                  className="h-8 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+                />
+              </div>
+              {targetPrice > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Nødvendig EK:</span>
+                    <span className="font-mono font-semibold">{fmtNOK(requiredEK)}</span>
+                  </div>
+                  <Progress value={currentProgress} className="h-1.5" />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>{fmtNOK(combinedTotal)} av {fmtNOK(requiredEK)}</span>
+                    <span>{currentProgress.toFixed(0)} %</span>
+                  </div>
+                  {reachEntry ? (
+                    <div className="rounded border border-green-500/30 bg-green-500/8 px-2 py-1.5 text-[10px] text-green-400">
+                      ✓ Mål nås om <b>{reachEntry.months} mnd</b> ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
+                    </div>
+                  ) : (
+                    <div className="rounded border border-amber-500/30 bg-amber-500/8 px-2 py-1.5 text-[10px] text-amber-400">
+                      Ikke innen {simHorizon / 12} år – juster sparing eller mål
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Horizon */}
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-[10px] text-muted-foreground">Simuleringshorisont</span>
+                <span className="text-xs font-mono font-semibold">{simHorizon / 12} år</span>
+              </div>
+              <input
+                type="range" min={12} max={120} step={12}
+                value={simHorizon}
+                onChange={(e) => setSavingsPlanHorizon(parseInt(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <div className="flex justify-between text-[9px] text-muted-foreground">
+                <span>1 år</span><span>5 år</span><span>10 år</span>
+              </div>
+            </div>
+
+            {/* KPIs */}
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { label: 'Meg – EK nå', value: fmtM(meTotalBalance), color: 'text-blue-400' },
+                { label: 'Partner – EK nå', value: fmtM(partnerTotalBalance), color: 'text-purple-400', hidden: !partnerEnabled },
+                { label: 'Samlet EK', value: fmtM(combinedTotal), color: 'text-foreground' },
+                { label: 'Max kjøpesum', value: fmtM(simData[0]?.maxPurchase ?? 0), color: 'text-green-400', sub: '5× inntekt, 10% EK' },
+              ].filter((k) => !k.hidden).map((k) => (
+                <div key={k.label} className="rounded-lg border border-border bg-card px-2.5 py-2">
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{k.label}</p>
+                  <p className={cn('text-sm font-bold font-mono', k.color)}>{k.value}</p>
+                  {k.sub && <p className="text-[9px] text-muted-foreground mt-0.5">{k.sub}</p>}
+                </div>
+              ))}
+            </div>
+
+            {/* Scenarios */}
+            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold">Scenarier</p>
+                <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
+                  onClick={() => setShowAddScenario(true)}>
+                  <Plus className="h-3 w-3 mr-1" />Ny
+                </Button>
+              </div>
+              {savingsScenarios.length === 0 && (
+                <p className="text-[10px] text-muted-foreground">Legg til scenarier for å sammenligne "Optimistisk" vs. "Nøktern" sparing.</p>
+              )}
+              {savingsScenarios.map((sc) => (
+                <div key={sc.id} className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: sc.color }} />
+                  <span className="text-xs flex-1">{sc.label}</span>
+                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-muted-foreground hover:text-red-400"
+                    onClick={() => removeSavingsScenario(sc.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+              {showAddScenario && (
+                <AddScenarioForm
+                  accounts={allRows}
+                  onSave={(sc) => { addSavingsScenario(sc); setShowAddScenario(false) }}
+                  onCancel={() => setShowAddScenario(false)}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Right: chart + table */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {/* Chart tabs */}
+            <div className="flex items-center gap-1.5">
+              {([['vekst', 'EK-vekst'], ['bidrag', 'Innskudd'], ['avkastning', 'Rente & avk.']] as const).map(([k, l]) => (
+                <button key={k} onClick={() => setChartTab(k)}
+                  className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors',
+                    chartTab === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground border border-border hover:text-foreground'
+                  )}>{l}</button>
+              ))}
+            </div>
+
+            {/* Chart */}
+            <div className="rounded-xl border border-border bg-card p-3">
+              <SparePlanChart
+                data={chartData}
+                tab={chartTab}
+                requiredEK={requiredEK}
+                partnerEnabled={partnerEnabled}
+                scenarios={savingsScenarios}
+              />
+            </div>
+
+            {/* Yearly table */}
+            <div className="rounded-xl border border-border overflow-hidden">
+              <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+                <span className="text-xs font-semibold">Årsvis prognose</span>
+                <span className="text-[10px] text-muted-foreground">Nåværende sparetakt</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border">
+                      <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">År</th>
+                      <th className="px-3 py-1.5 text-right font-medium text-blue-400">Meg</th>
+                      {partnerEnabled && <th className="px-3 py-1.5 text-right font-medium text-purple-400">Partner</th>}
+                      <th className="px-3 py-1.5 text-right font-medium">Samlet EK</th>
+                      <th className="px-3 py-1.5 text-right font-medium text-yellow-400">Rente/avk.</th>
+                      {combinedIncome > 0 && <th className="px-3 py-1.5 text-right font-medium text-green-400">Max kjøpesum</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {yearRows.map((y, i) => {
+                      const isGoalYear = reachEntry && y.months >= reachEntry.months &&
+                        (i === 0 || yearRows[i - 1].months < reachEntry.months)
+                      return (
+                        <tr key={y.year} className={cn(
+                          'border-b border-border last:border-0',
+                          isGoalYear && 'bg-green-500/6',
+                          i === 0 && 'bg-primary/3'
+                        )}>
+                          <td className="px-3 py-2 font-semibold">
+                            {y.year}
+                            {i === 0 && <span className="ml-1.5 text-[9px] text-muted-foreground">i år</span>}
+                            {isGoalYear && <span className="ml-1.5 text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">mål</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-blue-400">{fmtM(y.meEK ?? 0)}</td>
+                          {partnerEnabled && <td className="px-3 py-2 text-right font-mono text-purple-400">{fmtM(y.partnerEK ?? 0)}</td>}
+                          <td className="px-3 py-2 text-right font-mono font-bold">{fmtM(y.combined ?? 0)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-yellow-400">+{fmtM(y.totalInterest ?? 0)}</td>
+                          {combinedIncome > 0 && <td className="px-3 py-2 text-right font-mono font-bold text-green-400">{fmtM(y.maxPurchase ?? 0)}</td>}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Assumptions panel */}
-      {showAssumptions && (
-        <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Din sparing</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <AssumptionField label="BSU mnd (kr)" value={a.userBSUMonthly} onChange={v => setField('userBSUMonthly', v)} />
-            <AssumptionField label="Sparekonto mnd (kr)" value={a.userSpareMonthly} onChange={v => setField('userSpareMonthly', v)} />
-            <AssumptionField label="Sparerente %" value={a.userSpareRate} onChange={v => setField('userSpareRate', v)} step={0.1} />
-            <AssumptionField label="Fond mnd (kr)" value={a.fondMonthly} onChange={v => setField('fondMonthly', v)} />
-            <AssumptionField label="Fondavkastning % p.a." value={a.fondAvkastning} onChange={v => setField('fondAvkastning', v)} step={0.5} />
+      {/* ── KONTOER TAB ── */}
+      {subTab === 'kontoer' && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { label: 'Meg totalt', value: fmtNOK(meTotalBalance), sub: `${fmtNOK(meTotalMonthly)}/mnd`, color: 'text-blue-400' },
+              { label: 'Partner totalt', value: fmtNOK(partnerTotalBalance), sub: `${fmtNOK(partnerTotalMonthly)}/mnd`, color: 'text-purple-400', hidden: !partnerEnabled },
+              { label: 'Samlet EK', value: fmtNOK(combinedTotal), sub: `${fmtNOK(totalMonthly)}/mnd` },
+              { label: 'Rente/avk. 12 mnd', value: `+${fmtNOK(simData[12]?.totalInterest ?? 0)}`, sub: 'prognose', color: 'text-yellow-400' },
+            ].filter((k) => !k.hidden).map((k) => (
+              <div key={k.label} className="rounded-lg border border-border bg-card px-3 py-2.5">
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{k.label}</p>
+                <p className={cn('text-base font-bold font-mono', k.color ?? 'text-foreground')}>{k.value}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</p>
+              </div>
+            ))}
           </div>
-          {partnerEnabled && (
+
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
+              <span className="text-xs font-semibold">Kontoer</span>
+              <span className="text-[10px] text-muted-foreground">Klikk tall for å redigere</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/30 border-b border-border">
+                    {['Konto', 'Saldo', 'Mnd. innskudd', 'Rente / Avkastning', 'Årets innskudd', '12 mnd prognose'].map((h, i) => (
+                      <th key={h} className={cn('px-3 py-1.5 font-medium text-muted-foreground', i > 0 && 'text-right')}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="bg-muted/20">
+                    <td colSpan={6} className="px-3 py-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-400" />
+                          <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide">Meg</span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(meTotalBalance)} · {fmtNOK(meTotalMonthly)}/mnd</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {myRows.map((row) => (
+                    <AccountTableRow
+                      key={row.id}
+                      row={row}
+                      proj12={projectBalanceMonthly(row.balance, row.monthly,
+                        row.type === 'fond' || row.type === 'krypto' ? row.expectedReturn : row.rate,
+                        12, row.type === 'BSU')}
+                      onChangeMonthly={(v) => handleAccountChange(row, 'monthly', v)}
+                      onChangeExpectedReturn={(v) => handleAccountChange(row, 'expectedReturn', v)}
+                      onChangeActualReturn={(v) => handleAccountChange(row, 'actualReturn', v)}
+                      sparkData={sparklineForRow(row)}
+                    />
+                  ))}
+
+                  {partnerEnabled && (
+                    <>
+                      <tr className="bg-muted/20">
+                        <td colSpan={6} className="px-3 py-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-purple-400" />
+                              <span className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Partner</span>
+                            </div>
+                            <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(partnerTotalBalance)} · {fmtNOK(partnerTotalMonthly)}/mnd</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {partnerRows.map((row) => (
+                        <AccountTableRow
+                          key={row.id}
+                          row={row}
+                          proj12={projectBalanceMonthly(row.balance, row.monthly, row.expectedReturn, 12, row.type === 'BSU')}
+                          onChangeMonthly={() => {}}
+                          onChangeExpectedReturn={() => {}}
+                          onChangeActualReturn={() => {}}
+                          sparkData={sparklineForRow(row)}
+                          readOnly
+                        />
+                      ))}
+                    </>
+                  )}
+
+                  <tr className="border-t-2 border-border bg-muted/30">
+                    <td className="px-3 py-2 font-bold">Totalt</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold">{fmtNOK(combinedTotal)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold">{fmtNOK(totalMonthly)}/mnd</td>
+                    <td />
+                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">
+                      {fmtNOK(allRows.reduce((s, a) => s + a.ytd, 0))}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-green-400">
+                      {fmtNOK(simData[12]?.combined ?? 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FEEDBACK TAB ── */}
+      {subTab === 'feedback' && (
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Råd & varsler</h3>
+          <div className="space-y-2">
+            {insights.map((ins, i) => (
+              <InsightCard key={i} icon={ins.icon} text={ins.text} color={ins.color} />
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3 mt-2">
+            <p className="text-xs font-semibold">🔗 Sammenheng med resten av verktøyet</p>
+            {[
+              { icon: '📊', label: 'Budsjett', value: `${fmtNOK(totalMonthly)} går til sparing` },
+              { icon: '💰', label: 'Inntekt', value: `${combinedIncome > 0 ? ((totalMonthly / combinedIncome) * 100).toFixed(0) : 0} % av samlet inntekt` },
+              { icon: '🧾', label: 'BSU skattefradrag', value: (() => {
+                const bsu = savingsAccounts.find((a) => a.type === 'BSU')
+                if (!bsu) return 'Ingen BSU registrert'
+                return `Estimert ${fmtNOK(Math.min(bsu.monthlyContribution * 12, BSU_MAX_YEARLY) * 0.1)} refundert`
+              })() },
+              { icon: '⚖️', label: 'Gjeld', value: userDebt > 0 ? `${fmtNOK(userDebt)} total gjeld` : 'Ingen gjeld registrert' },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                <span className="text-base">{row.icon}</span>
+                <div>
+                  <p className="text-xs font-medium">{row.label}</p>
+                  <p className="text-xs text-muted-foreground">{row.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <p className="text-xs font-semibold">📋 Sparewizard</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Steg-for-steg gjennomgang: koble kontoer mot budsjett, sett BSU-kvote,
+              velg fondstrategi, og beregn optimalt oppsett.
+            </p>
+            <Button size="sm" onClick={() => setShowWizard(true)}>Start wizard</Button>
+          </div>
+        </div>
+      )}
+
+      {showWizard && (
+        <SavingsPlanWizard
+          accounts={savingsAccounts}
+          onClose={() => setShowWizard(false)}
+          onUpdateAccount={(id, patch) => updateSavingsAccount(id, patch)}
+          onSetTarget={setSavingsPlanTarget}
+          currentTarget={targetPrice}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Kontotabell-rad ──────────────────────────────────────────
+function AccountTableRow({
+  row, proj12, onChangeMonthly, onChangeExpectedReturn, onChangeActualReturn, sparkData, readOnly,
+}: {
+  row: AccountRow
+  proj12: number
+  onChangeMonthly: (v: number) => void
+  onChangeExpectedReturn: (v: number) => void
+  onChangeActualReturn: (v: number) => void
+  sparkData: number[]
+  readOnly?: boolean
+}) {
+  const isFond = row.type === 'fond' || row.type === 'krypto'
+  const color = row.person === 'meg' ? '#60a5fa' : '#a78bfa'
+  return (
+    <tr className="border-b border-border/60 hover:bg-muted/10 transition-colors">
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <div className="w-1 h-8 rounded-full shrink-0" style={{ background: color }} />
+          <div>
+            <p className="font-medium">{row.label}</p>
+            <p className="text-[10px] text-muted-foreground">{row.accountNumber ?? row.type}</p>
+          </div>
+          <div className="w-16 opacity-60">
+            <Sparkline data={sparkData} color={color} height={24} />
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2 text-right font-mono" style={{ color }}>
+        {fmtNOK(row.balance)}
+      </td>
+      <td className="px-3 py-2 text-right">
+        {readOnly
+          ? <span className="font-mono text-xs">{row.monthly.toLocaleString('no-NO')}/mnd</span>
+          : <InlineCell value={row.monthly} onChange={onChangeMonthly} suffix="/mnd" step={100} />}
+      </td>
+      <td className="px-3 py-2 text-right">
+        {isFond ? (
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-muted-foreground">Forv.</span>
+              {readOnly
+                ? <span className="font-mono">{row.expectedReturn.toFixed(1)} %</span>
+                : <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.5} />}
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="text-muted-foreground">Faktisk</span>
+              {readOnly
+                ? <span className="font-mono text-yellow-400">{row.actualReturn != null ? `${row.actualReturn.toFixed(1)} %` : '–'}</span>
+                : <InlineCell value={row.actualReturn ?? 0} onChange={onChangeActualReturn} suffix=" %" step={0.5} />}
+            </div>
+          </div>
+        ) : (
+          <span className="font-mono text-xs">{row.rate.toFixed(2)} %</span>
+        )}
+      </td>
+      <td className="px-3 py-2 text-right font-mono text-muted-foreground">{fmtNOK(row.ytd)}</td>
+      <td className="px-3 py-2 text-right font-mono text-muted-foreground">{fmtNOK(proj12)}</td>
+    </tr>
+  )
+}
+
+// ─── SparePlan SVG Chart ──────────────────────────────────────
+function SparePlanChart({
+  data, tab, requiredEK, partnerEnabled, scenarios,
+}: {
+  data: { label: string; meEK: number; combined: number; meContrib: number; partnerContrib: number; totalInterest: number; scenarioEKs: Record<string, number> }[]
+  tab: 'vekst' | 'bidrag' | 'avkastning'
+  requiredEK: number
+  partnerEnabled: boolean
+  scenarios: SavingsScenario[]
+}) {
+  const H = 200, W = 560
+  const PAD = { t: 10, r: 10, b: 28, l: 54 }
+  const cW = W - PAD.l - PAD.r
+  const cH = H - PAD.t - PAD.b
+  const [tip, setTip] = useState<{ i: number } | null>(null)
+
+  const lines = tab === 'vekst' ? [
+    { key: 'meEK', color: '#60a5fa', label: 'Meg', w: 1.5 },
+    ...(partnerEnabled ? [{ key: 'combined', color: '#34d399', label: 'Samlet', w: 2 }] : []),
+    ...scenarios.map((sc) => ({ key: `sc_${sc.id}`, color: sc.color, label: sc.label, w: 1, dashed: true })),
+  ] : tab === 'bidrag' ? [
+    { key: 'meContrib', color: '#60a5fa', label: 'Meg', w: 2 },
+    ...(partnerEnabled ? [{ key: 'partnerContrib', color: '#a78bfa', label: 'Partner', w: 2 }] : []),
+  ] : [
+    { key: 'totalInterest', color: '#fbbf24', label: 'Rente/avk.', w: 2 },
+  ]
+
+  type EnrichedRow = typeof data[0] & Record<string, number>
+  const enriched: EnrichedRow[] = data.map((d) => ({
+    ...d,
+    ...Object.fromEntries(scenarios.map((sc) => [`sc_${sc.id}`, d.scenarioEKs?.[sc.id] ?? 0])),
+  }))
+
+  const allVals = lines.flatMap((l) => enriched.map((d) => (d[l.key] as number) ?? 0))
+  const maxV = Math.max(...allVals, requiredEK || 0) * 1.08 || 1
+  const n = enriched.length
+
+  function sx(i: number) { return (i / (n - 1)) * cW }
+  function sy(v: number) { return cH - (v / maxV) * cH }
+
+  const yTicks = Array.from({ length: 5 }, (_, i) => (maxV * (i + 1)) / 5)
+  const xStep = Math.ceil(n / 7)
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }} onMouseLeave={() => setTip(null)}>
+      <g transform={`translate(${PAD.l},${PAD.t})`}>
+        {yTicks.map((v, i) => (
+          <g key={i}>
+            <line x1={0} y1={sy(v)} x2={cW} y2={sy(v)} stroke="hsl(217,32%,14%)" strokeDasharray="3,3" />
+            <text x={-5} y={sy(v) + 4} textAnchor="end" fontSize={9} fill="hsl(215,20%,55%)">{fmtM(v)}</text>
+          </g>
+        ))}
+        {enriched.filter((_, i) => i % xStep === 0 || i === n - 1).map((d, ii) => {
+          const i = enriched.indexOf(d)
+          return <text key={ii} x={sx(i)} y={cH + 16} textAnchor="middle" fontSize={9} fill="hsl(215,20%,55%)">{d.label}</text>
+        })}
+
+        {requiredEK > 0 && requiredEK < maxV && (
+          <>
+            <line x1={0} y1={sy(requiredEK)} x2={cW} y2={sy(requiredEK)} stroke="#22c55e" strokeDasharray="5,3" strokeWidth={1.5} />
+            <text x={cW - 2} y={sy(requiredEK) - 4} textAnchor="end" fontSize={9} fill="#22c55e">EK-mål</text>
+          </>
+        )}
+
+        {lines.map((l) => {
+          const pts = enriched.map((d, i) => `${sx(i)},${sy((d[l.key] as number) ?? 0)}`).join(' ')
+          const areaPath = `M0,${cH} L${enriched.map((d, i) => `${sx(i)},${sy((d[l.key] as number) ?? 0)}`).join(' L')} L${cW},${cH} Z`
+          return (
+            <g key={l.key}>
+              {!('dashed' in l) && <path d={areaPath} fill={l.color} opacity={0.1} />}
+              <polyline points={pts} fill="none" stroke={l.color} strokeWidth={l.w}
+                strokeDasharray={'dashed' in l && l.dashed ? '5,3' : undefined} />
+            </g>
+          )
+        })}
+
+        {enriched.map((_, i) => (
+          <rect key={i} x={sx(i) - cW / n / 2} y={0} width={cW / n} height={cH}
+            fill="transparent" style={{ cursor: 'crosshair' }}
+            onMouseEnter={() => setTip({ i })} />
+        ))}
+        {tip && (() => {
+          const d = enriched[tip.i]
+          const tx = Math.min(sx(tip.i) + 6, cW - 120)
+          return (
+            <g>
+              <line x1={sx(tip.i)} y1={0} x2={sx(tip.i)} y2={cH} stroke="hsl(217,32%,40%)" />
+              <rect x={tx} y={4} width={120} height={14 + lines.length * 14} rx={4}
+                fill="hsl(240,6%,8%)" stroke="hsl(217,32%,18%)" />
+              <text x={tx + 8} y={16} fontSize={9} fill="hsl(215,20%,65%)">{d.label}</text>
+              {lines.map((l, li) => (
+                <text key={l.key} x={tx + 8} y={16 + 14 * (li + 1)} fontSize={10} fill={l.color}>
+                  {l.label}: {fmtNOK((d[l.key] as number) ?? 0)}
+                </text>
+              ))}
+            </g>
+          )
+        })()}
+      </g>
+    </svg>
+  )
+}
+
+// ─── Legg til scenario-form ────────────────────────────────────
+function AddScenarioForm({
+  accounts, onSave, onCancel,
+}: {
+  accounts: AccountRow[]
+  onSave: (sc: SavingsScenario) => void
+  onCancel: () => void
+}) {
+  const [label, setLabel] = useState('')
+  const [color, setColor] = useState('#f472b6')
+  const [returnOverrides, setReturnOverrides] = useState<Record<string, string>>({})
+  const COLORS = ['#f472b6', '#fb923c', '#a3e635', '#38bdf8', '#e879f9']
+
+  return (
+    <div className="rounded-lg border border-border bg-background p-3 space-y-2 text-xs">
+      <Input placeholder="Scenarionavn (f.eks. Optimistisk)" value={label}
+        onChange={(e) => setLabel(e.target.value)} className="h-7 text-xs" />
+      <div className="flex gap-1.5">
+        {COLORS.map((c) => (
+          <button key={c} onClick={() => setColor(c)}
+            className={cn('w-5 h-5 rounded-full border-2 transition-all', color === c ? 'border-foreground scale-110' : 'border-transparent')}
+            style={{ background: c }} />
+        ))}
+      </div>
+      <p className="text-[10px] text-muted-foreground">Avkastning-overstyringer (tom = bruk kontoens standard)</p>
+      {accounts.filter((a) => a.type === 'fond' || a.type === 'krypto').map((a) => (
+        <div key={a.id} className="flex items-center gap-2">
+          <span className="flex-1 truncate text-[10px]">{a.label}</span>
+          <Input type="number" step={0.5} placeholder={String(a.expectedReturn)}
+            value={returnOverrides[a.id] ?? ''}
+            onChange={(e) => setReturnOverrides((p) => ({ ...p, [a.id]: e.target.value }))}
+            className="h-6 w-16 text-xs text-right" />
+          <span className="text-[10px] text-muted-foreground">%</span>
+        </div>
+      ))}
+      <div className="flex gap-1.5 justify-end">
+        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={onCancel}>Avbryt</Button>
+        <Button size="sm" className="h-6 text-xs" disabled={!label.trim()}
+          onClick={() => onSave({
+            id: crypto.randomUUID(), label, color,
+            returnOverrides: Object.fromEntries(
+              Object.entries(returnOverrides)
+                .filter(([, v]) => v !== '')
+                .map(([k, v]) => [k, parseFloat(v)])
+            ),
+            monthlyOverrides: {},
+            createdAt: Date.now(),
+          })}>Lagre</Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sparewizard ──────────────────────────────────────────────
+function SavingsPlanWizard({
+  accounts, onClose, onUpdateAccount, onSetTarget, currentTarget,
+}: {
+  accounts: SavingsAccount[]
+  onClose: () => void
+  onUpdateAccount: (id: string, patch: Partial<SavingsAccount>) => void
+  onSetTarget: (price: number) => void
+  currentTarget: number
+}) {
+  const [step, setStep] = useState(0)
+  const steps = ['BSU-optimering', 'Fondstrategi', 'Buffer', 'Boligmål']
+  const bsu = accounts.find((a) => a.type === 'BSU')
+  const fond = accounts.find((a) => a.type === 'fond')
+  const buffer = accounts.find((a) => a.type === 'sparekonto')
+  const [bsuMonthly, setBsuMonthly] = useState(bsu?.monthlyContribution ?? 0)
+  const [fondReturn, setFondReturn] = useState(fond?.expectedReturn ?? 6)
+  const [bufferTarget, setBufferTarget] = useState(buffer?.monthlyContribution ?? 0)
+  const [targetInput, setTargetInput] = useState(String(currentTarget || ''))
+
+  function finish() {
+    if (bsu) onUpdateAccount(bsu.id, { monthlyContribution: bsuMonthly })
+    if (fond) onUpdateAccount(fond.id, { expectedReturn: fondReturn })
+    if (buffer) onUpdateAccount(buffer.id, { monthlyContribution: bufferTarget })
+    onSetTarget(parseFloat(targetInput) || 0)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60">
+      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-background shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h3 className="font-semibold text-sm">Sparewizard</h3>
+            <p className="text-xs text-muted-foreground">Steg {step + 1} av {steps.length}: {steps[step]}</p>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <div className="flex gap-1 px-5 py-3">
+          {steps.map((s, i) => (
+            <div key={s} className={cn('h-1 flex-1 rounded-full transition-all',
+              i < step ? 'bg-green-500' : i === step ? 'bg-primary' : 'bg-border')} />
+          ))}
+        </div>
+
+        <div className="px-5 py-4 space-y-4 min-h-40">
+          {step === 0 && (
             <>
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide pt-1">Partner</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <AssumptionField label="BSU mnd (kr)" value={a.partnerBSUMonthly} onChange={v => setField('partnerBSUMonthly', v)} />
-                <AssumptionField label="Spare/fond mnd (kr)" value={a.partnerSpareMonthly} onChange={v => setField('partnerSpareMonthly', v)} />
-                <AssumptionField label="Avkastning % p.a." value={a.partnerSpareRate} onChange={v => setField('partnerSpareRate', v)} step={0.5} />
+              <p className="text-sm font-medium">BSU-optimering</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Du kan sette inn opptil <b>27 500 kr/år</b> på BSU og få <b>10 % skattefradrag</b>.
+                Anbefalt månedlig innskudd: {fmtNOK(Math.round(27500 / 12))}.
+              </p>
+              {bsu ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Månedlig BSU-innskudd</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" step={100} value={bsuMonthly}
+                      onChange={(e) => setBsuMonthly(parseFloat(e.target.value) || 0)}
+                      className="h-8 text-xs w-32" />
+                    <span className="text-xs text-muted-foreground">
+                      → skattefradrag: <span className="text-green-400 font-mono">{fmtNOK(Math.min(bsuMonthly * 12, 27500) * 0.1)}/år</span>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-400">Ingen BSU-konto registrert. Legg til i «Kontoer».</p>
+              )}
+            </>
+          )}
+          {step === 1 && (
+            <>
+              <p className="text-sm font-medium">Fondstrategi</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Sett forventet gjennomsnittlig avkastning for simulering. Norsk historisk børssnitt er ca. 8–10 %, globalt ca. 6–8 %.
+              </p>
+              {fond ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Forventet avkastning</Label>
+                  <div className="flex items-center gap-2">
+                    <input type="range" min={2} max={14} step={0.5} value={fondReturn}
+                      onChange={(e) => setFondReturn(parseFloat(e.target.value))}
+                      className="flex-1 accent-primary" />
+                    <span className="font-mono text-sm w-12 text-right">{fondReturn.toFixed(1)} %</span>
+                  </div>
+                  <div className="flex justify-between text-[9px] text-muted-foreground">
+                    <span>Konservativ (2 %)</span><span>Historisk snitt (8 %)</span><span>Aggressiv (14 %)</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-400">Ingen fondkonto registrert. Legg til i «Kontoer».</p>
+              )}
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <p className="text-sm font-medium">Buffer-konto</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Anbefalt buffer er 3–6 måneders faste utgifter. Sett månedlig innskudd til bufferkontoen.
+              </p>
+              {buffer ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">Månedlig innskudd buffer</Label>
+                  <Input type="number" step={100} value={bufferTarget}
+                    onChange={(e) => setBufferTarget(parseFloat(e.target.value) || 0)}
+                    className="h-8 text-xs w-32" />
+                </div>
+              ) : (
+                <p className="text-xs text-amber-400">Ingen sparekonto registrert.</p>
+              )}
+            </>
+          )}
+          {step === 3 && (
+            <>
+              <p className="text-sm font-medium">Boligmål</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Sett ønsket boligpris. Simulatoren beregner når dere har nok egenkapital.
+              </p>
+              <div className="space-y-1">
+                <Label className="text-xs">Ønsket boligpris</Label>
+                <Input type="number" step={50000} placeholder="f.eks. 4 500 000"
+                  value={targetInput}
+                  onChange={(e) => setTargetInput(e.target.value)}
+                  className="h-8 text-xs" />
               </div>
             </>
           )}
-          <button
-            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-            onClick={() => setA(defaultAssumptions)}
-          >
-            Reset til kontoinnstillinger
-          </button>
         </div>
-      )}
 
-      {/* Goal calculator */}
-      <div className="rounded-lg border border-border bg-card/40 p-3 space-y-2">
-        <p className="text-xs font-medium">Når har jeg råd til boligen?</p>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-xs text-muted-foreground whitespace-nowrap">Boligpris:</label>
-          <input
-            type="number"
-            step={50000}
-            placeholder="f.eks. 3 500 000"
-            className="h-8 flex-1 min-w-32 rounded border border-border bg-background px-2 text-xs"
-            value={targetPrice}
-            onChange={e => setTargetPrice(e.target.value)}
-          />
-          {parsedTarget > 0 && (
-            <p className="text-xs text-muted-foreground whitespace-nowrap">
-              Nødvendig EK: <span className="font-mono font-medium text-foreground">{fmtNOK(requiredEK)}</span>
-            </p>
+        <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+          <Button variant="ghost" size="sm" disabled={step === 0}
+            onClick={() => setStep((s) => s - 1)}>
+            Forrige
+          </Button>
+          {step < steps.length - 1 ? (
+            <Button size="sm" onClick={() => setStep((s) => s + 1)}>Neste</Button>
+          ) : (
+            <Button size="sm" className="bg-green-600 hover:bg-green-500" onClick={finish}>
+              <Check className="h-3.5 w-3.5 mr-1" /> Ferdig
+            </Button>
           )}
         </div>
-        {parsedTarget > 0 && (
-          reachEntry ? (
-            <div className="rounded-md bg-green-500/8 border border-green-500/20 px-3 py-2 text-xs flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-green-400 font-medium">
-                Du når {fmtM(parsedTarget)}-boligen om {reachEntry.months} mnd
-                ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
-              </span>
-              <span className="text-muted-foreground">EK ved den tid: {fmtNOK(reachEntry.combinedEK)}</span>
-            </div>
-          ) : (
-            <p className="text-xs text-amber-400">
-              Ikke nok EK innen 4 år med nåværende tempo — mangler{' '}
-              <span className="font-mono">{fmtNOK(requiredEK - monthlyData[48].combinedEK)}</span> ved 4 år.
-            </p>
-          )
-        )}
       </div>
-
-      {/* EK-vekst graf */}
-      <div>
-        <p className="text-xs text-muted-foreground mb-1.5">EK-vekst neste 4 år</p>
-        <ResponsiveContainer width="100%" height={150}>
-          <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={11} />
-            <YAxis tickFormatter={v => fmtM(Number(v))} tick={{ fontSize: 9 }} width={46} />
-            <Tooltip
-              formatter={(v, name) => [fmtNOK(Number(v)), name === 'combinedEK' ? 'Samlet EK' : 'Din EK']}
-              contentStyle={{ fontSize: 11 }}
-            />
-            <Area type="monotone" dataKey="userEK" stroke="#3B82F6" fill="#3B82F620" strokeWidth={1.5} dot={false} name="userEK" />
-            {partnerEnabled && (
-              <Area type="monotone" dataKey="combinedEK" stroke="#8B5CF6" fill="#8B5CF615" strokeWidth={1.5} dot={false} name="combinedEK" />
-            )}
-            {requiredEK > 0 && (
-              <ReferenceLine y={requiredEK} stroke="#22C55E" strokeDasharray="4 2"
-                label={{ value: 'Mål EK', position: 'insideTopRight', fontSize: 9, fill: '#22C55E' }} />
-            )}
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Årsvis tabell */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="text-left px-3 py-2 font-medium whitespace-nowrap">År</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-blue-400">Din EK</th>
-                {partnerEnabled && <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-purple-400">Partner EK</th>}
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap">Samlet EK</th>
-                {combinedIncome > 0 && <th className="text-right px-3 py-2 font-medium whitespace-nowrap text-green-400">Max kjøpesum</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {yearRows.map((y, i) => (
-                <tr key={y.year} className={cn('border-b border-border last:border-0', i === 0 && 'bg-primary/3')}>
-                  <td className="px-3 py-2.5 font-semibold">
-                    {y.year}
-                    {i === 0 && <span className="ml-1 text-[9px] text-muted-foreground">(i år)</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-blue-400">{fmtM(y.userEK)}</td>
-                  {partnerEnabled && <td className="px-3 py-2.5 text-right font-mono tabular-nums text-purple-400">{fmtM(y.partnerEK)}</td>}
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold">{fmtM(y.combinedEK)}</td>
-                  {combinedIncome > 0 && <td className="px-3 py-2.5 text-right font-mono tabular-nums font-bold text-green-400">{fmtM(y.maxPurchase)}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Månedlig breakdown */}
-      <div>
-        <p className="text-xs font-medium mb-1.5">Månedlig breakdown</p>
-        <div className="rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto max-h-52 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-card/95 backdrop-blur-sm z-10">
-                <tr className="border-b border-border">
-                  <th className="text-left px-3 py-1.5 font-medium">Måned</th>
-                  <th className="text-right px-3 py-1.5 font-medium text-blue-400">Din EK</th>
-                  {partnerEnabled && <th className="text-right px-3 py-1.5 font-medium text-purple-400">Partner EK</th>}
-                  <th className="text-right px-3 py-1.5 font-medium">Samlet EK</th>
-                  {combinedIncome > 0 && <th className="text-right px-3 py-1.5 font-medium text-green-400">Max kjøpesum</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {monthlyData.slice(1).map((d, i) => {
-                  const isGoal = reachIndex > 0 && i + 1 === reachIndex
-                  return (
-                    <tr key={i} className={cn('border-b border-border/40 last:border-0', isGoal && 'bg-green-500/8')}>
-                      <td className="px-3 py-1.5 text-muted-foreground whitespace-nowrap">
-                        {d.d.toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}
-                        {isGoal && <span className="ml-1.5 text-[9px] bg-green-500/20 text-green-400 px-1 py-0.5 rounded">mål</span>}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-mono tabular-nums text-blue-400">{fmtM(d.userEK)}</td>
-                      {partnerEnabled && <td className="px-3 py-1.5 text-right font-mono tabular-nums text-purple-400">{fmtM(d.partnerEK)}</td>}
-                      <td className="px-3 py-1.5 text-right font-mono tabular-nums">{fmtM(d.combinedEK)}</td>
-                      {combinedIncome > 0 && <td className="px-3 py-1.5 text-right font-mono tabular-nums text-green-400">{fmtM(d.maxPurchase)}</td>}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI-kort */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Din EK nå</p>
-          <p className="text-sm font-semibold font-mono">{fmtM(monthlyData[0].userEK)}</p>
-          <p className="text-[10px] text-muted-foreground">BSU + spare + fond</p>
-        </div>
-        {partnerEnabled && (
-          <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Partner EK nå</p>
-            <p className="text-sm font-semibold font-mono">{fmtM(monthlyData[0].partnerEK)}</p>
-            <p className="text-[10px] text-muted-foreground">BSU + spare</p>
-          </div>
-        )}
-        {combinedIncome > 0 && (
-          <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2.5">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Max kjøpesum nå</p>
-            <p className="text-sm font-semibold font-mono text-green-400">{fmtM(monthlyData[0].maxPurchase)}</p>
-            <p className="text-[10px] text-muted-foreground">10% EK-krav, 5× inntekt</p>
-          </div>
-        )}
-        <div className="rounded-lg border border-border bg-card/60 px-3 py-2.5">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Mnd. sparing totalt</p>
-          <p className="text-sm font-semibold font-mono">
-            {fmtM(a.userBSUMonthly + a.userSpareMonthly + a.fondMonthly + (partnerEnabled ? a.partnerBSUMonthly + a.partnerSpareMonthly : 0))}
-          </p>
-          <p className="text-[10px] text-muted-foreground">alle kontoer{partnerEnabled ? ' begge' : ''}</p>
-        </div>
-      </div>
-
-      <p className="text-[10px] text-muted-foreground px-1">
-        Kjøpekraft beregnet med 10% egenkapitalkrav og maks 5× samlet bruttoinntekt. Rentersrente beregnes for spare og fond.
-        {a.fondAvkastning !== 6 && ` Fondavkastning satt til ${a.fondAvkastning}% p.a.`}
-      </p>
     </div>
   )
 }
