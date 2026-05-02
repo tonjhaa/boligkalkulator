@@ -175,10 +175,52 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
   const nettoFraBudsjett = nettoCell ? (nettoCell.actual ?? nettoCell.budget) : 0
   const overskuddFraBudsjett = overskuddCell ? (overskuddCell.actual ?? overskuddCell.budget) : null
 
-  // ── Sparerate & healthscore ───────────────────────────────
-  const sparerate = nettoFraBudsjett > 0 && overskuddFraBudsjett !== null
-    ? Math.max(0, Math.round((overskuddFraBudsjett / nettoFraBudsjett) * 100))
-    : 0
+  // ── Sparerate siste 12 mnd (faktisk sparevekst / total netto) ────
+  const sparerate12m = (() => {
+    const last12 = [...monthHistory]
+      .filter(m => m.source === 'imported_slip' && m.nettoUtbetalt > 0)
+      .sort((a, b) => b.year - a.year || b.month - a.month)
+      .slice(0, 12)
+    if (last12.length < 2) return null
+
+    const totalNetto = last12.reduce((s, m) => s + m.nettoUtbetalt, 0)
+
+    // Tidligste og seneste punkt i de 12 månedene
+    const oldest = last12[last12.length - 1]
+    const oldestDate = new Date(oldest.year, oldest.month - 1, 1)
+
+    let totalGrowth = 0
+    for (const acc of savingsAccounts) {
+      const sorted = [...acc.balanceHistory].sort((a, b) =>
+        a.year !== b.year ? a.year - b.year : a.month - b.month)
+      // Saldo ved starten av perioden
+      const before = sorted.filter(e =>
+        e.year < oldestDate.getFullYear() ||
+        (e.year === oldestDate.getFullYear() && e.month <= oldestDate.getMonth() + 1)
+      )
+      const startBal = before.length > 0 ? before[before.length - 1].balance : 0
+      const currentBal = computeEffectiveBalance(acc, now)
+      totalGrowth += Math.max(0, currentBal - startBal)
+    }
+
+    return totalNetto > 0 ? Math.max(0, Math.round((totalGrowth / totalNetto) * 100)) : null
+  })()
+
+  const sparerate = sparerate12m
+    ?? (nettoFraBudsjett > 0 && overskuddFraBudsjett !== null
+      ? Math.max(0, Math.round((overskuddFraBudsjett / nettoFraBudsjett) * 100))
+      : 0)
+
+  // Snitt-netto siste 12 mnd (for månedligflyt-kortet)
+  const avgNetto12m = (() => {
+    const last12 = [...monthHistory]
+      .filter(m => m.source === 'imported_slip' && m.nettoUtbetalt > 0)
+      .sort((a, b) => b.year - a.year || b.month - a.month)
+      .slice(0, 12)
+    return last12.length >= 3
+      ? Math.round(last12.reduce((s, m) => s + m.nettoUtbetalt, 0) / last12.length)
+      : null
+  })()
 
   const healthScore = calcHealthScore({
     sparerate,
@@ -191,7 +233,13 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 
   // ── Pengepuls-chips ───────────────────────────────────────
   const chips: { icon: string; text: string; accent?: string }[] = []
-  if (nettoFraBudsjett > 0 && overskuddFraBudsjett !== null) {
+  if (sparerate12m !== null) {
+    chips.push({
+      icon: '💰',
+      text: `Sparerate: ${sparerate12m}% av netto (siste 12 mnd)`,
+      accent: sparerate12m >= 20 ? 'green' : sparerate12m >= 10 ? 'yellow' : 'red',
+    })
+  } else if (nettoFraBudsjett > 0 && overskuddFraBudsjett !== null) {
     chips.push({
       icon: '💰',
       text: `Sparerate: ${sparerate}% av netto`,
@@ -262,6 +310,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           nettoInn={nettoFraBudsjett || nettoInn}
           fasteUt={fasteUt}
           overskudd={overskuddFraBudsjett}
+          avgNetto12m={avgNetto12m}
         />
         <FormueChart
           history={trendData}
@@ -336,17 +385,19 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
 // ══════════════════════════════════════════════════════════════
 
 function MonthlyFlowCard({
-  nettoInn, fasteUt, overskudd,
+  nettoInn, fasteUt, overskudd, avgNetto12m,
 }: {
   nettoInn: number
   fasteUt: number
   overskudd: number | null
+  avgNetto12m: number | null
 }) {
-  const ledig = overskudd ?? (nettoInn - fasteUt)
-  const sparing = nettoInn - fasteUt - Math.max(0, ledig)
+  const displayNetto = avgNetto12m ?? nettoInn
+  const ledig = overskudd ?? (displayNetto - fasteUt)
+  const sparing = displayNetto - fasteUt - Math.max(0, ledig)
 
   const rows: { label: string; value: number; color: string }[] = [
-    { label: 'Netto inn', value: nettoInn, color: 'bg-green-500' },
+    { label: 'Netto inn', value: displayNetto, color: 'bg-green-500' },
     { label: 'Faste ut', value: fasteUt, color: 'bg-red-400' },
     ...(sparing > 0 ? [{ label: 'Sparing', value: sparing, color: 'bg-blue-400' }] : []),
     { label: 'Ledig', value: Math.max(0, ledig), color: 'bg-violet-400' },
@@ -354,8 +405,13 @@ function MonthlyFlowCard({
 
   return (
     <div className="rounded-xl border border-border/50 bg-card/60 px-4 pt-3 pb-3 flex flex-col gap-2.5">
-      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Månedlig flyt</p>
-      {nettoInn === 0 ? (
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Månedlig flyt</p>
+        {avgNetto12m !== null && (
+          <p className="text-[9px] text-muted-foreground/60">snitt 12 mnd</p>
+        )}
+      </div>
+      {displayNetto === 0 ? (
         <p className="text-xs text-muted-foreground flex-1 flex items-center">Ingen data</p>
       ) : (
         rows.map((row) => (
