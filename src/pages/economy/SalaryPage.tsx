@@ -162,8 +162,8 @@ export function SalaryPage() {
   return (
     <div className="flex h-full overflow-hidden">
 
-      {/* ── VENSTRE — Lønnssammensetning (380px) ── */}
-      <div className="w-[380px] shrink-0 border-r border-border overflow-y-auto p-5 space-y-4">
+      {/* ── VENSTRE — Lønnssammensetning ── */}
+      <div className="w-[320px] shrink-0 border-r border-border overflow-y-auto p-4 space-y-4">
 
         {/* Waterfall-hero */}
         <SalaryWaterfallHero
@@ -210,16 +210,20 @@ export function SalaryPage() {
             ) : profile ? (
               <div className="space-y-2 text-sm">
                 <InfoRow label="Arbeidsgiver" value={profile.employer === 'forsvaret' ? 'Forsvaret' : 'Annen'} />
-                <InfoRow label="Grunnlønn/mnd" value={`${fmtNOK(profile.baseMonthly)} (${fmtNOK(profile.baseMonthly * 12)}/år)`} />
+                <InfoRow
+                  label="Grunnlønn/mnd"
+                  value={fmtNOK(profile.baseMonthly)}
+                  sub={`${fmtNOK(profile.baseMonthly * 12)}/år`}
+                />
                 {profile.fixedAdditions.filter((a) => a.amount > 0).map((a) => (
                   <InfoRow key={a.kode} label={`${a.label} (${a.kode})`} value={`${fmtNOK(a.amount)}/mnd`} />
                 ))}
                 <InfoRow label="Skattetrekk/mnd" value={fmtNOK(profile.lastKnownTaxWithholding)} />
                 {profile.tabellnummer && <InfoRow label="Trekktabell" value={String(profile.tabellnummer)} />}
-                {profile.extraTaxWithholding > 0 && <InfoRow label="Ekstra trekk/mnd" value={fmtNOK(profile.extraTaxWithholding)} />}
-                {profile.housingDeduction > 0 && <InfoRow label="Husleietrekk/mnd" value={fmtNOK(profile.housingDeduction)} />}
-                <InfoRow label="Pensjonstrekk" value={`${profile.pensionPercent}%`} />
-                <InfoRow label="Fagforeningskont./mnd" value={fmtNOK(profile.unionFee)} />
+                {profile.extraTaxWithholding > 0 && <InfoRow label="Ekstra trekk" value={`${fmtNOK(profile.extraTaxWithholding)}/mnd`} />}
+                {profile.housingDeduction > 0 && <InfoRow label="Husleietrekk" value={`${fmtNOK(profile.housingDeduction)}/mnd`} />}
+                <InfoRow label="Pensjon" value={`${profile.pensionPercent}%`} />
+                <InfoRow label="Fagforening" value={`${fmtNOK(profile.unionFee)}/mnd`} />
               </div>
             ) : null}
           </CardContent>
@@ -347,11 +351,14 @@ export function SalaryPage() {
 // SUB-KOMPONENTER
 // ------------------------------------------------------------
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono font-medium">{value}</span>
+    <div className="flex items-start justify-between gap-2 min-w-0">
+      <span className="text-muted-foreground text-xs shrink truncate">{label}</span>
+      <span className="font-mono font-medium text-xs text-right shrink-0">
+        {value}
+        {sub && <span className="block text-[10px] text-muted-foreground font-normal">{sub}</span>}
+      </span>
     </div>
   )
 }

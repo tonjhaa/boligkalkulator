@@ -621,12 +621,44 @@ export const useEconomyStore = create<EconomyState>()(
           .filter((m) => m.source === 'imported_slip' && (m.slipData?.maanedslonn ?? 0) > 0)
           .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
 
+        // HTA-artskoder (Hoved­tariff­avtalens generelle tillegg i Forsvaret)
+        const HTA_ARTSKODER = new Set(['1040', '1041', '1042', '1043', '1044', '1045'])
+
         const derived: LonnsoppgjorRecord[] = []
         let prevLonn = 0
+        let prevTilleggMap: Map<string, number> = new Map()
 
         for (const m of slips) {
           const lonn = m.slipData!.maanedslonn
           const effectiveDate = `${m.year}-${String(m.month).padStart(2, '0')}-01`
+
+          // Bygg tilleggsmap for denne måneden
+          const currentTilleggMap = new Map<string, number>()
+          for (const t of (m.slipData!.fasteTillegg ?? [])) {
+            currentTilleggMap.set(t.artskode, t.belop)
+          }
+
+          // Finn nye eller økte HTA-tillegg
+          const htaAdded: string[] = []
+          for (const [kode, belop] of currentTilleggMap.entries()) {
+            if (HTA_ARTSKODER.has(kode)) {
+              const prev = prevTilleggMap.get(kode) ?? 0
+              if (belop > prev + 200) htaAdded.push(`${kode} (+${Math.round(belop - prev).toLocaleString('no-NO')} kr)`)
+            }
+          }
+
+          // Finn alle nye faste tillegg (ikke bare HTA) som dukker opp
+          const newTillegg: string[] = []
+          for (const [kode, belop] of currentTilleggMap.entries()) {
+            if (!prevTilleggMap.has(kode) && belop > 200) {
+              const navn = m.slipData!.fasteTillegg.find(t => t.artskode === kode)?.navn ?? kode
+              newTillegg.push(`${navn} (${kode})`)
+            }
+          }
+
+          const lonnEndret = Math.abs(lonn - prevLonn) > 300
+          const htaEndret = htaAdded.length > 0
+
           if (prevLonn === 0) {
             derived.push({
               id: crypto.randomUUID(),
@@ -634,23 +666,34 @@ export const useEconomyStore = create<EconomyState>()(
               effectiveDate,
               maanedslonn: lonn,
               forrigeMaanedslonn: 0,
-              htaTillegg: 0,
-              notes: 'Første registrerte lønn',
+              htaTillegg: htaAdded.length > 0 ? (currentTilleggMap.get([...HTA_ARTSKODER].find(k => currentTilleggMap.has(k))!) ?? 0) : 0,
+              notes: 'Første registrerte lønn' + (newTillegg.length > 0 ? ` · Tillegg: ${newTillegg.join(', ')}` : ''),
               source: 'slip',
             })
-          } else if (Math.abs(lonn - prevLonn) > 500) {
+          } else if (lonnEndret || htaEndret) {
+            const notesParts: string[] = []
+            if (htaAdded.length > 0) notesParts.push(`HTA: ${htaAdded.join(', ')}`)
+            if (newTillegg.length > 0) notesParts.push(`Nytt tillegg: ${newTillegg.join(', ')}`)
+
+            // Beregn HTA-tillegg som sum av alle HTA-artskoder i dette slippet
+            let htaSum = 0
+            for (const kode of HTA_ARTSKODER) {
+              htaSum += currentTilleggMap.get(kode) ?? 0
+            }
+
             derived.push({
               id: crypto.randomUUID(),
               year: m.year,
               effectiveDate,
               maanedslonn: lonn,
               forrigeMaanedslonn: prevLonn,
-              htaTillegg: 0,
-              notes: '',
+              htaTillegg: htaSum,
+              notes: notesParts.join(' · '),
               source: 'slip',
             })
           }
           prevLonn = lonn
+          prevTilleggMap = currentTilleggMap
         }
 
         set((s) => ({
@@ -867,7 +910,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 8,
+      version: 9,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -930,6 +973,13 @@ export const useEconomyStore = create<EconomyState>()(
         // v7 → v8: legg til status-felt på eksisterende gjeld (bakoverkompatibelt, ingen endring nødvendig)
         if (fromVersion < 8) {
           // Ingen datamigrering nødvendig — status er optional og undefined = aktiv
+        }
+        // v8 → v9: sørg for at 'veikart' er i enabledTabs (siden det ble lagt til i sub-nav)
+        if (fromVersion < 9 && state.userPreferences) {
+          const prefs = state.userPreferences as { enabledTabs?: string[] }
+          if (Array.isArray(prefs.enabledTabs) && !prefs.enabledTabs.includes('veikart')) {
+            prefs.enabledTabs = [...prefs.enabledTabs, 'veikart']
+          }
         }
         // v6 → v7: utvid PartnerVeikart med nye felt + persister den
         if (fromVersion < 7) {
