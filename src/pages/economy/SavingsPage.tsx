@@ -458,6 +458,25 @@ function Sparkline({ data, color = '#60a5fa', height = 48 }: {
   )
 }
 
+// ─── Projiser innskudd med trinnvise endringer ────────────────
+function projectWithSteps(
+  start: number, baseMonthly: number, rate: number, months: number, isBSU: boolean,
+  steps: { fromMonth: number; monthly: number }[]
+): number {
+  if (!steps.length) return projectBalanceMonthly(start, baseMonthly, rate, months, isBSU)
+  const sorted = steps.filter((s) => s.fromMonth < months).sort((a, b) => a.fromMonth - b.fromMonth)
+  let bal = start, from = 0, monthly = baseMonthly
+  for (const step of sorted) {
+    const seg = step.fromMonth - from
+    if (seg > 0) bal = projectBalanceMonthly(bal, monthly, rate, seg, isBSU)
+    monthly = step.monthly
+    from = step.fromMonth
+  }
+  const rem = months - from
+  if (rem > 0) bal = projectBalanceMonthly(bal, monthly, rate, rem, isBSU)
+  return bal
+}
+
 // ─── Projiser fremtidig gjeldssaldo ───────────────────────────
 function projectDebtBalance(debt: DebtAccount, months: number): number {
   if (debt.status === 'nedbetalt') return 0
@@ -488,12 +507,15 @@ interface AccountRow {
   accountNumber?: string
   balance: number
   monthly: number
+  budgetMonthly: number   // fra budsjettlinjer
   rate: number
   expectedReturn: number
   actualReturn: number | null
   ytd: number
   person: 'meg' | 'partner'
 }
+
+type ContribStep = { fromMonth: number; monthly: number }
 
 // ─── SPAREPLAN TAB (full ny versjon) ──────────────────────────
 function SparePlanTab({
@@ -516,7 +538,36 @@ function SparePlanTab({
     savingsPlanHorizon,
     setSavingsPlanHorizon,
     setPartnerVeikart,
+    budgetTemplate,
   } = useEconomyStore()
+
+  // ── Bidragsplan: ulike innskudd til ulike tider (kun egne kontoer) ──
+  const [contributionSteps, setContributionSteps] = useState<Record<string, ContribStep[]>>({})
+  const [stepForm, setStepForm] = useState<{ accountId: string; fromMonth: number; monthly: number } | null>(null)
+
+  function addContribStep(accountId: string, fromMonth: number, monthly: number) {
+    setContributionSteps((prev) => ({
+      ...prev,
+      [accountId]: [...(prev[accountId] ?? []).filter((s) => s.fromMonth !== fromMonth), { fromMonth, monthly }]
+        .sort((a, b) => a.fromMonth - b.fromMonth),
+    }))
+  }
+  function removeContribStep(accountId: string, fromMonth: number) {
+    setContributionSteps((prev) => ({
+      ...prev,
+      [accountId]: (prev[accountId] ?? []).filter((s) => s.fromMonth !== fromMonth),
+    }))
+  }
+
+  // ── Budget savings: match linjer til kontokategori ────────────
+  // Maps SavingsAccountType → budget category string
+  const BUDGET_CAT: Partial<Record<SavingsAccountType, string>> = {
+    BSU: 'bsu', fond: 'fond', krypto: 'krypto', sparekonto: 'annen_sparing',
+  }
+  const budgetByCategory = (budgetTemplate?.lines ?? [])
+    .filter((l) => ['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'].includes(l.category))
+    .reduce((m, l) => ({ ...m, [l.category]: (m[l.category] ?? 0) + Math.abs(l.amount) }), {} as Record<string, number>)
+  const budgetTotalSavings = Object.values(budgetByCategory).reduce((s, v) => s + v, 0)
 
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
@@ -544,6 +595,8 @@ function SparePlanTab({
       const currentRate = [...a.rateHistory].sort((x, y) =>
         y.fromDate.localeCompare(x.fromDate))[0]?.rate ?? 0
       const ytd = computeYTDContributions(a, currentYear)
+      const budgetCat = BUDGET_CAT[a.type]
+      const budgetMonthly = budgetCat ? (budgetByCategory[budgetCat] ?? 0) : 0
       return {
         id: a.id,
         label: a.label,
@@ -551,6 +604,7 @@ function SparePlanTab({
         accountNumber: a.accountNumber,
         balance,
         monthly: a.monthlyContribution,
+        budgetMonthly,
         rate: currentRate,
         expectedReturn: a.expectedReturn ?? (a.type === 'fond' || a.type === 'krypto' ? 6 : currentRate),
         actualReturn: a.actualReturn ?? null,
@@ -563,12 +617,12 @@ function SparePlanTab({
   const myRows = makeRows(savingsAccounts, 'meg')
   const partnerRows: AccountRow[] = partnerEnabled ? [
     { id: 'p-bsu', label: 'BSU', type: 'BSU', balance: partnerVeikart?.bsu ?? 0,
-      monthly: partnerVeikart?.bsuMonthlyContribution ?? 0, rate: 5.5,
+      monthly: partnerVeikart?.bsuMonthlyContribution ?? 0, budgetMonthly: 0, rate: 5.5,
       expectedReturn: 5.5, actualReturn: null,
       ytd: (partnerVeikart?.bsuMonthlyContribution ?? 0) * (currentMonth + 1), person: 'partner' },
     { id: 'p-spare', label: 'Sparekonto', type: 'sparekonto',
       balance: partnerVeikart?.equity ?? 0,
-      monthly: partnerVeikart?.monthlySavings ?? 0, rate: 3.0,
+      monthly: partnerVeikart?.monthlySavings ?? 0, budgetMonthly: 0, rate: 3.0,
       expectedReturn: 3.0, actualReturn: null,
       ytd: (partnerVeikart?.monthlySavings ?? 0) * (currentMonth + 1), person: 'partner' },
   ] : []
@@ -576,11 +630,11 @@ function SparePlanTab({
   const allRows = [...myRows, ...partnerRows]
 
   // ── Simulation engine ────────────────────────────────────
-  // expectedReturn overstyrer rate i simulering for alle kontotyper
-  function computeEK(rows: AccountRow[], months: number): number {
+  // expectedReturn overstyrer rate; contributionSteps gir trinnvise innskudd
+  function computeEK(rows: AccountRow[], months: number, steps: Record<string, ContribStep[]> = {}): number {
     return rows.reduce((sum, a) => {
       const rate = a.expectedReturn ?? a.rate
-      return sum + projectBalanceMonthly(a.balance, a.monthly, rate, months, a.type === 'BSU')
+      return sum + projectWithSteps(a.balance, a.monthly, rate, months, a.type === 'BSU', steps[a.id] ?? [])
     }, 0)
   }
 
@@ -591,7 +645,7 @@ function SparePlanTab({
   const simData = useMemo(() => {
     const steps = simHorizon + 1
     return Array.from({ length: steps }, (_, i) => {
-      const meEK = computeEK(myRows, i)
+      const meEK = computeEK(myRows, i, contributionSteps)
       const partnerEK = computeEK(partnerRows, i)
       const combined = meEK + (partnerEnabled ? partnerEK : 0)
       const debtAtMonth = debts
@@ -630,7 +684,7 @@ function SparePlanTab({
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savingsAccounts, partnerVeikart, savingsScenarios, savingsPlanHorizon, partnerEnabled])
+  }, [savingsAccounts, partnerVeikart, savingsScenarios, savingsPlanHorizon, partnerEnabled, contributionSteps])
 
   // ── Goal calc ────────────────────────────────────────────
   const requiredEK = targetPrice > 0
@@ -947,7 +1001,7 @@ function SparePlanTab({
               { label: 'Meg totalt', value: fmtNOK(meTotalBalance), sub: `${fmtNOK(meTotalMonthly)}/mnd`, color: 'text-blue-400' },
               { label: 'Partner totalt', value: fmtNOK(partnerTotalBalance), sub: `${fmtNOK(partnerTotalMonthly)}/mnd`, color: 'text-purple-400', hidden: !partnerEnabled },
               { label: 'Samlet EK', value: fmtNOK(combinedTotal), sub: `${fmtNOK(totalMonthly)}/mnd` },
-              { label: 'Rente/avk. 12 mnd', value: `+${fmtNOK(simData[12]?.totalInterest ?? 0)}`, sub: 'prognose', color: 'text-yellow-400' },
+              { label: 'Budsjettert sparing', value: fmtNOK(budgetTotalSavings), sub: budgetTotalSavings !== totalMonthly ? `sim. bruker ${fmtNOK(totalMonthly)}/mnd` : 'matcher simulering', color: budgetTotalSavings > 0 && budgetTotalSavings !== totalMonthly ? 'text-amber-400' : 'text-green-400' },
             ].filter((k) => !k.hidden).map((k) => (
               <div key={k.label} className="rounded-lg border border-border bg-card px-3 py-2.5">
                 <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{k.label}</p>
@@ -1045,6 +1099,107 @@ function SparePlanTab({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Planlagte innskudd */}
+          <div className="rounded-xl border border-border overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
+              <div>
+                <span className="text-xs font-semibold">Planlagte innskudd</span>
+                <span className="text-[10px] text-muted-foreground ml-2">Ulike beløp til ulike tidspunkter (kun egne kontoer)</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-3">
+              {/* Eksisterende trinn */}
+              {myRows.some((r) => (contributionSteps[r.id] ?? []).length > 0) ? (
+                <div className="space-y-1.5">
+                  {myRows.flatMap((row) =>
+                    (contributionSteps[row.id] ?? []).map((step) => (
+                      <div key={`${row.id}-${step.fromMonth}`} className="flex items-center gap-2 text-xs bg-muted/20 rounded-lg px-3 py-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                        <span className="flex-1 font-medium">{row.label}</span>
+                        <span className="text-muted-foreground">fra mnd {step.fromMonth}:</span>
+                        <span className="font-mono text-foreground">{fmtNOK(step.monthly)}/mnd</span>
+                        <button
+                          onClick={() => removeContribStep(row.id, step.fromMonth)}
+                          className="text-muted-foreground hover:text-red-400 transition-colors ml-1"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Ingen planlagte innskudd lagt til ennå.</p>
+              )}
+
+              {/* Legg til nytt trinn */}
+              {stepForm !== null ? (
+                <div className="rounded-lg border border-border bg-background p-3 space-y-2">
+                  <p className="text-xs font-medium">Nytt planlagt innskudd</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Konto</label>
+                      <select
+                        value={stepForm.accountId}
+                        onChange={(e) => setStepForm((f) => f && { ...f, accountId: e.target.value })}
+                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                      >
+                        {myRows.map((r) => (
+                          <option key={r.id} value={r.id}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Fra måned nr.</label>
+                      <input
+                        type="number" min={1} step={1}
+                        value={stepForm.fromMonth || ''}
+                        onChange={(e) => setStepForm((f) => f && { ...f, fromMonth: parseInt(e.target.value) || 0 })}
+                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+                        placeholder="f.eks. 6"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground mb-1 block">Beløp/mnd (kr)</label>
+                      <input
+                        type="number" min={0} step={500}
+                        value={stepForm.monthly || ''}
+                        onChange={(e) => setStepForm((f) => f && { ...f, monthly: parseFloat(e.target.value) || 0 })}
+                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+                        placeholder="f.eks. 5000"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 justify-end">
+                    <button
+                      onClick={() => setStepForm(null)}
+                      className="px-3 py-1 rounded text-xs border border-border text-muted-foreground hover:text-foreground transition-colors"
+                    >Avbryt</button>
+                    <button
+                      onClick={() => {
+                        if (stepForm.accountId && stepForm.fromMonth > 0) {
+                          addContribStep(stepForm.accountId, stepForm.fromMonth, stepForm.monthly)
+                          setStepForm(null)
+                        }
+                      }}
+                      disabled={!stepForm.accountId || stepForm.fromMonth <= 0}
+                      className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >Legg til</button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setStepForm({ accountId: myRows[0]?.id ?? '', fromMonth: 0, monthly: 0 })}
+                  disabled={myRows.length === 0}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Legg til planlagt innskudd
+                </button>
+              )}
             </div>
           </div>
         </div>
