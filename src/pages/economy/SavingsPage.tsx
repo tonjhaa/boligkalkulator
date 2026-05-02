@@ -149,6 +149,7 @@ export function SavingsPage() {
           profile={profile}
           debts={debts}
           now={now}
+          onNavigateToAccounts={() => setSubTab('kontoer')}
         />
       )}
 
@@ -352,6 +353,7 @@ interface SparePlanTabProps {
   profile: EmploymentProfile | null
   debts: DebtAccount[]
   now: Date
+  onNavigateToAccounts?: () => void
 }
 
 function fmtM(n: number) {
@@ -502,6 +504,7 @@ function SparePlanTab({
   profile,
   debts,
   now,
+  onNavigateToAccounts,
 }: SparePlanTabProps) {
   const {
     updateSavingsAccount,
@@ -512,6 +515,7 @@ function SparePlanTab({
     setSavingsPlanTarget,
     savingsPlanHorizon,
     setSavingsPlanHorizon,
+    setPartnerVeikart,
   } = useEconomyStore()
 
   const currentYear = now.getFullYear()
@@ -572,10 +576,10 @@ function SparePlanTab({
   const allRows = [...myRows, ...partnerRows]
 
   // ── Simulation engine ────────────────────────────────────
+  // expectedReturn overstyrer rate i simulering for alle kontotyper
   function computeEK(rows: AccountRow[], months: number): number {
     return rows.reduce((sum, a) => {
-      const isFond = a.type === 'fond' || a.type === 'krypto'
-      const rate = isFond ? a.expectedReturn : a.rate
+      const rate = a.expectedReturn ?? a.rate
       return sum + projectBalanceMonthly(a.balance, a.monthly, rate, months, a.type === 'BSU')
     }, 0)
   }
@@ -645,7 +649,7 @@ function SparePlanTab({
   const totalMonthly = meTotalMonthly + (partnerEnabled ? partnerTotalMonthly : 0)
   const currentProgress = requiredEK > 0 ? Math.min(100, (combinedTotal / requiredEK) * 100) : 0
 
-  // ── Update handler: inline edit in table ────────────────
+  // ── Update handler: inline edit i tabell ────────────────
   function handleAccountChange(row: AccountRow, field: keyof AccountRow, value: number) {
     if (row.person !== 'meg') return
     const patch: Partial<SavingsAccount> = {}
@@ -653,6 +657,15 @@ function SparePlanTab({
     if (field === 'expectedReturn') patch.expectedReturn = value
     if (field === 'actualReturn') patch.actualReturn = value
     if (Object.keys(patch).length > 0) updateSavingsAccount(row.id, patch)
+  }
+
+  function handlePartnerChange(id: string, field: 'monthly' | 'expectedReturn', value: number) {
+    if (!partnerVeikart) return
+    if (id === 'p-bsu') {
+      setPartnerVeikart({ ...partnerVeikart, bsuMonthlyContribution: value })
+    } else if (id === 'p-spare') {
+      if (field === 'monthly') setPartnerVeikart({ ...partnerVeikart, monthlySavings: value })
+    }
   }
 
   // ── Insights ─────────────────────────────────────────────
@@ -947,7 +960,14 @@ function SparePlanTab({
           <div className="rounded-xl border border-border overflow-hidden">
             <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
               <span className="text-xs font-semibold">Kontoer</span>
-              <span className="text-[10px] text-muted-foreground">Klikk tall for å redigere</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-muted-foreground">Klikk tall for å redigere</span>
+                {onNavigateToAccounts && (
+                  <button onClick={onNavigateToAccounts} className="text-[10px] text-primary hover:underline">
+                    Administrer kontoer →
+                  </button>
+                )}
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -1002,11 +1022,10 @@ function SparePlanTab({
                           key={row.id}
                           row={row}
                           proj12={projectBalanceMonthly(row.balance, row.monthly, row.expectedReturn, 12, row.type === 'BSU')}
-                          onChangeMonthly={() => {}}
-                          onChangeExpectedReturn={() => {}}
+                          onChangeMonthly={(v) => handlePartnerChange(row.id, 'monthly', v)}
+                          onChangeExpectedReturn={(v) => handlePartnerChange(row.id, 'expectedReturn', v)}
                           onChangeActualReturn={() => {}}
                           sparkData={sparklineForRow(row)}
-                          readOnly
                         />
                       ))}
                     </>
@@ -1089,7 +1108,7 @@ function SparePlanTab({
 
 // ─── Kontotabell-rad ──────────────────────────────────────────
 function AccountTableRow({
-  row, proj12, onChangeMonthly, onChangeExpectedReturn, onChangeActualReturn, sparkData, readOnly,
+  row, proj12, onChangeMonthly, onChangeExpectedReturn, onChangeActualReturn, sparkData,
 }: {
   row: AccountRow
   proj12: number
@@ -1097,9 +1116,9 @@ function AccountTableRow({
   onChangeExpectedReturn: (v: number) => void
   onChangeActualReturn: (v: number) => void
   sparkData: number[]
-  readOnly?: boolean
 }) {
   const isFond = row.type === 'fond' || row.type === 'krypto'
+  const isBSU = row.type === 'BSU'
   const color = row.person === 'meg' ? '#60a5fa' : '#a78bfa'
   return (
     <tr className="border-b border-border/60 hover:bg-muted/10 transition-colors">
@@ -1119,28 +1138,32 @@ function AccountTableRow({
         {fmtNOK(row.balance)}
       </td>
       <td className="px-3 py-2 text-right">
-        {readOnly
-          ? <span className="font-mono text-xs">{row.monthly.toLocaleString('no-NO')}/mnd</span>
-          : <InlineCell value={row.monthly} onChange={onChangeMonthly} suffix="/mnd" step={100} />}
+        {isBSU ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <InlineCell value={Math.round(row.monthly * 12)} onChange={(v) => onChangeMonthly(Math.round(v / 12))} suffix=" kr/år" step={1000} />
+            <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(row.monthly)}/mnd</span>
+          </div>
+        ) : (
+          <InlineCell value={row.monthly} onChange={onChangeMonthly} suffix="/mnd" step={100} />
+        )}
       </td>
       <td className="px-3 py-2 text-right">
         {isFond ? (
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-1.5 text-[10px]">
               <span className="text-muted-foreground">Forv.</span>
-              {readOnly
-                ? <span className="font-mono">{row.expectedReturn.toFixed(1)} %</span>
-                : <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.5} />}
+              <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.5} />
             </div>
             <div className="flex items-center gap-1.5 text-[10px]">
               <span className="text-muted-foreground">Faktisk</span>
-              {readOnly
-                ? <span className="font-mono text-yellow-400">{row.actualReturn != null ? `${row.actualReturn.toFixed(1)} %` : '–'}</span>
-                : <InlineCell value={row.actualReturn ?? 0} onChange={onChangeActualReturn} suffix=" %" step={0.5} />}
+              <InlineCell value={row.actualReturn ?? 0} onChange={onChangeActualReturn} suffix=" %" step={0.5} />
             </div>
           </div>
         ) : (
-          <span className="font-mono text-xs">{row.rate.toFixed(2)} %</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.1} />
+            <span className="text-[10px] text-muted-foreground">nå: {row.rate.toFixed(2)} %</span>
+          </div>
         )}
       </td>
       <td className="px-3 py-2 text-right font-mono text-muted-foreground">{fmtNOK(row.ytd)}</td>
