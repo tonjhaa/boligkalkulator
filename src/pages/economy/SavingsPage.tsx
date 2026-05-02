@@ -456,6 +456,26 @@ function Sparkline({ data, color = '#60a5fa', height = 48 }: {
   )
 }
 
+// ─── Projiser fremtidig gjeldssaldo ───────────────────────────
+function projectDebtBalance(debt: DebtAccount, months: number): number {
+  if (debt.status === 'nedbetalt') return 0
+  const sorted = [...debt.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
+  const annualRate = sorted[0]?.rate ?? 0
+  const r = annualRate / 100 / 12
+  const P = debt.monthlyPayment
+  const B = debt.currentBalance
+  if (B <= 0) return 0
+  if (P <= 0) return B
+  let bal: number
+  if (r === 0) {
+    bal = B - P * months
+  } else {
+    const f = Math.pow(1 + r, months)
+    bal = B * f - P * (f - 1) / r
+  }
+  return Math.max(0, bal)
+}
+
 // ─── TYPES ────────────────────────────────────────────────────
 type PlanSubTab = 'plan' | 'kontoer' | 'feedback'
 
@@ -570,8 +590,11 @@ function SparePlanTab({
       const meEK = computeEK(myRows, i)
       const partnerEK = computeEK(partnerRows, i)
       const combined = meEK + (partnerEnabled ? partnerEK : 0)
+      const debtAtMonth = debts
+        .filter((d) => d.status !== 'nedbetalt')
+        .reduce((s, d) => s + projectDebtBalance(d, i), 0)
       const maxPurchase = combinedIncome > 0
-        ? calcMaxPurchase(combined, combinedIncome * 12, userDebt)
+        ? calcMaxPurchase(combined, combinedIncome * 12, debtAtMonth)
         : 0
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
       const label = d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' })
