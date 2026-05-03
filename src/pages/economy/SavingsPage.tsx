@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, Fragment } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -781,7 +781,7 @@ function SparePlanTab({
     <div className="flex-1 overflow-hidden flex flex-col">
       {/* Sub-tabs */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
-        {([['plan', 'Simulering'], ['kontoer', 'Kontoer & innskudd'], ['feedback', 'Råd & varsler']] as const).map(([k, l]) => (
+        {([['plan', 'Simulering'], ['måneder', 'Månedsoversikt'], ['kontoer', 'Kontoer & innskudd'], ['feedback', 'Råd & varsler']] as const).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setSubTab(k)}
@@ -972,6 +972,19 @@ function SparePlanTab({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MÅNEDSOVERSIKT TAB ── */}
+      {subTab === 'måneder' && (
+        <MånedsoversiktTable
+          accounts={savingsAccounts}
+          fondCurrentValue={_fondCurrentValue}
+          fondMonthlyDeposit={_fondMonthlyDeposit}
+          debts={debts}
+          profile={profile}
+          partnerVeikart={partnerVeikart}
+          now={now}
+        />
       )}
 
       {/* ── KONTOER TAB ── */}
@@ -1403,6 +1416,178 @@ function SparePlanChart({
         })()}
       </g>
     </svg>
+  )
+}
+
+// ─── Månedsoversikt ───────────────────────────────────────────
+
+const FOND_RATE_TABLE = 7.0
+
+function MånedsoversiktTable({
+  accounts, fondCurrentValue, fondMonthlyDeposit, debts, profile, partnerVeikart, now,
+}: {
+  accounts: SavingsAccount[]
+  fondCurrentValue: number
+  fondMonthlyDeposit: number
+  debts: DebtAccount[]
+  profile: EmploymentProfile | null
+  partnerVeikart: PartnerVeikart
+  now: Date
+}) {
+  const HORIZON = 72
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
+
+  const annualIncome =
+    ((profile?.baseMonthly ?? 0) + (profile?.fixedAdditions?.reduce((s, a) => s + a.amount, 0) ?? 0)) * 12
+    + (partnerVeikart.enabled ? partnerVeikart.annualIncome : 0)
+
+  const hasFond = fondCurrentValue > 0 || fondMonthlyDeposit > 0
+
+  const { accMeta, monthRows } = useMemo(() => {
+    const accMeta = accounts.map(acc => ({
+      id: acc.id,
+      label: acc.label,
+      type: acc.type,
+      startBalance: computeEffectiveBalance(acc, now),
+      monthly: acc.monthlyContribution,
+      rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
+    }))
+
+    const monthRows = Array.from({ length: HORIZON }, (_, i) => {
+      const m = i + 1
+      const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+
+      const accountBalances = accMeta.map(acc => {
+        const raw = projectBalanceMonthly(acc.startBalance, acc.monthly, acc.rate, m)
+        const balance = acc.type === 'BSU' ? Math.min(BSU_MAX_TOTAL, raw) : raw
+        return { id: acc.id, balance, contribution: acc.monthly }
+      })
+
+      const fondBalance = hasFond
+        ? projectBalanceMonthly(fondCurrentValue, fondMonthlyDeposit, FOND_RATE_TABLE, m)
+        : 0
+
+      const debtBalance = debts
+        .filter(d => d.status !== 'nedbetalt')
+        .reduce((s, d) => s + projectDebtBalance(d, m), 0)
+
+      const totalEK = accountBalances.reduce((s, a) => s + a.balance, 0) + fondBalance
+      const maxKjøpesum = annualIncome > 0 ? calcMaxPurchase(totalEK, annualIncome, debtBalance) : 0
+
+      return { year, month, accountBalances, fondBalance, debtBalance, totalEK, maxKjøpesum }
+    })
+
+    return { accMeta, monthRows }
+  }, [accounts, fondCurrentValue, fondMonthlyDeposit, debts, annualIncome, hasFond, now])
+
+  const years = [...new Set(monthRows.map(r => r.year))]
+
+  return (
+    <div className="overflow-auto h-full text-xs">
+      <table className="border-collapse min-w-max">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-background border-b border-border">
+            <th className="sticky left-0 bg-background z-20 px-3 py-1.5 text-left border-r border-border min-w-[60px]" />
+            {accMeta.map(acc => (
+              <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border font-semibold whitespace-nowrap">
+                {acc.label}
+                {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
+              </th>
+            ))}
+            {hasFond && (
+              <th colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-teal-400 font-semibold whitespace-nowrap">
+                Fond <span className="text-[10px] text-muted-foreground font-normal">{FOND_RATE_TABLE}%</span>
+              </th>
+            )}
+            <th className="px-3 py-1.5 text-right border-r border-border text-blue-400 font-semibold whitespace-nowrap">Total EK</th>
+            <th className="px-3 py-1.5 text-right text-green-400 font-semibold whitespace-nowrap">Max kjøpesum</th>
+          </tr>
+          <tr className="bg-background border-b-2 border-border">
+            <th className="sticky left-0 bg-background z-20 px-3 py-1 text-left text-muted-foreground border-r border-border">Måned</th>
+            {accMeta.map(acc => (
+              <th key={acc.id} colSpan={2} className="border-r border-border">
+                <div className="flex">
+                  <span className="flex-1 px-2 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
+                  <span className="flex-1 px-2 py-1 text-right font-medium">Saldo</span>
+                </div>
+              </th>
+            ))}
+            {hasFond && (
+              <th colSpan={2} className="border-r border-border">
+                <div className="flex">
+                  <span className="flex-1 px-2 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
+                  <span className="flex-1 px-2 py-1 text-right text-teal-400 font-medium">Saldo</span>
+                </div>
+              </th>
+            )}
+            <th className="px-3 py-1 border-r border-border" />
+            <th className="px-3 py-1" />
+          </tr>
+        </thead>
+        <tbody>
+          {years.map(year => {
+            const yearData = monthRows.filter(r => r.year === year)
+            const last = yearData[yearData.length - 1]
+            return (
+              <Fragment key={year}>
+                <tr className="bg-muted/50 border-y border-border">
+                  <td className="sticky left-0 bg-muted/50 px-3 py-2 font-bold border-r border-border">{year}</td>
+                  {accMeta.map(acc => {
+                    const ab = last.accountBalances.find(a => a.id === acc.id)!
+                    return (
+                      <td key={acc.id} colSpan={2} className="border-r border-border p-0">
+                        <div className="flex">
+                          <span className="flex-1 px-2 py-2 text-right text-muted-foreground">{fmtNOK(acc.monthly * 12)}</span>
+                          <span className="flex-1 px-2 py-2 text-right font-semibold">{fmtNOK(ab.balance)}</span>
+                        </div>
+                      </td>
+                    )
+                  })}
+                  {hasFond && (
+                    <td colSpan={2} className="border-r border-border p-0">
+                      <div className="flex">
+                        <span className="flex-1 px-2 py-2 text-right text-muted-foreground">{fmtNOK(fondMonthlyDeposit * 12)}</span>
+                        <span className="flex-1 px-2 py-2 text-right text-teal-400 font-semibold">{fmtNOK(last.fondBalance)}</span>
+                      </div>
+                    </td>
+                  )}
+                  <td className="px-3 py-2 text-right text-blue-400 font-semibold border-r border-border">{fmtNOK(last.totalEK)}</td>
+                  <td className="px-3 py-2 text-right text-green-400 font-semibold">{last.maxKjøpesum > 0 ? fmtNOK(last.maxKjøpesum) : '—'}</td>
+                </tr>
+                {yearData.map(row => (
+                  <tr key={`${row.year}-${row.month}`} className="border-b border-border/20 hover:bg-muted/10">
+                    <td className="sticky left-0 bg-background px-3 py-1 text-muted-foreground border-r border-border">{MONTH_NAMES[row.month - 1]}</td>
+                    {accMeta.map(acc => {
+                      const ab = row.accountBalances.find(a => a.id === acc.id)!
+                      return (
+                        <td key={acc.id} colSpan={2} className="border-r border-border p-0">
+                          <div className="flex">
+                            <span className="flex-1 px-2 py-1 text-right text-muted-foreground">{fmtNOK(ab.contribution)}</span>
+                            <span className="flex-1 px-2 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
+                          </div>
+                        </td>
+                      )
+                    })}
+                    {hasFond && (
+                      <td colSpan={2} className="border-r border-border p-0">
+                        <div className="flex">
+                          <span className="flex-1 px-2 py-1 text-right text-muted-foreground">{fmtNOK(fondMonthlyDeposit)}</span>
+                          <span className="flex-1 px-2 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-3 py-1 text-right font-mono text-blue-300 border-r border-border">{fmtNOK(row.totalEK)}</td>
+                    <td className="px-3 py-1 text-right text-muted-foreground/40">—</td>
+                  </tr>
+                ))}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

@@ -24,14 +24,14 @@ interface AppState {
   currentView: AppView
   currentEconomyPage: EconomySubPage
   savingsSubTab: 'kontoer' | 'spareplan'
-  sparePlanSubTab: 'plan' | 'kontoer' | 'feedback'
+  sparePlanSubTab: 'plan' | 'kontoer' | 'måneder' | 'feedback'
 
   setTheme: (theme: 'dark' | 'light' | 'system') => void
   setSidebarOpen: (open: boolean) => void
   setCurrentView: (view: AppView) => void
   setCurrentEconomyPage: (page: EconomySubPage) => void
   setSavingsSubTab: (tab: 'kontoer' | 'spareplan') => void
-  setSparePlanSubTab: (tab: 'plan' | 'kontoer' | 'feedback') => void
+  setSparePlanSubTab: (tab: 'plan' | 'kontoer' | 'måneder' | 'feedback') => void
 
   addScenario: (scenario: ScenarioInput) => void
   updateScenario: (id: string, updates: Partial<ScenarioInput>) => void
