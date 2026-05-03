@@ -23,7 +23,7 @@ import {
   computeEffectiveBalance,
   projectBalanceMonthly,
 } from '@/domain/economy/savingsCalculator'
-import { calcMaxPurchase, BSU_MAX_TOTAL } from '@/hooks/useVeikart'
+import { calcMaxPurchase, BSU_MAX_TOTAL, EK_KRAV } from '@/hooks/useVeikart'
 import type {
   SavingsAccount,
   SavingsGoal,
@@ -689,7 +689,7 @@ function SparePlanTab({
 
   // ── Goal calc ────────────────────────────────────────────
   const requiredEK = targetPrice > 0
-    ? Math.max(targetPrice * 0.1, targetPrice - combinedIncome * 12 * 5)
+    ? Math.max(targetPrice * EK_KRAV, targetPrice - combinedIncome * 12 * 5)
     : 0
   const reachIndex = requiredEK > 0
     ? simData.findIndex((d) => d.combined >= requiredEK)
@@ -833,28 +833,53 @@ function SparePlanTab({
                   className="h-8 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
                 />
               </div>
-              {targetPrice > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-muted-foreground">Nødvendig EK:</span>
-                    <span className="font-mono font-semibold">{fmtNOK(requiredEK)}</span>
-                  </div>
-                  <Progress value={currentProgress} className="h-1.5" />
-                  <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>{fmtNOK(combinedTotal)} av {fmtNOK(requiredEK)}</span>
-                    <span>{currentProgress.toFixed(0)} %</span>
-                  </div>
-                  {reachEntry ? (
-                    <div className="rounded border border-green-500/30 bg-green-500/8 px-2 py-1.5 text-[10px] text-green-400">
-                      ✓ Mål nås om <b>{reachEntry.months} mnd</b> ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
+              {targetPrice > 0 && (() => {
+                const ekMinimum = targetPrice * EK_KRAV
+                const maxLoan = combinedIncome * 12 * 5
+                const ekFromIncome = targetPrice - maxLoan
+                const incomeIsBinding = ekFromIncome > ekMinimum
+                return (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Nødvendig EK:</span>
+                      <span className="font-mono font-semibold">{fmtNOK(requiredEK)}</span>
                     </div>
-                  ) : (
-                    <div className="rounded border border-amber-500/30 bg-amber-500/8 px-2 py-1.5 text-[10px] text-amber-400">
-                      Ikke innen {simHorizon / 12} år – juster sparing eller mål
+                    {/* Forklaring på hvorfor EK-kravet er høyt */}
+                    {incomeIsBinding ? (
+                      <div className="text-[10px] text-muted-foreground space-y-0.5">
+                        <div className="flex justify-between">
+                          <span>10%-regelen alene:</span>
+                          <span className="font-mono">{fmtNOK(ekMinimum)}</span>
+                        </div>
+                        <div className="flex justify-between text-amber-400/80">
+                          <span>Maks lån (5× inntekt {fmtNOK(combinedIncome * 12)}/år):</span>
+                          <span className="font-mono">{fmtNOK(maxLoan)}</span>
+                        </div>
+                        <div className="flex justify-between text-amber-400">
+                          <span>→ Manglende EK over lånegrensen:</span>
+                          <span className="font-mono font-semibold">{fmtNOK(ekFromIncome)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">Minimum {(EK_KRAV * 100).toFixed(0)} % egenkapital</p>
+                    )}
+                    <Progress value={currentProgress} className="h-1.5" />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      <span>{fmtNOK(combinedTotal)} av {fmtNOK(requiredEK)}</span>
+                      <span>{currentProgress.toFixed(0)} % av mål</span>
                     </div>
-                  )}
-                </div>
-              )}
+                    {reachEntry ? (
+                      <div className="rounded border border-green-500/30 bg-green-500/8 px-2 py-1.5 text-[10px] text-green-400">
+                        ✓ Mål nås om <b>{reachEntry.months} mnd</b> ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
+                      </div>
+                    ) : (
+                      <div className="rounded border border-amber-500/30 bg-amber-500/8 px-2 py-1.5 text-[10px] text-amber-400">
+                        Ikke innen {simHorizon / 12} år – juster sparing eller mål
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Horizon */}
