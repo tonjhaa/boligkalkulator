@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, Fragment } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X, Users } from 'lucide-react'
+import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,9 +21,8 @@ import {
   computeYearlyInterestIncome,
   computeBSUForecast,
   computeEffectiveBalance,
-  projectBalanceMonthly,
 } from '@/domain/economy/savingsCalculator'
-import { calcMaxPurchase, BSU_MAX_TOTAL, EK_KRAV } from '@/hooks/useVeikart'
+import { calcMaxPurchase, BSU_MAX_TOTAL } from '@/hooks/useVeikart'
 import type {
   SavingsAccount,
   SavingsGoal,
@@ -35,7 +34,7 @@ import type {
   PartnerVeikart,
   EmploymentProfile,
   DebtAccount,
-
+  BudgetTemplate,
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { FondPage } from '@/pages/economy/FondPage'
@@ -340,6 +339,36 @@ export function SavingsPage() {
   )
 }
 
+// ─── Shared helpers ───────────────────────────────────────────
+
+type InsightColor = 'green' | 'blue' | 'amber' | 'red'
+
+function InsightCard({ icon, text, color }: { icon: string; text: string; color: InsightColor }) {
+  const bg = { green: 'bg-green-950/40 border-green-800/40', blue: 'bg-blue-950/40 border-blue-800/40', amber: 'bg-amber-950/40 border-amber-800/40', red: 'bg-red-950/40 border-red-800/40' }[color]
+  const txt = { green: 'text-green-300', blue: 'text-blue-300', amber: 'text-amber-300', red: 'text-red-300' }[color]
+  return (
+    <div className={`rounded-lg border p-3 flex items-start gap-2 ${bg}`}>
+      <span className="text-sm">{icon}</span>
+      <p className={`text-xs leading-relaxed ${txt}`}>{text}</p>
+    </div>
+  )
+}
+
+function projectDebtBalance(d: DebtAccount, months: number): number {
+  if (d.currentBalance <= 0) return 0
+  const rate = [...d.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.nominalRate ?? 0
+  const monthly = d.monthlyPayment
+  if (monthly <= 0) return d.currentBalance
+  const r = rate / 100 / 12
+  if (r === 0) return Math.max(0, d.currentBalance - monthly * months)
+  let bal = d.currentBalance
+  for (let i = 0; i < months; i++) {
+    bal = bal * (1 + r) - monthly
+    if (bal <= 0) return 0
+  }
+  return Math.max(0, bal)
+}
+
 // ─── Råd & varsler ───────────────────────────────────────────
 
 function RådTab({
@@ -351,14 +380,13 @@ function RådTab({
   partnerVeikart: PartnerVeikart
   debts: DebtAccount[]
   fondCurrentValue: number
-  budgetTemplate: ReturnType<typeof useEconomyStore>['budgetTemplate']
+  budgetTemplate: BudgetTemplate | null
   updateSavingsAccount: (id: string, patch: Partial<SavingsAccount>) => void
   savingsPlanTarget: number
   setSavingsPlanTarget: (v: number) => void
 }) {
   const [showWizard, setShowWizard] = useState(false)
   const now = new Date()
-  const currentYear = now.getFullYear()
 
   const userMonthly = profile?.baseMonthly ?? 0
   const partnerMonthly = (partnerVeikart?.annualIncome ?? 0) / 12

@@ -61,9 +61,6 @@ const VacationPage = lazy(() =>
 const EconomySettingsPage = lazy(() =>
   import('./EconomySettingsPage').then((m) => ({ default: m.EconomySettingsPage }))
 )
-const FondPage = lazy(() =>
-  import('./FondPage').then((m) => ({ default: m.FondPage }))
-)
 const VeikartPage = lazy(() =>
   import('./VeikartPage').then((m) => ({ default: m.VeikartPage }))
 )
