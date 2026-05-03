@@ -35,7 +35,7 @@ import type {
   PartnerVeikart,
   EmploymentProfile,
   DebtAccount,
-  SavingsScenario,
+
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { cn } from '@/lib/utils'
@@ -531,9 +531,6 @@ function SparePlanTab({
 }: SparePlanTabProps) {
   const {
     updateSavingsAccount,
-    savingsScenarios,
-    addSavingsScenario,
-    removeSavingsScenario,
     savingsPlanTarget,
     setSavingsPlanTarget,
     savingsPlanHorizon,
@@ -577,7 +574,7 @@ function SparePlanTab({
   const { sparePlanSubTab: subTab, setSparePlanSubTab: setSubTab } = useAppStore()
   const [chartTab, setChartTab] = useState<'vekst' | 'bidrag' | 'avkastning'>('vekst')
   const [showWizard, setShowWizard] = useState(false)
-  const [showAddScenario, setShowAddScenario] = useState(false)
+
 
   // ── Income ────────────────────────────────────────────────
   const userMonthlyIncome = profile?.baseMonthly ?? 0
@@ -662,16 +659,6 @@ function SparePlanTab({
       const partnerContribAccum = partnerRows.reduce((s, a) => s + a.balance + a.monthly * i, 0)
       const totalInterest = Math.max(0, combined - meContribAccum - (partnerEnabled ? partnerContribAccum : 0))
 
-      const scenarioEKs: Record<string, number> = {}
-      savingsScenarios.forEach((sc) => {
-        const scRows = allRows.map((a) => ({
-          ...a,
-          monthly: sc.monthlyOverrides[a.id] ?? a.monthly,
-          expectedReturn: sc.returnOverrides[a.id] ?? a.expectedReturn,
-        }))
-        scenarioEKs[sc.id] = computeEK(scRows, i)
-      })
-
       return {
         months: i, label, d,
         meEK: Math.round(meEK),
@@ -681,11 +668,10 @@ function SparePlanTab({
         totalInterest: Math.round(totalInterest),
         meContrib: Math.round(myRows.reduce((s, a) => s + a.monthly * i, 0)),
         partnerContrib: Math.round(partnerRows.reduce((s, a) => s + a.monthly * i, 0)),
-        scenarioEKs,
       }
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savingsAccounts, partnerVeikart, savingsScenarios, savingsPlanHorizon, partnerEnabled, contributionSteps])
+  }, [savingsAccounts, partnerVeikart, savingsPlanHorizon, partnerEnabled, contributionSteps])
 
   // ── Goal calc ────────────────────────────────────────────
   const requiredEK = targetPrice > 0
@@ -915,36 +901,6 @@ function SparePlanTab({
               ))}
             </div>
 
-            {/* Scenarios */}
-            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold">Scenarier</p>
-                <Button size="sm" variant="ghost" className="h-6 text-xs px-2"
-                  onClick={() => setShowAddScenario(true)}>
-                  <Plus className="h-3 w-3 mr-1" />Ny
-                </Button>
-              </div>
-              {savingsScenarios.length === 0 && (
-                <p className="text-[10px] text-muted-foreground">Legg til scenarier for å sammenligne "Optimistisk" vs. "Nøktern" sparing.</p>
-              )}
-              {savingsScenarios.map((sc) => (
-                <div key={sc.id} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: sc.color }} />
-                  <span className="text-xs flex-1">{sc.label}</span>
-                  <Button variant="ghost" size="sm" className="h-5 w-5 p-0 text-muted-foreground hover:text-red-400"
-                    onClick={() => removeSavingsScenario(sc.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-              {showAddScenario && (
-                <AddScenarioForm
-                  accounts={allRows}
-                  onSave={(sc) => { addSavingsScenario(sc); setShowAddScenario(false) }}
-                  onCancel={() => setShowAddScenario(false)}
-                />
-              )}
-            </div>
           </div>
 
           {/* Right: chart + table */}
@@ -966,7 +922,6 @@ function SparePlanTab({
                 tab={chartTab}
                 requiredEK={requiredEK}
                 partnerEnabled={partnerEnabled}
-                scenarios={savingsScenarios}
               />
             </div>
 
@@ -1355,13 +1310,12 @@ function AccountTableRow({
 
 // ─── SparePlan SVG Chart ──────────────────────────────────────
 function SparePlanChart({
-  data, tab, requiredEK, partnerEnabled, scenarios,
+  data, tab, requiredEK, partnerEnabled,
 }: {
-  data: { label: string; meEK: number; combined: number; meContrib: number; partnerContrib: number; totalInterest: number; scenarioEKs: Record<string, number> }[]
+  data: { label: string; meEK: number; combined: number; meContrib: number; partnerContrib: number; totalInterest: number }[]
   tab: 'vekst' | 'bidrag' | 'avkastning'
   requiredEK: number
   partnerEnabled: boolean
-  scenarios: SavingsScenario[]
 }) {
   const H = 200, W = 560
   const PAD = { t: 10, r: 10, b: 28, l: 54 }
@@ -1372,7 +1326,6 @@ function SparePlanChart({
   const lines = tab === 'vekst' ? [
     { key: 'meEK', color: '#60a5fa', label: 'Meg', w: 1.5 },
     ...(partnerEnabled ? [{ key: 'combined', color: '#34d399', label: 'Samlet', w: 2 }] : []),
-    ...scenarios.map((sc) => ({ key: `sc_${sc.id}`, color: sc.color, label: sc.label, w: 1, dashed: true })),
   ] : tab === 'bidrag' ? [
     { key: 'meContrib', color: '#60a5fa', label: 'Meg', w: 2 },
     ...(partnerEnabled ? [{ key: 'partnerContrib', color: '#a78bfa', label: 'Partner', w: 2 }] : []),
@@ -1381,10 +1334,7 @@ function SparePlanChart({
   ]
 
   type EnrichedRow = typeof data[0] & { [key: string]: unknown }
-  const enriched: EnrichedRow[] = data.map((d) => ({
-    ...d,
-    ...Object.fromEntries(scenarios.map((sc) => [`sc_${sc.id}`, d.scenarioEKs?.[sc.id] ?? 0])),
-  }))
+  const enriched: EnrichedRow[] = data.map((d) => ({ ...d }))
 
   const allVals = lines.flatMap((l) => enriched.map((d) => (d[l.key] as number) ?? 0))
   const maxV = Math.max(...allVals, requiredEK || 0) * 1.08 || 1
@@ -1453,59 +1403,6 @@ function SparePlanChart({
         })()}
       </g>
     </svg>
-  )
-}
-
-// ─── Legg til scenario-form ────────────────────────────────────
-function AddScenarioForm({
-  accounts, onSave, onCancel,
-}: {
-  accounts: AccountRow[]
-  onSave: (sc: SavingsScenario) => void
-  onCancel: () => void
-}) {
-  const [label, setLabel] = useState('')
-  const [color, setColor] = useState('#f472b6')
-  const [returnOverrides, setReturnOverrides] = useState<Record<string, string>>({})
-  const COLORS = ['#f472b6', '#fb923c', '#a3e635', '#38bdf8', '#e879f9']
-
-  return (
-    <div className="rounded-lg border border-border bg-background p-3 space-y-2 text-xs">
-      <Input placeholder="Scenarionavn (f.eks. Optimistisk)" value={label}
-        onChange={(e) => setLabel(e.target.value)} className="h-7 text-xs" />
-      <div className="flex gap-1.5">
-        {COLORS.map((c) => (
-          <button key={c} onClick={() => setColor(c)}
-            className={cn('w-5 h-5 rounded-full border-2 transition-all', color === c ? 'border-foreground scale-110' : 'border-transparent')}
-            style={{ background: c }} />
-        ))}
-      </div>
-      <p className="text-[10px] text-muted-foreground">Avkastning-overstyringer (tom = bruk kontoens standard)</p>
-      {accounts.filter((a) => a.type === 'fond' || a.type === 'krypto').map((a) => (
-        <div key={a.id} className="flex items-center gap-2">
-          <span className="flex-1 truncate text-[10px]">{a.label}</span>
-          <Input type="number" step={0.5} placeholder={String(a.expectedReturn)}
-            value={returnOverrides[a.id] ?? ''}
-            onChange={(e) => setReturnOverrides((p) => ({ ...p, [a.id]: e.target.value }))}
-            className="h-6 w-16 text-xs text-right" />
-          <span className="text-[10px] text-muted-foreground">%</span>
-        </div>
-      ))}
-      <div className="flex gap-1.5 justify-end">
-        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={onCancel}>Avbryt</Button>
-        <Button size="sm" className="h-6 text-xs" disabled={!label.trim()}
-          onClick={() => onSave({
-            id: crypto.randomUUID(), label, color,
-            returnOverrides: Object.fromEntries(
-              Object.entries(returnOverrides)
-                .filter(([, v]) => v !== '')
-                .map(([k, v]) => [k, parseFloat(v)])
-            ),
-            monthlyOverrides: {},
-            createdAt: Date.now(),
-          })}>Lagre</Button>
-      </div>
-    </div>
   )
 }
 

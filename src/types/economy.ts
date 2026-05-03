@@ -641,15 +641,3 @@ export interface PartnerVeikart {
   monthlySavings: number       // mnd. sparing eks. BSU
 }
 
-// ─── SPARESCENARIO ─────────────────────────────────────────────
-
-export interface SavingsScenario {
-  id: string
-  label: string
-  color: string
-  /** Overstyrer expectedReturn per konto-id. Mangler = bruk kontoens default */
-  returnOverrides: Record<string, number>
-  /** Overstyrer månedlig innskudd per konto-id */
-  monthlyOverrides: Record<string, number>
-  createdAt: number
-}
