@@ -572,6 +572,7 @@ function MånedsoversiktTable({
   now: Date
 }) {
   const HORIZON = 72
+  const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
 
   const [contribOverrides, setContribOverrides] = useState<Record<string, number>>({})
   const [fondOverride, setFondOverride] = useState<number | null>(null)
@@ -671,7 +672,33 @@ function MånedsoversiktTable({
   const partnerCols = hasPartner ? 4 : 0 // BSU(2) + Sparing(2)
 
   return (
-    <div className="overflow-auto h-full w-full text-xs">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Action toolbar */}
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/20 shrink-0 text-xs">
+        <span className="text-muted-foreground">Legg til data:</span>
+        <button
+          onClick={() => setSavingsTab('kontoer')}
+          className="flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-muted/40 transition-colors text-foreground"
+        >
+          + Min konto
+        </button>
+        <button
+          onClick={() => setSavingsTab('fond')}
+          className="flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-muted/40 transition-colors text-foreground"
+        >
+          + Fond
+        </button>
+        <button
+          onClick={() => setCurrentEconomyPage('settings')}
+          className="flex items-center gap-1 px-2 py-1 rounded border border-border hover:bg-muted/40 transition-colors text-violet-400"
+        >
+          Rediger partner →
+        </button>
+        {!partnerVeikart.enabled && (
+          <span className="text-muted-foreground italic ml-1">Partner ikke aktivert — aktiver i Innstillinger</span>
+        )}
+      </div>
+      <div className="overflow-auto flex-1 text-xs">
       <table className="border-collapse w-full min-w-max">
         <thead className="sticky top-0 z-10">
           {/* Row 1: Person groups */}
@@ -865,6 +892,7 @@ function MånedsoversiktTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
