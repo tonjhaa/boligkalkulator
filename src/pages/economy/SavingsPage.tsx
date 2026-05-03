@@ -38,6 +38,7 @@ import type {
 
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
+import { FondPage } from '@/pages/economy/FondPage'
 import { cn } from '@/lib/utils'
 
 function fmtNOK(n: number) {
@@ -62,8 +63,6 @@ const ACCOUNT_TYPE_LABELS: Record<SavingsAccountType, string> = {
 // MAIN PAGE
 // ------------------------------------------------------------
 
-type SavingsSubTab = 'kontoer' | 'spareplan'
-
 export function SavingsPage() {
   const {
     savingsAccounts,
@@ -84,1341 +83,418 @@ export function SavingsPage() {
     partnerVeikart,
     profile,
     debts,
+    savingsPlanTarget,
+    setSavingsPlanTarget,
   } = useEconomyStore()
+
+  const { savingsTab: tab, setSavingsTab: setTab } = useAppStore()
+
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [showAddGoal, setShowAddGoal] = useState(false)
+  const now = new Date()
+  const currentYear = now.getFullYear()
+
+  const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
+  const fondCurrentValue = sortedFondSnapshots[0]?.totalValue ?? 0
+  const fondMonthlyDeposit = fondPortfolio?.monthlyDeposit ?? 0
+
+  // Summary stats for Kontoer tab
+  const totalBalance = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
+  const bsuAccount = savingsAccounts.find((a) => a.type === 'BSU')
+  const bsuStatus = bsuAccount ? checkBSULimits(bsuAccount, currentYear) : null
+  const bsuSkattefradrag = bsuAccount
+    ? Math.round(Math.min(bsuStatus!.yearlyContributionSoFar, 27500) * 0.1) : 0
+  const totalInterestIncome = savingsAccounts
+    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
+    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear), 0)
+  const totalInterestForecast = savingsAccounts
+    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
+    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear, true), 0)
 
   const SAVINGS_CATS = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
   const budgetSavingsLines = (budgetTemplate?.lines ?? []).filter(
     (l) => SAVINGS_CATS.has(l.category) && l.isRecurring && Math.abs(l.amount) > 0
   )
 
-  const sortedFondSnapshots = [...(fondPortfolio?.snapshots ?? [])].sort((a, b) => b.date.localeCompare(a.date))
-  const fondCurrentValue = sortedFondSnapshots[0]?.totalValue ?? 0
-  const fondMonthlyDeposit = fondPortfolio?.monthlyDeposit ?? 0
-
-  const [showAddAccount, setShowAddAccount] = useState(false)
-  const [showImport, setShowImport] = useState(false)
-  const [showAddGoal, setShowAddGoal] = useState(false)
-  const { savingsSubTab: subTab, setSavingsSubTab: setSubTab } = useAppStore()
-
-  const now = new Date()
-  const currentYear = now.getFullYear()
-
-  // Summary stats
-  const totalBalance = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0)
-
-  const bsuAccount = savingsAccounts.find((a) => a.type === 'BSU')
-  const bsuStatus = bsuAccount ? checkBSULimits(bsuAccount, currentYear) : null
-  const bsuSkattefradrag = bsuAccount
-    ? Math.round(Math.min(bsuStatus!.yearlyContributionSoFar, 27500) * 0.1)
-    : 0
-
-  const totalInterestIncome = savingsAccounts
-    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
-    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear), 0)
-
-  const totalInterestForecast = savingsAccounts
-    .filter((a) => a.type !== 'fond' && a.type !== 'krypto')
-    .reduce((s, a) => s + computeYearlyInterestIncome(a, currentYear, true), 0)
-
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Sub-nav */}
+      {/* Flat 4-tab bar with contextual actions */}
       <div className="flex items-center gap-1 border-b border-border bg-card/40 px-4 shrink-0">
-        {(['kontoer', 'spareplan'] as SavingsSubTab[]).map((t) => (
+        {([
+          ['kontoer', 'Kontoer & mål'],
+          ['fond', 'Fond'],
+          ['måneder', 'Månedsoversikt'],
+          ['råd', 'Råd & varsler'],
+        ] as const).map(([key, label]) => (
           <button
-            key={t}
-            onClick={() => setSubTab(t)}
+            key={key}
+            onClick={() => setTab(key)}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors capitalize whitespace-nowrap',
-              subTab === t
+              'px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap',
+              tab === key
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
             )}
-          >
-            {t === 'spareplan' && <Users className="h-3 w-3" />}
-            {t === 'kontoer' ? 'Kontoer & Mål' : 'Felles spareplan'}
-          </button>
+          >{label}</button>
         ))}
-      </div>
-
-      {subTab === 'spareplan' && (
-        <SparePlanTab
-          savingsAccounts={savingsAccounts}
-          fondCurrentValue={fondCurrentValue}
-          fondMonthlyDeposit={fondMonthlyDeposit}
-          partnerVeikart={partnerVeikart}
-          profile={profile}
-          debts={debts}
-          now={now}
-          onNavigateToAccounts={() => setSubTab('kontoer')}
-        />
-      )}
-
-      {subTab === 'kontoer' && (
-      <div className="p-4 space-y-4 overflow-y-auto flex-1">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">Sparing</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowImport((v) => !v)}>
-            <Upload className="h-4 w-4 mr-1" />
-            Importer rapport
-          </Button>
-          <Button size="sm" onClick={() => setShowAddAccount(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Ny konto
-          </Button>
-        </div>
-      </div>
-
-      {showImport && (
-        <SavingsImporter onDone={() => setShowImport(false)} />
-      )}
-
-      {showAddAccount && (
-        <AddAccountForm
-          onSave={(a) => { addSavingsAccount(a); setShowAddAccount(false) }}
-          onCancel={() => setShowAddAccount(false)}
-        />
-      )}
-
-      {/* Summary bar */}
-      {savingsAccounts.length > 0 && (
-        <div className="grid grid-cols-3 gap-2">
-          <SummaryCard label="Total saldo" value={fmtNOK(totalBalance)} />
-          {bsuStatus && (
-            <SummaryCard
-              label={`BSU-kvote ${currentYear}`}
-              value={`${fmtNOK(bsuStatus.yearlyContributionSoFar)} / 27 500 kr`}
-              subvalue={`${Math.round((bsuStatus.yearlyContributionSoFar / 27500) * 100)}%`}
-            />
+        {/* Contextual action buttons */}
+        <div className="ml-auto flex items-center gap-2 py-1">
+          {tab === 'kontoer' && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setShowImport((v) => !v)}>
+                <Upload className="h-3.5 w-3.5 mr-1" />Importer
+              </Button>
+              <Button size="sm" onClick={() => setShowAddAccount(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1" />Ny konto
+              </Button>
+            </>
           )}
-          {bsuAccount && (
-            <SummaryCard
-              label="BSU skattefradrag"
-              value={fmtNOK(bsuSkattefradrag)}
-              subvalue="10% av innskudd"
-            />
-          )}
-          {totalInterestForecast > 0 && (
-            <SummaryCard
-              label={`Renteinntekter ${currentYear}`}
-              value={fmtNOK(totalInterestForecast)}
-              subvalue={totalInterestIncome > 0 && totalInterestIncome < totalInterestForecast
-                ? `${fmtNOK(totalInterestIncome)} opptjent hittil`
-                : 'prognose hele året'}
-            />
+          {tab === 'kontoer' && (
+            <Button size="sm" variant="outline" onClick={() => setShowAddGoal(true)}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Nytt mål
+            </Button>
           )}
         </div>
-      )}
-
-      {/* Kontoer */}
-      {savingsAccounts.length === 0 && !showAddAccount ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <p className="text-sm text-muted-foreground mb-3">Ingen sparekontoer registrert.</p>
-            <Button size="sm" onClick={() => setShowAddAccount(true)}>Legg til sparekonto</Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {savingsAccounts.map((account) => (
-            <AccountCard
-              key={account.id}
-              account={account}
-              now={now}
-              onRemove={() => removeSavingsAccount(account.id)}
-              onUpdate={(patch) => updateSavingsAccount(account.id, patch)}
-              onUpdateBalance={(entry) => updateSavingsBalance(account.id, entry)}
-              onUpdateRate={(entry) => updateSavingsRate(account.id, entry)}
-              onAddContribution={(c) => addContribution(account.id, c)}
-              onRemoveContribution={(id) => removeContribution(account.id, id)}
-              onAddWithdrawal={(w) => addWithdrawal(account.id, w)}
-              onRemoveWithdrawal={(id) => removeWithdrawal(account.id, id)}
-              onUpdateBirthYear={(year) => updateSavingsAccount(account.id, { birthYear: year })}
-              onUpdateMonthlyContribution={(amount) => updateSavingsAccount(account.id, { monthlyContribution: amount })}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Spareposter fra budsjett */}
-      {budgetSavingsLines.length > 0 && (
-        <div>
-          <h3 className="font-medium text-sm mb-2">Spareposter fra budsjett</h3>
-          <div className="rounded-md border border-border bg-muted/10 divide-y divide-border/50">
-            {budgetSavingsLines.map((line) => {
-              const linkedAccount = savingsAccounts.find((a) => a.id === (line as { linkedSavingsAccountId?: string }).linkedSavingsAccountId)
-              return (
-                <div key={line.id} className="flex items-center justify-between px-3 py-2 text-xs">
-                  <div>
-                    <p className="font-medium">{line.label}</p>
-                    {linkedAccount ? (
-                      <p className="text-[10px] text-green-500">→ {linkedAccount.label}</p>
-                    ) : (
-                      <p className="text-[10px] text-muted-foreground">Ikke koblet til konto</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Repeat2 className="h-3 w-3 text-muted-foreground" />
-                    <span className="font-mono text-foreground">{Math.abs(line.amount).toLocaleString('no-NO')} kr/mnd</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Sparemål */}
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium text-sm">Sparemål</h3>
-        <Button size="sm" variant="outline" onClick={() => setShowAddGoal(true)}>
-          <Plus className="h-4 w-4 mr-1" />
-          Nytt mål
-        </Button>
       </div>
-
-      {showAddGoal && (
-        <AddGoalForm
-          accounts={savingsAccounts}
-          fondMonthlyDeposit={fondMonthlyDeposit}
-          onSave={(g) => { addSavingsGoal(g); setShowAddGoal(false) }}
-          onCancel={() => setShowAddGoal(false)}
-        />
-      )}
-
-      {savingsGoals.length === 0 && !showAddGoal ? (
-        <Card>
-          <CardContent className="py-4 text-center">
-            <p className="text-sm text-muted-foreground">Ingen sparemål registrert.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {savingsGoals.map((goal) => {
-            const progress = calculateGoalProgress(goal, savingsAccounts, fondCurrentValue, fondMonthlyDeposit)
-            return (
-              <Card key={goal.id}>
-                <CardContent className="py-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{goal.icon}</span>
-                      <span className="font-medium text-sm">{goal.label}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
-                      onClick={() => removeSavingsGoal(goal.id)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-
-                  <Progress value={progress.percent} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{fmtNOK(progress.currentTotal)} / {fmtNOK(progress.targetAmount)}</span>
-                    <span>{Math.round(progress.percent)}%</span>
-                  </div>
-                  {goal.includeFond && (
-                    <p className="text-xs text-muted-foreground">Inkl. KRON Fond</p>
-                  )}
-                  {progress.monthsRemaining !== null && progress.monthsRemaining > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Mangler {fmtNOK(progress.targetAmount - progress.currentTotal)} —
-                      spar {fmtNOK(progress.monthlyNeeded ?? 0)}/mnd = {progress.monthsRemaining} mnd
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-      </div>
-      )}
-    </div>
-  )
-}
-
-// ------------------------------------------------------------
-// SPAREPLAN TAB
-// ------------------------------------------------------------
-
-interface SparePlanTabProps {
-  savingsAccounts: SavingsAccount[]
-  fondCurrentValue: number
-  fondMonthlyDeposit: number
-  partnerVeikart: PartnerVeikart
-  profile: EmploymentProfile | null
-  debts: DebtAccount[]
-  now: Date
-  onNavigateToAccounts?: () => void
-}
-
-function fmtM(n: number) {
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} mill`
-  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1000)} k`
-  return Math.round(n).toLocaleString('no-NO')
-}
-
-// ─── Inline-redigerbar celle ─────────────────────────────────
-function InlineCell({
-  value, onChange, suffix = '', step = 500, min = 0,
-}: {
-  value: number
-  onChange: (v: number) => void
-  suffix?: string
-  step?: number
-  min?: number
-}) {
-  const [editing, setEditing] = useState(false)
-  const [tmp, setTmp] = useState('')
-  const ref = useRef<HTMLInputElement>(null)
-
-  function start() {
-    setTmp(String(value || ''))
-    setEditing(true)
-    setTimeout(() => ref.current?.select(), 10)
-  }
-  function commit() {
-    onChange(parseFloat(tmp) || 0)
-    setEditing(false)
-  }
-
-  if (editing) {
-    return (
-      <input
-        ref={ref}
-        type="number"
-        min={min}
-        step={step}
-        value={tmp}
-        onChange={(e) => setTmp(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') commit()
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        className="h-6 w-24 rounded border border-primary bg-background px-2 text-xs text-right font-mono outline-none"
-      />
-    )
-  }
-  return (
-    <button
-      onClick={start}
-      title="Klikk for å redigere"
-      className="group flex items-center gap-1 border-b border-dashed border-border hover:border-primary transition-colors text-xs font-mono"
-    >
-      {value ? value.toLocaleString('no-NO') : <span className="text-muted-foreground italic">–</span>}
-      {suffix}
-      <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50 transition-opacity" />
-    </button>
-  )
-}
-
-// ─── Insight-kort ─────────────────────────────────────────────
-type InsightColor = 'green' | 'blue' | 'amber' | 'red'
-function InsightCard({ icon, text, color }: { icon: string; text: string; color: InsightColor }) {
-  const styles: Record<InsightColor, string> = {
-    green: 'bg-green-500/8 border-green-500/20 text-green-400',
-    blue: 'bg-blue-500/8 border-blue-500/20 text-blue-400',
-    amber: 'bg-amber-500/8 border-amber-500/30 text-amber-400',
-    red: 'bg-red-500/8 border-red-500/20 text-red-400',
-  }
-  return (
-    <div className={cn('flex gap-3 items-start rounded-lg border px-3 py-2.5', styles[color])}>
-      <span className="text-base mt-0.5 shrink-0">{icon}</span>
-      <span className="text-xs leading-relaxed text-foreground">{text}</span>
-    </div>
-  )
-}
-
-// ─── Mini SVG sparkline ────────────────────────────────────────
-function Sparkline({ data, color = '#60a5fa', height = 48 }: {
-  data: number[]
-  color?: string
-  height?: number
-}) {
-  if (data.length < 2) return null
-  const min = Math.min(...data)
-  const max = Math.max(...data)
-  const W = 200, H = height
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * W
-    const y = H - ((v - min) / (max - min || 1)) * H
-    return `${x},${y}`
-  }).join(' ')
-  const area = `M0,${H} L${pts.split(' ').map(p => p).join(' L')} L${W},${H} Z`
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height }} preserveAspectRatio="none">
-      <path d={area} fill={color} opacity={0.15} />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} />
-    </svg>
-  )
-}
-
-// ─── Projiser innskudd med trinnvise endringer ────────────────
-function projectWithSteps(
-  start: number, baseMonthly: number, rate: number, months: number, isBSU: boolean,
-  steps: { fromMonth: number; monthly: number }[]
-): number {
-  if (!steps.length) return projectBalanceMonthly(start, baseMonthly, rate, months, isBSU)
-  const sorted = steps.filter((s) => s.fromMonth < months).sort((a, b) => a.fromMonth - b.fromMonth)
-  let bal = start, from = 0, monthly = baseMonthly
-  for (const step of sorted) {
-    const seg = step.fromMonth - from
-    if (seg > 0) bal = projectBalanceMonthly(bal, monthly, rate, seg, isBSU)
-    monthly = step.monthly
-    from = step.fromMonth
-  }
-  const rem = months - from
-  if (rem > 0) bal = projectBalanceMonthly(bal, monthly, rate, rem, isBSU)
-  return bal
-}
-
-// ─── Projiser fremtidig gjeldssaldo ───────────────────────────
-function projectDebtBalance(debt: DebtAccount, months: number): number {
-  if (debt.status === 'nedbetalt') return 0
-  const sorted = [...debt.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))
-  const annualRate = sorted[0]?.nominalRate ?? 0
-  const r = annualRate / 100 / 12
-  const P = debt.monthlyPayment
-  const B = debt.currentBalance
-  if (B <= 0) return 0
-  if (P <= 0) return B
-  let bal: number
-  if (r === 0) {
-    bal = B - P * months
-  } else {
-    const f = Math.pow(1 + r, months)
-    bal = B * f - P * (f - 1) / r
-  }
-  return Math.max(0, bal)
-}
-
-// ─── TYPES ────────────────────────────────────────────────────
-// PlanSubTab er definert i useAppStore som 'plan' | 'kontoer' | 'feedback'
-
-interface AccountRow {
-  id: string
-  label: string
-  type: SavingsAccountType
-  accountNumber?: string
-  balance: number
-  monthly: number
-  budgetMonthly: number   // fra budsjettlinjer
-  rate: number
-  expectedReturn: number
-  actualReturn: number | null
-  ytd: number
-  person: 'meg' | 'partner'
-}
-
-type ContribStep = { fromMonth: number; monthly: number }
-
-// ─── SPAREPLAN TAB (full ny versjon) ──────────────────────────
-function SparePlanTab({
-  savingsAccounts,
-  fondCurrentValue: _fondCurrentValue,
-  fondMonthlyDeposit: _fondMonthlyDeposit,
-  partnerVeikart,
-  profile,
-  debts,
-  now,
-  onNavigateToAccounts,
-}: SparePlanTabProps) {
-  const {
-    updateSavingsAccount,
-    savingsPlanTarget,
-    setSavingsPlanTarget,
-    savingsPlanHorizon,
-    setSavingsPlanHorizon,
-    setPartnerVeikart,
-    budgetTemplate,
-  } = useEconomyStore()
-
-  // ── Bidragsplan: ulike innskudd til ulike tider (kun egne kontoer) ──
-  const [contributionSteps, setContributionSteps] = useState<Record<string, ContribStep[]>>({})
-  const [stepForm, setStepForm] = useState<{ accountId: string; fromMonth: number; monthly: number } | null>(null)
-
-  function addContribStep(accountId: string, fromMonth: number, monthly: number) {
-    setContributionSteps((prev) => ({
-      ...prev,
-      [accountId]: [...(prev[accountId] ?? []).filter((s) => s.fromMonth !== fromMonth), { fromMonth, monthly }]
-        .sort((a, b) => a.fromMonth - b.fromMonth),
-    }))
-  }
-  function removeContribStep(accountId: string, fromMonth: number) {
-    setContributionSteps((prev) => ({
-      ...prev,
-      [accountId]: (prev[accountId] ?? []).filter((s) => s.fromMonth !== fromMonth),
-    }))
-  }
-
-  // ── Budget savings: match linjer til kontokategori ────────────
-  // Maps SavingsAccountType → budget category string
-  const BUDGET_CAT: Partial<Record<SavingsAccountType, string>> = {
-    BSU: 'bsu', fond: 'fond', krypto: 'krypto', sparekonto: 'annen_sparing',
-  }
-  const budgetByCategory = (budgetTemplate?.lines ?? [])
-    .filter((l) => ['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'].includes(l.category))
-    .reduce((m, l) => ({ ...m, [l.category]: (m[l.category] ?? 0) + Math.abs(l.amount) }), {} as Record<string, number>)
-  const budgetTotalSavings = Object.values(budgetByCategory).reduce((s, v) => s + v, 0)
-
-  const currentYear = now.getFullYear()
-  const currentMonth = now.getMonth()
-
-  // ── Sub-tab state (persistert i useAppStore) ───────────────
-  const { sparePlanSubTab: subTab, setSparePlanSubTab: setSubTab } = useAppStore()
-  const [chartTab, setChartTab] = useState<'vekst' | 'bidrag' | 'avkastning'>('vekst')
-  const [showWizard, setShowWizard] = useState(false)
-
-
-  // ── Income ────────────────────────────────────────────────
-  const userMonthlyIncome = profile?.baseMonthly ?? 0
-  const partnerMonthlyIncome = (partnerVeikart?.annualIncome ?? 0) / 12
-  const combinedIncome = userMonthlyIncome + partnerMonthlyIncome
-  const partnerEnabled = partnerVeikart?.enabled ?? false
-
-  // ── Build flat account rows ────────────────────────────────
-  const userDebt = debts
-    .filter((d) => d.status !== 'nedbetalt')
-    .reduce((s, d) => s + d.currentBalance, 0)
-
-  function makeRows(accounts: SavingsAccount[], person: 'meg' | 'partner'): AccountRow[] {
-    return accounts.map((a) => {
-      const balance = computeEffectiveBalance(a, now)
-      const currentRate = [...a.rateHistory].sort((x, y) =>
-        y.fromDate.localeCompare(x.fromDate))[0]?.rate ?? 0
-      const ytd = computeYTDContributions(a, currentYear)
-      const budgetCat = BUDGET_CAT[a.type]
-      const budgetMonthly = budgetCat ? (budgetByCategory[budgetCat] ?? 0) : 0
-      return {
-        id: a.id,
-        label: a.label,
-        type: a.type,
-        accountNumber: a.accountNumber,
-        balance,
-        monthly: a.monthlyContribution,
-        budgetMonthly,
-        rate: currentRate,
-        expectedReturn: a.expectedReturn ?? (a.type === 'fond' || a.type === 'krypto' ? 6 : currentRate),
-        actualReturn: a.actualReturn ?? null,
-        ytd,
-        person,
-      }
-    })
-  }
-
-  const myRows = makeRows(savingsAccounts, 'meg')
-  const partnerRows: AccountRow[] = partnerEnabled ? [
-    { id: 'p-bsu', label: 'BSU', type: 'BSU', balance: partnerVeikart?.bsu ?? 0,
-      monthly: partnerVeikart?.bsuMonthlyContribution ?? 0, budgetMonthly: 0, rate: 5.5,
-      expectedReturn: 5.5, actualReturn: null,
-      ytd: (partnerVeikart?.bsuMonthlyContribution ?? 0) * (currentMonth + 1), person: 'partner' },
-    { id: 'p-spare', label: 'Sparekonto', type: 'sparekonto',
-      balance: partnerVeikart?.equity ?? 0,
-      monthly: partnerVeikart?.monthlySavings ?? 0, budgetMonthly: 0, rate: 3.0,
-      expectedReturn: 3.0, actualReturn: null,
-      ytd: (partnerVeikart?.monthlySavings ?? 0) * (currentMonth + 1), person: 'partner' },
-  ] : []
-
-  const allRows = [...myRows, ...partnerRows]
-
-  // ── Simulation engine ────────────────────────────────────
-  // expectedReturn overstyrer rate; contributionSteps gir trinnvise innskudd
-  function computeEK(rows: AccountRow[], months: number, steps: Record<string, ContribStep[]> = {}): number {
-    return rows.reduce((sum, a) => {
-      const rate = a.expectedReturn ?? a.rate
-      return sum + projectWithSteps(a.balance, a.monthly, rate, months, a.type === 'BSU', steps[a.id] ?? [])
-    }, 0)
-  }
-
-  // Use store values (declared before useMemo so they're available in the closure)
-  const simHorizon = savingsPlanHorizon
-  const targetPrice = savingsPlanTarget
-
-  const simData = useMemo(() => {
-    const steps = simHorizon + 1
-    return Array.from({ length: steps }, (_, i) => {
-      const meEK = computeEK(myRows, i, contributionSteps)
-      const partnerEK = computeEK(partnerRows, i)
-      const combined = meEK + (partnerEnabled ? partnerEK : 0)
-      const debtAtMonth = debts
-        .filter((d) => d.status !== 'nedbetalt')
-        .reduce((s, d) => s + projectDebtBalance(d, i), 0)
-      const maxPurchase = combinedIncome > 0
-        ? calcMaxPurchase(combined, combinedIncome * 12, debtAtMonth)
-        : 0
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-      const label = d.toLocaleDateString('no-NO', { month: 'short', year: '2-digit' })
-
-      const meContribAccum = myRows.reduce((s, a) => s + a.balance + a.monthly * i, 0)
-      const partnerContribAccum = partnerRows.reduce((s, a) => s + a.balance + a.monthly * i, 0)
-      const totalInterest = Math.max(0, combined - meContribAccum - (partnerEnabled ? partnerContribAccum : 0))
-
-      return {
-        months: i, label, d,
-        meEK: Math.round(meEK),
-        partnerEK: Math.round(partnerEK),
-        combined: Math.round(combined),
-        maxPurchase: Math.round(maxPurchase),
-        totalInterest: Math.round(totalInterest),
-        meContrib: Math.round(myRows.reduce((s, a) => s + a.monthly * i, 0)),
-        partnerContrib: Math.round(partnerRows.reduce((s, a) => s + a.monthly * i, 0)),
-      }
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savingsAccounts, partnerVeikart, savingsPlanHorizon, partnerEnabled, contributionSteps])
-
-  // ── Goal calc ────────────────────────────────────────────
-  const requiredEK = targetPrice > 0
-    ? Math.max(targetPrice * EK_KRAV, targetPrice - combinedIncome * 12 * 5)
-    : 0
-  const reachIndex = requiredEK > 0
-    ? simData.findIndex((d) => d.combined >= requiredEK)
-    : -1
-  const reachEntry = reachIndex >= 0 ? simData[reachIndex] : null
-
-  const meTotalBalance = myRows.reduce((s, a) => s + a.balance, 0)
-  const partnerTotalBalance = partnerRows.reduce((s, a) => s + a.balance, 0)
-  const combinedTotal = meTotalBalance + (partnerEnabled ? partnerTotalBalance : 0)
-  const meTotalMonthly = myRows.reduce((s, a) => s + a.monthly, 0)
-  const partnerTotalMonthly = partnerRows.reduce((s, a) => s + a.monthly, 0)
-  const totalMonthly = meTotalMonthly + (partnerEnabled ? partnerTotalMonthly : 0)
-  const currentProgress = requiredEK > 0 ? Math.min(100, (combinedTotal / requiredEK) * 100) : 0
-
-  // ── Update handler: inline edit i tabell ────────────────
-  function handleAccountChange(row: AccountRow, field: keyof AccountRow, value: number) {
-    if (row.person !== 'meg') return
-    const patch: Partial<SavingsAccount> = {}
-    if (field === 'monthly') patch.monthlyContribution = value
-    if (field === 'expectedReturn') patch.expectedReturn = value
-    if (field === 'actualReturn') patch.actualReturn = value
-    if (Object.keys(patch).length > 0) updateSavingsAccount(row.id, patch)
-  }
-
-  function handlePartnerChange(id: string, field: 'monthly' | 'expectedReturn', value: number) {
-    if (!partnerVeikart) return
-    if (id === 'p-bsu') {
-      setPartnerVeikart({ ...partnerVeikart, bsuMonthlyContribution: value })
-    } else if (id === 'p-spare') {
-      if (field === 'monthly') setPartnerVeikart({ ...partnerVeikart, monthlySavings: value })
-    }
-  }
-
-  // ── Insights ─────────────────────────────────────────────
-  const insights = useMemo(() => {
-    const list: { icon: string; color: InsightColor; text: string }[] = []
-    const pctIncome = combinedIncome > 0 ? (totalMonthly / combinedIncome) * 100 : 0
-
-    if (pctIncome >= 20)
-      list.push({ icon: '🏆', color: 'green', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt – godt over anbefalt 20 %.` })
-    else if (pctIncome >= 10)
-      list.push({ icon: '👍', color: 'blue', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt. Anbefalt minstemål er 20 % – øk med ${fmtNOK(combinedIncome * 0.2 - totalMonthly)}/mnd for å nå det.` })
-    else if (combinedIncome > 0)
-      list.push({ icon: '⚠️', color: 'amber', text: `Kun ${pctIncome.toFixed(0)} % av inntekten spares. Vurder å øke månedlig sparing.` })
-
-    const bsuAcc = savingsAccounts.find((a) => a.type === 'BSU')
-    if (bsuAcc) {
-      const balance = computeEffectiveBalance(bsuAcc, now)
-      const maxPerMonth = BSU_MAX_YEARLY / 12
-      if (balance >= BSU_MAX_TOTAL)
-        list.push({ icon: '✅', color: 'green', text: 'BSU er fylt opp! Flytt BSU-sparingen til fond eller sparekonto.' })
-      else if (bsuAcc.monthlyContribution < maxPerMonth * 0.9)
-        list.push({ icon: '💡', color: 'blue', text: `Du kan øke BSU til ${fmtNOK(Math.round(maxPerMonth))}/mnd. Skattefradrag: ${fmtNOK(Math.min(bsuAcc.monthlyContribution * 12, BSU_MAX_YEARLY) * 0.1)}/år.` })
-    }
-
-    const fondAcc = savingsAccounts.find((a) => a.type === 'fond')
-    if (fondAcc?.actualReturn != null) {
-      const diff = (fondAcc.actualReturn ?? 0) - (fondAcc.expectedReturn ?? 6)
-      if (diff > 1) list.push({ icon: '📈', color: 'green', text: `Fondet leverer ${fondAcc.actualReturn?.toFixed(1)} % – ${diff.toFixed(1)} % over forventet!` })
-      if (diff < -2) list.push({ icon: '📉', color: 'amber', text: `Fondet leverer ${fondAcc.actualReturn?.toFixed(1)} % – under forventet. Vurder å justere prognosen.` })
-    }
-
-    if (reachEntry)
-      list.push({ icon: '🏠', color: 'green', text: `Med nåværende tempo når dere EK-kravet for ${fmtNOK(targetPrice)}-boligen om ${reachEntry.months} måneder (${reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })}).` })
-    else if (targetPrice > 0) {
-      const gap = requiredEK - (simData[simData.length - 1]?.combined ?? 0)
-      list.push({ icon: '🚧', color: 'amber', text: `Dere når ikke EK-kravet innen ${simHorizon / 12} år. Mangler ${fmtNOK(gap)} ved horisonten.` })
-    }
-
-    if (userDebt > 0 && totalMonthly > 0) {
-      const debtToSavings = userDebt / (totalMonthly * 12)
-      if (debtToSavings > 5)
-        list.push({ icon: '⚖️', color: 'amber', text: `Gjelden (${fmtNOK(userDebt)}) er høy relativt til sparingen. Vurder ekstra nedbetaling av dyr gjeld.` })
-    }
-
-    return list
-  }, [savingsAccounts, totalMonthly, combinedIncome, reachEntry, targetPrice, userDebt])
-
-  // ── Chart data ────────────────────────────────────────────
-  const chartData = simData.slice(1).filter((_, i) =>
-    i % (simHorizon > 36 ? 3 : 1) === 0 || i === simData.length - 2
-  )
-
-  // ── Yearly rows ──────────────────────────────────────────
-  const monthsLeft = 12 - currentMonth
-  const yearRows = [0, 1, 2, 3, 4].map((offset) => {
-    const idx = Math.min(offset === 0 ? monthsLeft : monthsLeft + offset * 12, simHorizon)
-    const d = simData[idx] ?? simData[simData.length - 1]
-    return { year: currentYear + offset, ...d }
-  })
-
-  // ── Sparkline data per account ────────────────────────────
-  function sparklineForRow(row: AccountRow): number[] {
-    return Array.from({ length: 13 }, (_, i) => {
-      const isFond = row.type === 'fond' || row.type === 'krypto'
-      const rate = isFond ? row.expectedReturn : row.rate
-      return projectBalanceMonthly(row.balance, row.monthly, rate, i, row.type === 'BSU')
-    })
-  }
-
-  // ── Render ────────────────────────────────────────────────
-  return (
-    <div className="flex-1 overflow-hidden flex flex-col">
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border shrink-0">
-        {([['plan', 'Simulering'], ['måneder', 'Månedsoversikt'], ['kontoer', 'Kontoer & innskudd'], ['feedback', 'Råd & varsler']] as const).map(([k, l]) => (
-          <button
-            key={k}
-            onClick={() => setSubTab(k)}
-            className={cn(
-              'px-3 py-1.5 rounded text-xs font-medium transition-colors',
-              subTab === k
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground border border-border'
-            )}
-          >{l}</button>
-        ))}
-        <div className="flex-1" />
-        <span className="text-xs text-muted-foreground" title="Grunnlønn brutto – brukes til maks låneberegning (5× inntekt)">
-          Brutto: <span className="text-foreground font-mono">{fmtNOK(userMonthlyIncome)}/mnd</span>
-          {partnerEnabled && <span className="font-mono"> + {fmtNOK(partnerMonthlyIncome)}/mnd</span>}
-        </span>
-      </div>
-
-      {/* ── PLAN TAB ── */}
-      {subTab === 'plan' && (
-        <div className="flex-1 overflow-hidden flex">
-          {/* Left sidebar */}
-          <div className="w-72 shrink-0 border-r border-border overflow-y-auto p-3 space-y-3">
-            {/* Goal */}
-            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-              <p className="text-xs font-semibold">🏠 Boligmål</p>
-              <div className="space-y-1">
-                <label className="text-[10px] text-muted-foreground">Ønsket boligpris</label>
-                <input
-                  type="number"
-                  step={50000}
-                  value={targetPrice || ''}
-                  placeholder="f.eks. 4 500 000"
-                  onChange={(e) => setSavingsPlanTarget(parseFloat(e.target.value) || 0)}
-                  className="h-8 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
-                />
-              </div>
-              {targetPrice > 0 && (() => {
-                const ekMinimum = targetPrice * EK_KRAV
-                const maxLoan = combinedIncome * 12 * 5
-                const ekFromIncome = targetPrice - maxLoan
-                const incomeIsBinding = ekFromIncome > ekMinimum
-                return (
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Nødvendig EK:</span>
-                      <span className="font-mono font-semibold">{fmtNOK(requiredEK)}</span>
-                    </div>
-                    {/* Forklaring på hvorfor EK-kravet er høyt */}
-                    {incomeIsBinding ? (
-                      <div className="text-[10px] text-muted-foreground space-y-0.5">
-                        <div className="flex justify-between">
-                          <span>10%-regelen alene:</span>
-                          <span className="font-mono">{fmtNOK(ekMinimum)}</span>
-                        </div>
-                        <div className="flex justify-between text-amber-400/80">
-                          <span>Maks lån (5× inntekt {fmtNOK(combinedIncome * 12)}/år):</span>
-                          <span className="font-mono">{fmtNOK(maxLoan)}</span>
-                        </div>
-                        <div className="flex justify-between text-amber-400">
-                          <span>→ Manglende EK over lånegrensen:</span>
-                          <span className="font-mono font-semibold">{fmtNOK(ekFromIncome)}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] text-muted-foreground">Minimum {(EK_KRAV * 100).toFixed(0)} % egenkapital</p>
-                    )}
-                    <Progress value={currentProgress} className="h-1.5" />
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>{fmtNOK(combinedTotal)} av {fmtNOK(requiredEK)}</span>
-                      <span>{currentProgress.toFixed(0)} % av mål</span>
-                    </div>
-                    {reachEntry ? (
-                      <div className="rounded border border-green-500/30 bg-green-500/8 px-2 py-1.5 text-[10px] text-green-400">
-                        ✓ Mål nås om <b>{reachEntry.months} mnd</b> ({reachEntry.d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })})
-                      </div>
-                    ) : (
-                      <div className="rounded border border-amber-500/30 bg-amber-500/8 px-2 py-1.5 text-[10px] text-amber-400">
-                        Ikke innen {simHorizon / 12} år – juster sparing eller mål
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
-            </div>
-
-            {/* Horizon */}
-            <div className="rounded-lg border border-border bg-card p-3 space-y-2">
-              <div className="flex justify-between">
-                <span className="text-[10px] text-muted-foreground">Simuleringshorisont</span>
-                <span className="text-xs font-mono font-semibold">{simHorizon / 12} år</span>
-              </div>
-              <input
-                type="range" min={12} max={120} step={12}
-                value={simHorizon}
-                onChange={(e) => setSavingsPlanHorizon(parseInt(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-[9px] text-muted-foreground">
-                <span>1 år</span><span>5 år</span><span>10 år</span>
-              </div>
-            </div>
-
-            {/* KPIs */}
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { label: 'Meg – EK nå', value: fmtM(meTotalBalance), color: 'text-blue-400' },
-                { label: 'Partner – EK nå', value: fmtM(partnerTotalBalance), color: 'text-purple-400', hidden: !partnerEnabled },
-                { label: 'Samlet EK', value: fmtM(combinedTotal), color: 'text-foreground' },
-                { label: 'Max kjøpesum', value: fmtM(simData[0]?.maxPurchase ?? 0), color: 'text-green-400', sub: '5× inntekt, 10% EK' },
-              ].filter((k) => !k.hidden).map((k) => (
-                <div key={k.label} className="rounded-lg border border-border bg-card px-2.5 py-2">
-                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{k.label}</p>
-                  <p className={cn('text-sm font-bold font-mono', k.color)}>{k.value}</p>
-                  {k.sub && <p className="text-[9px] text-muted-foreground mt-0.5">{k.sub}</p>}
-                </div>
-              ))}
-            </div>
-
-          </div>
-
-          {/* Right: chart + table */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {/* Chart tabs */}
-            <div className="flex items-center gap-1.5">
-              {([['vekst', 'EK-vekst'], ['bidrag', 'Innskudd'], ['avkastning', 'Rente & avk.']] as const).map(([k, l]) => (
-                <button key={k} onClick={() => setChartTab(k)}
-                  className={cn('px-2.5 py-1 rounded text-xs font-medium transition-colors',
-                    chartTab === k ? 'bg-primary text-primary-foreground' : 'text-muted-foreground border border-border hover:text-foreground'
-                  )}>{l}</button>
-              ))}
-            </div>
-
-            {/* Chart */}
-            <div className="rounded-xl border border-border bg-card p-3">
-              <SparePlanChart
-                data={chartData}
-                tab={chartTab}
-                requiredEK={requiredEK}
-                partnerEnabled={partnerEnabled}
-              />
-            </div>
-
-            {/* Yearly table */}
-            <div className="rounded-xl border border-border overflow-hidden">
-              <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                <span className="text-xs font-semibold">Årsvis prognose</span>
-                <span className="text-[10px] text-muted-foreground">Nåværende sparetakt</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-muted/40 border-b border-border">
-                      <th className="px-3 py-1.5 text-left font-medium text-muted-foreground">År</th>
-                      <th className="px-3 py-1.5 text-right font-medium text-blue-400">Meg</th>
-                      {partnerEnabled && <th className="px-3 py-1.5 text-right font-medium text-purple-400">Partner</th>}
-                      <th className="px-3 py-1.5 text-right font-medium">Samlet EK</th>
-                      <th className="px-3 py-1.5 text-right font-medium text-yellow-400">Rente/avk.</th>
-                      {combinedIncome > 0 && <th className="px-3 py-1.5 text-right font-medium text-green-400">Max kjøpesum</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {yearRows.map((y, i) => {
-                      const isGoalYear = reachEntry && y.months >= reachEntry.months &&
-                        (i === 0 || yearRows[i - 1].months < reachEntry.months)
-                      return (
-                        <tr key={y.year} className={cn(
-                          'border-b border-border last:border-0',
-                          isGoalYear && 'bg-green-500/6',
-                          i === 0 && 'bg-primary/3'
-                        )}>
-                          <td className="px-3 py-2 font-semibold">
-                            {y.year}
-                            {i === 0 && <span className="ml-1.5 text-[9px] text-muted-foreground">i år</span>}
-                            {isGoalYear && <span className="ml-1.5 text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">mål</span>}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono text-blue-400">{fmtM(y.meEK ?? 0)}</td>
-                          {partnerEnabled && <td className="px-3 py-2 text-right font-mono text-purple-400">{fmtM(y.partnerEK ?? 0)}</td>}
-                          <td className="px-3 py-2 text-right font-mono font-bold">{fmtM(y.combined ?? 0)}</td>
-                          <td className="px-3 py-2 text-right font-mono text-yellow-400">+{fmtM(y.totalInterest ?? 0)}</td>
-                          {combinedIncome > 0 && <td className="px-3 py-2 text-right font-mono font-bold text-green-400">{fmtM(y.maxPurchase ?? 0)}</td>}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MÅNEDSOVERSIKT TAB ── */}
-      {subTab === 'måneder' && (
-        <MånedsoversiktTable
-          accounts={savingsAccounts}
-          fondCurrentValue={_fondCurrentValue}
-          fondMonthlyDeposit={_fondMonthlyDeposit}
-          debts={debts}
-          profile={profile}
-          partnerVeikart={partnerVeikart}
-          now={now}
-        />
-      )}
 
       {/* ── KONTOER TAB ── */}
-      {subTab === 'kontoer' && (
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[
-              { label: 'Meg totalt', value: fmtNOK(meTotalBalance), sub: `${fmtNOK(meTotalMonthly)}/mnd`, color: 'text-blue-400' },
-              { label: 'Partner totalt', value: fmtNOK(partnerTotalBalance), sub: `${fmtNOK(partnerTotalMonthly)}/mnd`, color: 'text-purple-400', hidden: !partnerEnabled },
-              { label: 'Samlet EK', value: fmtNOK(combinedTotal), sub: `${fmtNOK(totalMonthly)}/mnd` },
-              { label: 'Budsjettert sparing', value: fmtNOK(budgetTotalSavings), sub: budgetTotalSavings !== totalMonthly ? `sim. bruker ${fmtNOK(totalMonthly)}/mnd` : 'matcher simulering', color: budgetTotalSavings > 0 && budgetTotalSavings !== totalMonthly ? 'text-amber-400' : 'text-green-400' },
-            ].filter((k) => !k.hidden).map((k) => (
-              <div key={k.label} className="rounded-lg border border-border bg-card px-3 py-2.5">
-                <p className="text-[9px] text-muted-foreground uppercase tracking-wide mb-1">{k.label}</p>
-                <p className={cn('text-base font-bold font-mono', k.color ?? 'text-foreground')}>{k.value}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{k.sub}</p>
-              </div>
-            ))}
-          </div>
+      {tab === 'kontoer' && (
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
+          {showImport && <SavingsImporter onDone={() => setShowImport(false)} />}
+          {showAddAccount && (
+            <AddAccountForm
+              onSave={(a) => { addSavingsAccount(a); setShowAddAccount(false) }}
+              onCancel={() => setShowAddAccount(false)}
+            />
+          )}
 
-          <div className="rounded-xl border border-border overflow-hidden">
-            <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
-              <span className="text-xs font-semibold">Kontoer</span>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] text-muted-foreground">Klikk tall for å redigere</span>
-                {onNavigateToAccounts && (
-                  <button onClick={onNavigateToAccounts} className="text-[10px] text-primary hover:underline">
-                    Administrer kontoer →
-                  </button>
-                )}
+          {/* Summary bar */}
+          {savingsAccounts.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <SummaryCard label="Total saldo" value={fmtNOK(totalBalance)} />
+              {bsuStatus && (
+                <SummaryCard
+                  label={`BSU-kvote ${currentYear}`}
+                  value={`${fmtNOK(bsuStatus.yearlyContributionSoFar)} / 27 500 kr`}
+                  subvalue={`${Math.round((bsuStatus.yearlyContributionSoFar / 27500) * 100)}%`}
+                />
+              )}
+              {bsuAccount && (
+                <SummaryCard label="BSU skattefradrag" value={fmtNOK(bsuSkattefradrag)} subvalue="10% av innskudd" />
+              )}
+              {totalInterestForecast > 0 && (
+                <SummaryCard
+                  label={`Renteinntekter ${currentYear}`}
+                  value={fmtNOK(totalInterestForecast)}
+                  subvalue={totalInterestIncome > 0 && totalInterestIncome < totalInterestForecast
+                    ? `${fmtNOK(totalInterestIncome)} opptjent hittil` : 'prognose hele året'}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Account cards */}
+          {savingsAccounts.length === 0 && !showAddAccount ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-sm text-muted-foreground mb-3">Ingen sparekontoer registrert.</p>
+                <Button size="sm" onClick={() => setShowAddAccount(true)}>Legg til sparekonto</Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {savingsAccounts.map((account) => (
+                <AccountCard
+                  key={account.id}
+                  account={account}
+                  now={now}
+                  onRemove={() => removeSavingsAccount(account.id)}
+                  onUpdate={(patch) => updateSavingsAccount(account.id, patch)}
+                  onUpdateBalance={(entry) => updateSavingsBalance(account.id, entry)}
+                  onUpdateRate={(entry) => updateSavingsRate(account.id, entry)}
+                  onAddContribution={(c) => addContribution(account.id, c)}
+                  onRemoveContribution={(id) => removeContribution(account.id, id)}
+                  onAddWithdrawal={(w) => addWithdrawal(account.id, w)}
+                  onRemoveWithdrawal={(id) => removeWithdrawal(account.id, id)}
+                  onUpdateBirthYear={(year) => updateSavingsAccount(account.id, { birthYear: year })}
+                  onUpdateMonthlyContribution={(amount) => updateSavingsAccount(account.id, { monthlyContribution: amount })}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Budget savings lines */}
+          {budgetSavingsLines.length > 0 && (
+            <div>
+              <h3 className="font-medium text-sm mb-2">Spareposter fra budsjett</h3>
+              <div className="rounded-md border border-border bg-muted/10 divide-y divide-border/50">
+                {budgetSavingsLines.map((line) => {
+                  const linkedAccount = savingsAccounts.find((a) => a.id === (line as { linkedSavingsAccountId?: string }).linkedSavingsAccountId)
+                  return (
+                    <div key={line.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div>
+                        <p className="font-medium">{line.label}</p>
+                        {linkedAccount
+                          ? <p className="text-[10px] text-green-500">→ {linkedAccount.label}</p>
+                          : <p className="text-[10px] text-muted-foreground">Ikke koblet til konto</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Repeat2 className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-mono">{Math.abs(line.amount).toLocaleString('no-NO')} kr/mnd</span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-muted/30 border-b border-border">
-                    {['Konto', 'Saldo', 'Mnd. innskudd', 'Rente / Avkastning', 'Årets innskudd', '12 mnd prognose'].map((h, i) => (
-                      <th key={h} className={cn('px-3 py-1.5 font-medium text-muted-foreground', i > 0 && 'text-right')}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="bg-muted/20">
-                    <td colSpan={6} className="px-3 py-1.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-blue-400" />
-                          <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide">Meg</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(meTotalBalance)} · {fmtNOK(meTotalMonthly)}/mnd</span>
-                      </div>
-                    </td>
-                  </tr>
-                  {myRows.map((row) => (
-                    <AccountTableRow
-                      key={row.id}
-                      row={row}
-                      proj12={projectBalanceMonthly(row.balance, row.monthly,
-                        row.type === 'fond' || row.type === 'krypto' ? row.expectedReturn : row.rate,
-                        12, row.type === 'BSU')}
-                      onChangeMonthly={(v) => handleAccountChange(row, 'monthly', v)}
-                      onChangeExpectedReturn={(v) => handleAccountChange(row, 'expectedReturn', v)}
-                      onChangeActualReturn={(v) => handleAccountChange(row, 'actualReturn', v)}
-                      sparkData={sparklineForRow(row)}
-                    />
-                  ))}
+          )}
 
-                  {partnerEnabled && (
-                    <>
-                      <tr className="bg-muted/20">
-                        <td colSpan={6} className="px-3 py-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-purple-400" />
-                              <span className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Partner</span>
-                            </div>
-                            <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(partnerTotalBalance)} · {fmtNOK(partnerTotalMonthly)}/mnd</span>
+          {/* Goals */}
+          <div>
+            <h3 className="font-medium text-sm mb-2">Sparemål</h3>
+            {showAddGoal && (
+              <AddGoalForm
+                accounts={savingsAccounts}
+                fondMonthlyDeposit={fondMonthlyDeposit}
+                onSave={(g) => { addSavingsGoal(g); setShowAddGoal(false) }}
+                onCancel={() => setShowAddGoal(false)}
+              />
+            )}
+            {savingsGoals.length === 0 && !showAddGoal ? (
+              <Card>
+                <CardContent className="py-4 text-center">
+                  <p className="text-sm text-muted-foreground">Ingen sparemål registrert.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {savingsGoals.map((goal) => {
+                  const progress = calculateGoalProgress(goal, savingsAccounts, fondCurrentValue, fondMonthlyDeposit)
+                  return (
+                    <Card key={goal.id}>
+                      <CardContent className="py-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg">{goal.icon}</span>
+                            <span className="font-medium text-sm">{goal.label}</span>
                           </div>
-                        </td>
-                      </tr>
-                      {partnerRows.map((row) => (
-                        <AccountTableRow
-                          key={row.id}
-                          row={row}
-                          proj12={projectBalanceMonthly(row.balance, row.monthly, row.expectedReturn, 12, row.type === 'BSU')}
-                          onChangeMonthly={(v) => handlePartnerChange(row.id, 'monthly', v)}
-                          onChangeExpectedReturn={(v) => handlePartnerChange(row.id, 'expectedReturn', v)}
-                          onChangeActualReturn={() => {}}
-                          sparkData={sparklineForRow(row)}
-                        />
-                      ))}
-                    </>
-                  )}
-
-                  <tr className="border-t-2 border-border bg-muted/30">
-                    <td className="px-3 py-2 font-bold">Totalt</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">{fmtNOK(combinedTotal)}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">{fmtNOK(totalMonthly)}/mnd</td>
-                    <td />
-                    <td className="px-3 py-2 text-right font-mono text-muted-foreground">
-                      {fmtNOK(allRows.reduce((s, a) => s + a.ytd, 0))}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-green-400">
-                      {fmtNOK(simData[12]?.combined ?? 0)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Planlagte innskudd */}
-          <div className="rounded-xl border border-border overflow-hidden">
-            <div className="px-3 py-2 border-b border-border flex items-center justify-between bg-muted/20">
-              <div>
-                <span className="text-xs font-semibold">Planlagte innskudd</span>
-                <span className="text-[10px] text-muted-foreground ml-2">Ulike beløp til ulike tidspunkter (kun egne kontoer)</span>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
+                            onClick={() => removeSavingsGoal(goal.id)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Progress value={progress.percent} className="h-2" />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>{fmtNOK(progress.currentTotal)} / {fmtNOK(progress.targetAmount)}</span>
+                          <span>{Math.round(progress.percent)}%</span>
+                        </div>
+                        {goal.includeFond && <p className="text-xs text-muted-foreground">Inkl. KRON Fond</p>}
+                        {progress.monthsRemaining !== null && progress.monthsRemaining > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Mangler {fmtNOK(progress.targetAmount - progress.currentTotal)} —
+                            spar {fmtNOK(progress.monthlyNeeded ?? 0)}/mnd = {progress.monthsRemaining} mnd
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
-            </div>
-            <div className="p-3 space-y-3">
-              {/* Eksisterende trinn */}
-              {myRows.some((r) => (contributionSteps[r.id] ?? []).length > 0) ? (
-                <div className="space-y-1.5">
-                  {myRows.flatMap((row) =>
-                    (contributionSteps[row.id] ?? []).map((step) => (
-                      <div key={`${row.id}-${step.fromMonth}`} className="flex items-center gap-2 text-xs bg-muted/20 rounded-lg px-3 py-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                        <span className="flex-1 font-medium">{row.label}</span>
-                        <span className="text-muted-foreground">fra mnd {step.fromMonth}:</span>
-                        <span className="font-mono text-foreground">{fmtNOK(step.monthly)}/mnd</span>
-                        <button
-                          onClick={() => removeContribStep(row.id, step.fromMonth)}
-                          className="text-muted-foreground hover:text-red-400 transition-colors ml-1"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ) : (
-                <p className="text-[10px] text-muted-foreground">Ingen planlagte innskudd lagt til ennå.</p>
-              )}
-
-              {/* Legg til nytt trinn */}
-              {stepForm !== null ? (
-                <div className="rounded-lg border border-border bg-background p-3 space-y-2">
-                  <p className="text-xs font-medium">Nytt planlagt innskudd</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Konto</label>
-                      <select
-                        value={stepForm.accountId}
-                        onChange={(e) => setStepForm((f) => f && { ...f, accountId: e.target.value })}
-                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-                      >
-                        {myRows.map((r) => (
-                          <option key={r.id} value={r.id}>{r.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Fra måned nr.</label>
-                      <input
-                        type="number" min={1} step={1}
-                        value={stepForm.fromMonth || ''}
-                        onChange={(e) => setStepForm((f) => f && { ...f, fromMonth: parseInt(e.target.value) || 0 })}
-                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
-                        placeholder="f.eks. 6"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">Beløp/mnd (kr)</label>
-                      <input
-                        type="number" min={0} step={500}
-                        value={stepForm.monthly || ''}
-                        onChange={(e) => setStepForm((f) => f && { ...f, monthly: parseFloat(e.target.value) || 0 })}
-                        className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
-                        placeholder="f.eks. 5000"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 justify-end">
-                    <button
-                      onClick={() => setStepForm(null)}
-                      className="px-3 py-1 rounded text-xs border border-border text-muted-foreground hover:text-foreground transition-colors"
-                    >Avbryt</button>
-                    <button
-                      onClick={() => {
-                        if (stepForm.accountId && stepForm.fromMonth > 0) {
-                          addContribStep(stepForm.accountId, stepForm.fromMonth, stepForm.monthly)
-                          setStepForm(null)
-                        }
-                      }}
-                      disabled={!stepForm.accountId || stepForm.fromMonth <= 0}
-                      className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                    >Legg til</button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setStepForm({ accountId: myRows[0]?.id ?? '', fromMonth: 0, monthly: 0 })}
-                  disabled={myRows.length === 0}
-                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors disabled:opacity-40"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Legg til planlagt innskudd
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── FEEDBACK TAB ── */}
-      {subTab === 'feedback' && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          <h3 className="text-sm font-semibold">Råd & varsler</h3>
-          <div className="space-y-2">
-            {insights.map((ins, i) => (
-              <InsightCard key={i} icon={ins.icon} text={ins.text} color={ins.color} />
-            ))}
-          </div>
+      {/* ── FOND TAB ── */}
+      {tab === 'fond' && <FondPage />}
 
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3 mt-2">
-            <p className="text-xs font-semibold">🔗 Sammenheng med resten av verktøyet</p>
-            {[
-              { icon: '📊', label: 'Budsjett', value: `${fmtNOK(totalMonthly)} går til sparing` },
-              { icon: '💰', label: 'Inntekt', value: `${combinedIncome > 0 ? ((totalMonthly / combinedIncome) * 100).toFixed(0) : 0} % av samlet inntekt` },
-              { icon: '🧾', label: 'BSU skattefradrag', value: (() => {
-                const bsu = savingsAccounts.find((a) => a.type === 'BSU')
-                if (!bsu) return 'Ingen BSU registrert'
-                return `Estimert ${fmtNOK(Math.min(bsu.monthlyContribution * 12, BSU_MAX_YEARLY) * 0.1)} refundert`
-              })() },
-              { icon: '⚖️', label: 'Gjeld', value: userDebt > 0 ? `${fmtNOK(userDebt)} total gjeld` : 'Ingen gjeld registrert' },
-            ].map((row) => (
-              <div key={row.label} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                <span className="text-base">{row.icon}</span>
-                <div>
-                  <p className="text-xs font-medium">{row.label}</p>
-                  <p className="text-xs text-muted-foreground">{row.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <p className="text-xs font-semibold">📋 Sparewizard</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Steg-for-steg gjennomgang: koble kontoer mot budsjett, sett BSU-kvote,
-              velg fondstrategi, og beregn optimalt oppsett.
-            </p>
-            <Button size="sm" onClick={() => setShowWizard(true)}>Start wizard</Button>
-          </div>
-        </div>
+      {/* ── MÅNEDSOVERSIKT TAB ── */}
+      {tab === 'måneder' && (
+        <MånedsoversiktTable
+          accounts={savingsAccounts}
+          fondCurrentValue={fondCurrentValue}
+          fondMonthlyDeposit={fondMonthlyDeposit}
+          debts={debts}
+          profile={profile}
+          partnerVeikart={partnerVeikart}
+          now={now}
+        />
       )}
+
+      {/* ── RÅD TAB ── */}
+      {tab === 'råd' && (
+        <RådTab
+          savingsAccounts={savingsAccounts}
+          profile={profile}
+          partnerVeikart={partnerVeikart}
+          debts={debts}
+          fondCurrentValue={fondCurrentValue}
+          budgetTemplate={budgetTemplate}
+          updateSavingsAccount={updateSavingsAccount}
+          savingsPlanTarget={savingsPlanTarget}
+          setSavingsPlanTarget={setSavingsPlanTarget}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Råd & varsler ───────────────────────────────────────────
+
+function RådTab({
+  savingsAccounts, profile, partnerVeikart, debts, fondCurrentValue, budgetTemplate,
+  updateSavingsAccount, savingsPlanTarget, setSavingsPlanTarget,
+}: {
+  savingsAccounts: SavingsAccount[]
+  profile: EmploymentProfile | null
+  partnerVeikart: PartnerVeikart
+  debts: DebtAccount[]
+  fondCurrentValue: number
+  budgetTemplate: ReturnType<typeof useEconomyStore>['budgetTemplate']
+  updateSavingsAccount: (id: string, patch: Partial<SavingsAccount>) => void
+  savingsPlanTarget: number
+  setSavingsPlanTarget: (v: number) => void
+}) {
+  const [showWizard, setShowWizard] = useState(false)
+  const now = new Date()
+  const currentYear = now.getFullYear()
+
+  const userMonthly = profile?.baseMonthly ?? 0
+  const partnerMonthly = (partnerVeikart?.annualIncome ?? 0) / 12
+  const combinedMonthly = userMonthly + (partnerVeikart?.enabled ? partnerMonthly : 0)
+
+  const totalSavingsMonthly = savingsAccounts.reduce((s, a) => s + (a.monthlyContribution ?? 0), 0)
+  const totalDebt = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
+
+  const SAVINGS_CATS = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
+  const budgetSavingsTotal = (budgetTemplate?.lines ?? [])
+    .filter(l => SAVINGS_CATS.has(l.category) && l.isRecurring)
+    .reduce((s, l) => s + Math.abs(l.amount), 0)
+
+  const insights: { icon: string; color: InsightColor; text: string }[] = []
+  const pctIncome = combinedMonthly > 0 ? (totalSavingsMonthly / combinedMonthly) * 100 : 0
+
+  if (pctIncome >= 20)
+    insights.push({ icon: '🏆', color: 'green', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt – over anbefalt 20 %.` })
+  else if (pctIncome >= 10)
+    insights.push({ icon: '👍', color: 'blue', text: `Dere sparer ${pctIncome.toFixed(0)} % av samlet inntekt. Anbefalt minstemål er 20 % – øk med ${fmtNOK(combinedMonthly * 0.2 - totalSavingsMonthly)}/mnd.` })
+  else if (combinedMonthly > 0)
+    insights.push({ icon: '⚠️', color: 'amber', text: `Kun ${pctIncome.toFixed(0)} % av inntekten spares. Vurder å øke månedlig sparing.` })
+
+  const bsuAcc = savingsAccounts.find(a => a.type === 'BSU')
+  if (bsuAcc) {
+    const balance = computeEffectiveBalance(bsuAcc, now)
+    if (balance >= BSU_MAX_TOTAL)
+      insights.push({ icon: '✅', color: 'green', text: 'BSU er fylt opp! Flytt BSU-sparingen til fond eller sparekonto.' })
+    else if ((bsuAcc.monthlyContribution ?? 0) < BSU_MAX_YEARLY / 12 * 0.9)
+      insights.push({ icon: '💡', color: 'blue', text: `Du kan øke BSU til ${fmtNOK(Math.round(BSU_MAX_YEARLY / 12))}/mnd. Skattefradrag: ${fmtNOK(Math.min((bsuAcc.monthlyContribution ?? 0) * 12, BSU_MAX_YEARLY) * 0.1)}/år.` })
+  }
+
+  if (budgetSavingsTotal > 0 && Math.abs(budgetSavingsTotal - totalSavingsMonthly) > 500)
+    insights.push({ icon: '📊', color: 'amber', text: `Budsjettet sier ${fmtNOK(budgetSavingsTotal)}/mnd til sparing, men kontoene har ${fmtNOK(totalSavingsMonthly)}/mnd. Sjekk at tallene stemmer overens.` })
+
+  if (totalDebt > 0 && totalSavingsMonthly > 0 && totalDebt / (totalSavingsMonthly * 12) > 5)
+    insights.push({ icon: '⚖️', color: 'amber', text: `Gjelden (${fmtNOK(totalDebt)}) er høy relativt til sparingen. Vurder ekstra nedbetaling av dyr gjeld.` })
+
+  const totalEKNow = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0) + fondCurrentValue
+    + (partnerVeikart?.enabled ? (partnerVeikart.equity ?? 0) + (partnerVeikart.bsu ?? 0) : 0)
+  const requiredEK = savingsPlanTarget > 0 ? Math.max(savingsPlanTarget * 0.1, 0) : 0
+  if (requiredEK > 0) {
+    const pctGoal = Math.min(100, (totalEKNow / requiredEK) * 100)
+    insights.push({
+      icon: pctGoal >= 100 ? '🏠' : '🚧',
+      color: pctGoal >= 100 ? 'green' : 'blue',
+      text: pctGoal >= 100
+        ? `Dere har nok EK til ${fmtNOK(savingsPlanTarget)}-boligen (${fmtNOK(totalEKNow)} ≥ ${fmtNOK(requiredEK)}).`
+        : `EK-fremgang mot ${fmtNOK(savingsPlanTarget)}-boligen: ${fmtNOK(totalEKNow)} av ${fmtNOK(requiredEK)} (${pctGoal.toFixed(0)} %).`,
+    })
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Boligmål */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <p className="text-xs font-semibold">🏠 Boligmål</p>
+        <div className="flex items-center gap-3">
+          <label className="text-xs text-muted-foreground whitespace-nowrap">Ønsket boligpris</label>
+          <input
+            type="number"
+            step={50000}
+            value={savingsPlanTarget || ''}
+            placeholder="f.eks. 4 500 000"
+            onChange={e => setSavingsPlanTarget(parseFloat(e.target.value) || 0)}
+            className="h-8 flex-1 rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+          />
+        </div>
+        {savingsPlanTarget > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Nødvendig EK (10 %):</span>
+              <span className="font-mono font-semibold">{fmtNOK(requiredEK)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Nåværende samlet EK:</span>
+              <span className="font-mono font-semibold text-blue-400">{fmtNOK(totalEKNow)}</span>
+            </div>
+            <Progress value={Math.min(100, (totalEKNow / requiredEK) * 100)} className="h-1.5" />
+          </div>
+        )}
+      </div>
+
+      {/* Insights */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold">Råd & varsler</p>
+        {insights.length === 0
+          ? <p className="text-xs text-muted-foreground">Ingen varsler. Alt ser bra ut!</p>
+          : insights.map((ins, i) => <InsightCard key={i} icon={ins.icon} text={ins.text} color={ins.color} />)
+        }
+      </div>
+
+      {/* Cross-tool links */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <p className="text-xs font-semibold">🔗 Sammenheng med resten av verktøyet</p>
+        {[
+          { icon: '📊', label: 'Budsjett', value: `${fmtNOK(budgetSavingsTotal)}/mnd satt av til sparing` },
+          { icon: '💰', label: 'Inntekt', value: combinedMonthly > 0 ? `${pctIncome.toFixed(0)} % av samlet inntekt spares` : 'Ingen inntekt registrert' },
+          { icon: '🧾', label: 'BSU skattefradrag', value: (() => {
+            if (!bsuAcc) return 'Ingen BSU registrert'
+            return `Estimert ${fmtNOK(Math.min((bsuAcc.monthlyContribution ?? 0) * 12, BSU_MAX_YEARLY) * 0.1)} refundert`
+          })() },
+          { icon: '⚖️', label: 'Gjeld', value: totalDebt > 0 ? `${fmtNOK(totalDebt)} total gjeld` : 'Ingen gjeld registrert' },
+          { icon: '🗺️', label: 'Veikart', value: `${fmtNOK(totalEKNow)} samlet EK` },
+        ].map(row => (
+          <div key={row.label} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+            <span className="text-base">{row.icon}</span>
+            <div>
+              <p className="text-xs font-medium">{row.label}</p>
+              <p className="text-xs text-muted-foreground">{row.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Wizard */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <p className="text-xs font-semibold">📋 Sparewizard</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Steg-for-steg: koble kontoer mot budsjett, sett BSU-kvote, velg fondstrategi og beregn optimalt oppsett.
+        </p>
+        <Button size="sm" onClick={() => setShowWizard(true)}>Start wizard</Button>
+      </div>
 
       {showWizard && (
         <SavingsPlanWizard
           accounts={savingsAccounts}
           onClose={() => setShowWizard(false)}
-          onUpdateAccount={(id, patch) => updateSavingsAccount(id, patch)}
+          onUpdateAccount={updateSavingsAccount}
           onSetTarget={setSavingsPlanTarget}
-          currentTarget={targetPrice}
+          currentTarget={savingsPlanTarget}
         />
       )}
     </div>
   )
 }
-
-// ─── Kontotabell-rad ──────────────────────────────────────────
-function AccountTableRow({
-  row, proj12, onChangeMonthly, onChangeExpectedReturn, onChangeActualReturn, sparkData,
-}: {
-  row: AccountRow
-  proj12: number
-  onChangeMonthly: (v: number) => void
-  onChangeExpectedReturn: (v: number) => void
-  onChangeActualReturn: (v: number) => void
-  sparkData: number[]
-}) {
-  const isFond = row.type === 'fond' || row.type === 'krypto'
-  const isBSU = row.type === 'BSU'
-  const color = row.person === 'meg' ? '#60a5fa' : '#a78bfa'
-  return (
-    <tr className="border-b border-border/60 hover:bg-muted/10 transition-colors">
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-8 rounded-full shrink-0" style={{ background: color }} />
-          <div>
-            <p className="font-medium">{row.label}</p>
-            <p className="text-[10px] text-muted-foreground">{row.accountNumber ?? row.type}</p>
-          </div>
-          <div className="w-16 opacity-60">
-            <Sparkline data={sparkData} color={color} height={24} />
-          </div>
-        </div>
-      </td>
-      <td className="px-3 py-2 text-right font-mono" style={{ color }}>
-        {fmtNOK(row.balance)}
-      </td>
-      <td className="px-3 py-2 text-right">
-        {isBSU ? (
-          <div className="flex flex-col items-end gap-0.5">
-            <InlineCell value={Math.round(row.monthly * 12)} onChange={(v) => onChangeMonthly(v / 12)} suffix=" kr/år" step={1000} />
-            <span className="text-[10px] text-muted-foreground font-mono">{fmtNOK(row.monthly)}/mnd</span>
-          </div>
-        ) : (
-          <InlineCell value={row.monthly} onChange={onChangeMonthly} suffix="/mnd" step={100} />
-        )}
-      </td>
-      <td className="px-3 py-2 text-right">
-        {isFond ? (
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground">Forv.</span>
-              <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.5} />
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="text-muted-foreground">Faktisk</span>
-              <InlineCell value={row.actualReturn ?? 0} onChange={onChangeActualReturn} suffix=" %" step={0.5} />
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-end gap-0.5">
-            <InlineCell value={row.expectedReturn} onChange={onChangeExpectedReturn} suffix=" %" step={0.1} />
-            <span className="text-[10px] text-muted-foreground">nå: {row.rate.toFixed(2)} %</span>
-          </div>
-        )}
-      </td>
-      <td className="px-3 py-2 text-right font-mono text-muted-foreground">{fmtNOK(row.ytd)}</td>
-      <td className="px-3 py-2 text-right font-mono text-muted-foreground">{fmtNOK(proj12)}</td>
-    </tr>
-  )
-}
-
-// ─── SparePlan SVG Chart ──────────────────────────────────────
-function SparePlanChart({
-  data, tab, requiredEK, partnerEnabled,
-}: {
-  data: { label: string; meEK: number; combined: number; meContrib: number; partnerContrib: number; totalInterest: number }[]
-  tab: 'vekst' | 'bidrag' | 'avkastning'
-  requiredEK: number
-  partnerEnabled: boolean
-}) {
-  const H = 200, W = 560
-  const PAD = { t: 10, r: 10, b: 28, l: 54 }
-  const cW = W - PAD.l - PAD.r
-  const cH = H - PAD.t - PAD.b
-  const [tip, setTip] = useState<{ i: number } | null>(null)
-
-  const lines = tab === 'vekst' ? [
-    { key: 'meEK', color: '#60a5fa', label: 'Meg', w: 1.5 },
-    ...(partnerEnabled ? [{ key: 'combined', color: '#34d399', label: 'Samlet', w: 2 }] : []),
-  ] : tab === 'bidrag' ? [
-    { key: 'meContrib', color: '#60a5fa', label: 'Meg', w: 2 },
-    ...(partnerEnabled ? [{ key: 'partnerContrib', color: '#a78bfa', label: 'Partner', w: 2 }] : []),
-  ] : [
-    { key: 'totalInterest', color: '#fbbf24', label: 'Rente/avk.', w: 2 },
-  ]
-
-  type EnrichedRow = typeof data[0] & { [key: string]: unknown }
-  const enriched: EnrichedRow[] = data.map((d) => ({ ...d }))
-
-  const allVals = lines.flatMap((l) => enriched.map((d) => (d[l.key] as number) ?? 0))
-  const maxV = Math.max(...allVals, requiredEK || 0) * 1.08 || 1
-  const n = enriched.length
-
-  function sx(i: number) { return (i / (n - 1)) * cW }
-  function sy(v: number) { return cH - (v / maxV) * cH }
-
-  const yTicks = Array.from({ length: 5 }, (_, i) => (maxV * (i + 1)) / 5)
-  const xStep = Math.ceil(n / 7)
-
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: H }} onMouseLeave={() => setTip(null)}>
-      <g transform={`translate(${PAD.l},${PAD.t})`}>
-        {yTicks.map((v, i) => (
-          <g key={i}>
-            <line x1={0} y1={sy(v)} x2={cW} y2={sy(v)} stroke="hsl(217,32%,14%)" strokeDasharray="3,3" />
-            <text x={-5} y={sy(v) + 4} textAnchor="end" fontSize={9} fill="hsl(215,20%,55%)">{fmtM(v)}</text>
-          </g>
-        ))}
-        {enriched.filter((_, i) => i % xStep === 0 || i === n - 1).map((d, ii) => {
-          const i = enriched.indexOf(d)
-          return <text key={ii} x={sx(i)} y={cH + 16} textAnchor="middle" fontSize={9} fill="hsl(215,20%,55%)">{d.label}</text>
-        })}
-
-        {requiredEK > 0 && requiredEK < maxV && (
-          <>
-            <line x1={0} y1={sy(requiredEK)} x2={cW} y2={sy(requiredEK)} stroke="#22c55e" strokeDasharray="5,3" strokeWidth={1.5} />
-            <text x={cW - 2} y={sy(requiredEK) - 4} textAnchor="end" fontSize={9} fill="#22c55e">EK-mål</text>
-          </>
-        )}
-
-        {lines.map((l) => {
-          const pts = enriched.map((d, i) => `${sx(i)},${sy((d[l.key] as number) ?? 0)}`).join(' ')
-          const areaPath = `M0,${cH} L${enriched.map((d, i) => `${sx(i)},${sy((d[l.key] as number) ?? 0)}`).join(' L')} L${cW},${cH} Z`
-          return (
-            <g key={l.key}>
-              {!('dashed' in l) && <path d={areaPath} fill={l.color} opacity={0.1} />}
-              <polyline points={pts} fill="none" stroke={l.color} strokeWidth={l.w}
-                strokeDasharray={'dashed' in l && l.dashed ? '5,3' : undefined} />
-            </g>
-          )
-        })}
-
-        {enriched.map((_, i) => (
-          <rect key={i} x={sx(i) - cW / n / 2} y={0} width={cW / n} height={cH}
-            fill="transparent" style={{ cursor: 'crosshair' }}
-            onMouseEnter={() => setTip({ i })} />
-        ))}
-        {tip && (() => {
-          const d = enriched[tip.i]
-          const tx = Math.min(sx(tip.i) + 6, cW - 120)
-          return (
-            <g>
-              <line x1={sx(tip.i)} y1={0} x2={sx(tip.i)} y2={cH} stroke="hsl(217,32%,40%)" />
-              <rect x={tx} y={4} width={120} height={14 + lines.length * 14} rx={4}
-                fill="hsl(240,6%,8%)" stroke="hsl(217,32%,18%)" />
-              <text x={tx + 8} y={16} fontSize={9} fill="hsl(215,20%,65%)">{d.label}</text>
-              {lines.map((l, li) => (
-                <text key={l.key} x={tx + 8} y={16 + 14 * (li + 1)} fontSize={10} fill={l.color}>
-                  {l.label}: {fmtNOK((d[l.key] as number) ?? 0)}
-                </text>
-              ))}
-            </g>
-          )
-        })()}
-      </g>
-    </svg>
-  )
-}
-
 // ─── Månedsoversikt ───────────────────────────────────────────
 
 const FOND_RATE_TABLE = 7.0

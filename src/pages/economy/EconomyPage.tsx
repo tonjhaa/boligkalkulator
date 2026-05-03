@@ -18,7 +18,6 @@ import {
   HeartPulse,
   Umbrella,
   Settings,
-  BarChart2,
   Map,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -82,7 +81,6 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'atf', label: 'ATF', Icon: Shield },
   { page: 'feriepenger', label: 'Feriepenger', Icon: Palmtree },
   { page: 'savings', label: 'Sparing', Icon: PiggyBank },
-  { page: 'fond', label: 'Fond', Icon: BarChart2 },
   { page: 'debt', label: 'Gjeld', Icon: CreditCard },
   { page: 'absence', label: 'Fravær', Icon: FileText },
   { page: 'tax', label: 'Skatt', Icon: TrendingUp },
@@ -181,8 +179,7 @@ export function EconomyPage() {
           {currentPage === 'budget' && <BudgetPage />}
           {currentPage === 'salary' && <SalaryPage />}
           {currentPage === 'atf' && <ATFPage />}
-          {currentPage === 'savings' && <SavingsPage />}
-          {currentPage === 'fond' && <FondPage />}
+          {(currentPage === 'savings' || currentPage === 'fond') && <SavingsPage />}
           {currentPage === 'debt' && <DebtPage />}
           {currentPage === 'absence' && <AbsencePage />}
           {currentPage === 'tax' && <TaxSettlementPage />}
