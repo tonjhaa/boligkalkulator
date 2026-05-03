@@ -1437,11 +1437,16 @@ function MånedsoversiktTable({
   const HORIZON = 72
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
 
+  // Lokale overstyrte innskudd per konto-id (påvirker kun projeksjon, ikke store)
+  const [contribOverrides, setContribOverrides] = useState<Record<string, number>>({})
+  const [fondOverride, setFondOverride] = useState<number | null>(null)
+
   const annualIncome =
     ((profile?.baseMonthly ?? 0) + (profile?.fixedAdditions?.reduce((s, a) => s + a.amount, 0) ?? 0)) * 12
     + (partnerVeikart.enabled ? partnerVeikart.annualIncome : 0)
 
   const hasFond = fondCurrentValue > 0 || fondMonthlyDeposit > 0
+  const effectiveFondMonthly = fondOverride ?? fondMonthlyDeposit
 
   const { accMeta, monthRows } = useMemo(() => {
     const accMeta = accounts.map(acc => ({
@@ -1449,7 +1454,7 @@ function MånedsoversiktTable({
       label: acc.label,
       type: acc.type,
       startBalance: computeEffectiveBalance(acc, now),
-      monthly: acc.monthlyContribution,
+      monthly: contribOverrides[acc.id] ?? acc.monthlyContribution,
       rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
     }))
 
@@ -1466,7 +1471,7 @@ function MånedsoversiktTable({
       })
 
       const fondBalance = hasFond
-        ? projectBalanceMonthly(fondCurrentValue, fondMonthlyDeposit, FOND_RATE_TABLE, m)
+        ? projectBalanceMonthly(fondCurrentValue, effectiveFondMonthly, FOND_RATE_TABLE, m)
         : 0
 
       const debtBalance = debts
@@ -1480,16 +1485,43 @@ function MånedsoversiktTable({
     })
 
     return { accMeta, monthRows }
-  }, [accounts, fondCurrentValue, fondMonthlyDeposit, debts, annualIncome, hasFond, now])
+  }, [accounts, fondCurrentValue, effectiveFondMonthly, debts, annualIncome, hasFond, now, contribOverrides])
 
   const years = [...new Set(monthRows.map(r => r.year))]
 
+  function InnskuddCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+    const [editing, setEditing] = useState(false)
+    const [tmp, setTmp] = useState('')
+    if (editing) {
+      return (
+        <input
+          autoFocus
+          type="number"
+          value={tmp}
+          onChange={e => setTmp(e.target.value)}
+          onBlur={() => { onChange(parseFloat(tmp) || 0); setEditing(false) }}
+          onKeyDown={e => { if (e.key === 'Enter') { onChange(parseFloat(tmp) || 0); setEditing(false) } if (e.key === 'Escape') setEditing(false) }}
+          className="w-full text-right bg-primary/10 border border-primary rounded px-1 py-0.5 text-xs font-mono outline-none"
+        />
+      )
+    }
+    return (
+      <button
+        onClick={() => { setTmp(String(value)); setEditing(true) }}
+        title="Klikk for å endre planlagt innskudd"
+        className="w-full text-right text-muted-foreground hover:text-foreground hover:underline decoration-dashed underline-offset-2 transition-colors"
+      >
+        {value.toLocaleString('no-NO')}
+      </button>
+    )
+  }
+
   return (
-    <div className="overflow-auto h-full text-xs">
-      <table className="border-collapse min-w-max">
+    <div className="overflow-auto h-full w-full text-xs">
+      <table className="border-collapse w-full min-w-max">
         <thead className="sticky top-0 z-10">
           <tr className="bg-background border-b border-border">
-            <th className="sticky left-0 bg-background z-20 px-3 py-1.5 text-left border-r border-border min-w-[60px]" />
+            <th className="sticky left-0 bg-background z-20 px-3 py-1.5 text-left border-r border-border w-16" />
             {accMeta.map(acc => (
               <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border font-semibold whitespace-nowrap">
                 {acc.label}
@@ -1507,18 +1539,18 @@ function MånedsoversiktTable({
           <tr className="bg-background border-b-2 border-border">
             <th className="sticky left-0 bg-background z-20 px-3 py-1 text-left text-muted-foreground border-r border-border">Måned</th>
             {accMeta.map(acc => (
-              <th key={acc.id} colSpan={2} className="border-r border-border">
+              <th key={acc.id} colSpan={2} className="border-r border-border p-0">
                 <div className="flex">
-                  <span className="flex-1 px-2 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
-                  <span className="flex-1 px-2 py-1 text-right font-medium">Saldo</span>
+                  <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd/mnd</span>
+                  <span className="flex-1 px-3 py-1 text-right font-medium">Saldo</span>
                 </div>
               </th>
             ))}
             {hasFond && (
-              <th colSpan={2} className="border-r border-border">
+              <th colSpan={2} className="border-r border-border p-0">
                 <div className="flex">
-                  <span className="flex-1 px-2 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
-                  <span className="flex-1 px-2 py-1 text-right text-teal-400 font-medium">Saldo</span>
+                  <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd/mnd</span>
+                  <span className="flex-1 px-3 py-1 text-right text-teal-400 font-medium">Saldo</span>
                 </div>
               </th>
             )}
@@ -1532,6 +1564,7 @@ function MånedsoversiktTable({
             const last = yearData[yearData.length - 1]
             return (
               <Fragment key={year}>
+                {/* Årsrad */}
                 <tr className="bg-muted/50 border-y border-border">
                   <td className="sticky left-0 bg-muted/50 px-3 py-2 font-bold border-r border-border">{year}</td>
                   {accMeta.map(acc => {
@@ -1539,8 +1572,8 @@ function MånedsoversiktTable({
                     return (
                       <td key={acc.id} colSpan={2} className="border-r border-border p-0">
                         <div className="flex">
-                          <span className="flex-1 px-2 py-2 text-right text-muted-foreground">{fmtNOK(acc.monthly * 12)}</span>
-                          <span className="flex-1 px-2 py-2 text-right font-semibold">{fmtNOK(ab.balance)}</span>
+                          <span className="flex-1 px-3 py-2 text-right text-muted-foreground">{fmtNOK(acc.monthly * 12)}/år</span>
+                          <span className="flex-1 px-3 py-2 text-right font-semibold">{fmtNOK(ab.balance)}</span>
                         </div>
                       </td>
                     )
@@ -1548,14 +1581,15 @@ function MånedsoversiktTable({
                   {hasFond && (
                     <td colSpan={2} className="border-r border-border p-0">
                       <div className="flex">
-                        <span className="flex-1 px-2 py-2 text-right text-muted-foreground">{fmtNOK(fondMonthlyDeposit * 12)}</span>
-                        <span className="flex-1 px-2 py-2 text-right text-teal-400 font-semibold">{fmtNOK(last.fondBalance)}</span>
+                        <span className="flex-1 px-3 py-2 text-right text-muted-foreground">{fmtNOK(effectiveFondMonthly * 12)}/år</span>
+                        <span className="flex-1 px-3 py-2 text-right text-teal-400 font-semibold">{fmtNOK(last.fondBalance)}</span>
                       </div>
                     </td>
                   )}
                   <td className="px-3 py-2 text-right text-blue-400 font-semibold border-r border-border">{fmtNOK(last.totalEK)}</td>
                   <td className="px-3 py-2 text-right text-green-400 font-semibold">{last.maxKjøpesum > 0 ? fmtNOK(last.maxKjøpesum) : '—'}</td>
                 </tr>
+                {/* Månedlige rader — vises bare i første år */}
                 {yearData.map(row => (
                   <tr key={`${row.year}-${row.month}`} className="border-b border-border/20 hover:bg-muted/10">
                     <td className="sticky left-0 bg-background px-3 py-1 text-muted-foreground border-r border-border">{MONTH_NAMES[row.month - 1]}</td>
@@ -1563,18 +1597,28 @@ function MånedsoversiktTable({
                       const ab = row.accountBalances.find(a => a.id === acc.id)!
                       return (
                         <td key={acc.id} colSpan={2} className="border-r border-border p-0">
-                          <div className="flex">
-                            <span className="flex-1 px-2 py-1 text-right text-muted-foreground">{fmtNOK(ab.contribution)}</span>
-                            <span className="flex-1 px-2 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
+                          <div className="flex items-center">
+                            <span className="flex-1 px-3 py-1">
+                              <InnskuddCell
+                                value={ab.contribution}
+                                onChange={v => setContribOverrides(prev => ({ ...prev, [acc.id]: v }))}
+                              />
+                            </span>
+                            <span className="flex-1 px-3 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
                           </div>
                         </td>
                       )
                     })}
                     {hasFond && (
                       <td colSpan={2} className="border-r border-border p-0">
-                        <div className="flex">
-                          <span className="flex-1 px-2 py-1 text-right text-muted-foreground">{fmtNOK(fondMonthlyDeposit)}</span>
-                          <span className="flex-1 px-2 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
+                        <div className="flex items-center">
+                          <span className="flex-1 px-3 py-1">
+                            <InnskuddCell
+                              value={effectiveFondMonthly}
+                              onChange={v => setFondOverride(v)}
+                            />
+                          </span>
+                          <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
                         </div>
                       </td>
                     )}
