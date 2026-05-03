@@ -9,11 +9,13 @@ import {
   calcMaxPurchase, monthlyPayment,
   BSU_MAX_YEARLY, BSU_MAX_TOTAL, BSU_TAX_BENEFIT, EK_KRAV, MAX_GJELDSGRAD,
 } from '@/hooks/useVeikart'
-import { computeEffectiveBalance } from '@/domain/economy/savingsCalculator'
+import { computeEffectiveBalance, projectBalanceMonthly } from '@/domain/economy/savingsCalculator'
 import { cn } from '@/lib/utils'
 
 const CURRENT_RATE = 0.0425
 const STRESS_RATE = Math.max(0.07, CURRENT_RATE + 0.03)
+const DEFAULT_SAVINGS_RATE = 3.5  // % per år, sparekonto
+const DEFAULT_FOND_RATE = 7.0     // % per år, indeksfond
 
 // ── Formatering ──────────────────────────────────────────────────
 
@@ -46,24 +48,31 @@ function fmtTargetDate(months: number): string {
 
 function calcKjøpekraft(
   equity: number, bsu: number, fond: number,
+  fondMonthly: number,
   annualIncome: number, existingDebt: number,
-  monthlySavings: number,
+  monthlySavings: number,    // ekskl. fond og BSU
   monthlyBSU: number,
+  bsuCutoffMonths: number | null,
   month: number,
 ): number {
-  const futureEquity = equity + monthlySavings * month
-  const futureBsu = Math.min(BSU_MAX_TOTAL, bsu + monthlyBSU * month)
-  return calcMaxPurchase(futureEquity + futureBsu + fond, annualIncome, existingDebt)
+  const futureEquity = projectBalanceMonthly(equity, monthlySavings, DEFAULT_SAVINGS_RATE, month)
+  const effectiveBsuMonths = bsuCutoffMonths !== null ? Math.min(month, bsuCutoffMonths) : month
+  const futureBsu = Math.min(BSU_MAX_TOTAL, bsu + monthlyBSU * effectiveBsuMonths)
+  const futureFond = projectBalanceMonthly(fond, fondMonthly, DEFAULT_FOND_RATE, month)
+  return calcMaxPurchase(futureEquity + futureBsu + futureFond, annualIncome, existingDebt)
 }
 
 function findKlarMonth(
   equity: number, bsu: number, fond: number,
+  fondMonthly: number,
   annualIncome: number, existingDebt: number,
-  monthlySavings: number, monthlyBSU: number, malPris: number,
+  monthlySavings: number, monthlyBSU: number,
+  bsuCutoffMonths: number | null,
+  malPris: number,
 ): number | null {
   if (malPris <= 0) return null
   for (let m = 0; m <= 120; m++) {
-    if (calcKjøpekraft(equity, bsu, fond, annualIncome, existingDebt, monthlySavings, monthlyBSU, m) >= malPris) {
+    if (calcKjøpekraft(equity, bsu, fond, fondMonthly, annualIncome, existingDebt, monthlySavings, monthlyBSU, bsuCutoffMonths, m) >= malPris) {
       return m
     }
   }
@@ -337,8 +346,9 @@ export function VeikartPage() {
 
   const storeDebt = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)
 
+  const storeFondMonthly = fondPortfolio?.monthlyDeposit ?? 0
   const storeMndSparing = savingsAccounts.filter(a => a.type !== 'BSU')
-    .reduce((s, a) => s + (a.monthlyContribution ?? 0), 0) + (fondPortfolio?.monthlyDeposit ?? 0)
+    .reduce((s, a) => s + (a.monthlyContribution ?? 0), 0)  // fond tracked separately
 
   const storeArligBSU = savingsAccounts.filter(a => a.type === 'BSU')
     .reduce((s, a) => s + (a.monthlyContribution ?? 0), 0) * 12
@@ -382,6 +392,14 @@ export function VeikartPage() {
   // ── Beregning ────────────────────────────────────────────────
   const partnerEnabled = partnerVeikart.enabled
 
+  // BSU cutoff: måneder fra nå til siste BSU-innskuddsår
+  const bsuCutoffMonths = useMemo(() => {
+    const cutoffYear = intelligence.bsuLastSaveYear ?? null
+    if (!cutoffYear) return null
+    const now = _now
+    return Math.max(0, (cutoffYear - now.getFullYear()) * 12 + (12 - now.getMonth()))
+  }, [intelligence.bsuLastSaveYear, _now])
+
   const inputs = useMemo(() => {
     const myEq = parseFloat(sparekonto) || 0
     const partnerEq = partnerEnabled ? partnerVeikart.equity : 0
@@ -392,9 +410,11 @@ export function VeikartPage() {
     const bsuVal = myBsu + partnerBsu
 
     const fondVal = parseFloat(fond) || 0
+    const fondMnd = storeFondMonthly  // fond monthly fra store (ikke overstyrbar ennå)
     const income = (parseFloat(arslonn) || 0) + (partnerEnabled ? partnerVeikart.annualIncome : 0)
     const debt = storeDebt
 
+    // Sparing ekskl. fond og BSU (fond er en separat akkumulator)
     const mySavings = parseFloat(mndSparing) || 0
     const partnerSavings = partnerEnabled ? partnerVeikart.monthlySavings : 0
     const savings = mySavings + partnerSavings
@@ -410,19 +430,19 @@ export function VeikartPage() {
 
     const nettoMndVal = parseFloat(nettoMnd) || 0
 
-    return { eq, bsuVal, fondVal, income, debt, savings, bsuMonthly, mal, bsuCanSave, nettoMndVal, myBsu, partnerBsu, myEq, partnerEq }
-  }, [arslonn, partnerEnabled, partnerVeikart, sparekonto, fond, bsu, mndSparing, arligBSU, malPrisInput, storeDebt, intelligence.bsuCanSave, nettoMnd])
+    return { eq, bsuVal, fondVal, fondMnd, income, debt, savings, bsuMonthly, mal, bsuCanSave, nettoMndVal, myBsu, partnerBsu, myEq, partnerEq }
+  }, [arslonn, partnerEnabled, partnerVeikart, sparekonto, fond, bsu, mndSparing, arligBSU, malPrisInput, storeDebt, storeFondMonthly, intelligence.bsuCanSave, nettoMnd])
 
   const chartPoints = useMemo(() =>
     Array.from({ length: 73 }, (_, m) => ({
       month: m,
-      maxBuy: calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, m),
+      maxBuy: calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, bsuCutoffMonths, m),
     })),
-    [inputs])
+    [inputs, bsuCutoffMonths])
 
   const klarMonth = useMemo(() =>
-    findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, inputs.mal),
-    [inputs])
+    findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, bsuCutoffMonths, inputs.mal),
+    [inputs, bsuCutoffMonths])
 
   const totalEquity = inputs.eq + inputs.bsuVal + inputs.fondVal
 
@@ -432,9 +452,14 @@ export function VeikartPage() {
     const pEK = partnerEnabled ? partnerVeikart.equity : 0
     const pMnd = partnerEnabled ? partnerVeikart.monthlySavings : 0
     return Array.from({ length: 73 }, (_, m) => {
-      const bsuAcc = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * m)
-      const fondAcc = inputs.fondVal
-      const din = spKonto + mndSpar * m
+      // BSU med aldersgrense
+      const effectiveBsuM = bsuCutoffMonths !== null ? Math.min(m, bsuCutoffMonths) : m
+      const bsuAcc = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * effectiveBsuM)
+      // Fond med avkastning (rentes-rente)
+      const fondAcc = projectBalanceMonthly(inputs.fondVal, inputs.fondMnd, DEFAULT_FOND_RATE, m)
+      // Din sparing med rentes-rente
+      const din = projectBalanceMonthly(spKonto, mndSpar, DEFAULT_SAVINGS_RATE, m)
+      // Partner: enkel lineær (ingen kontoinfo)
       const partner = pEK + pMnd * m
       const s1 = bsuAcc
       const s2 = s1 + fondAcc
@@ -442,13 +467,14 @@ export function VeikartPage() {
       const s4 = s3 + partner
       return { month: m, s1, s2, s3, s4, total: s4 }
     })
-  }, [inputs, sparekonto, mndSparing, partnerEnabled, partnerVeikart])
+  }, [inputs, sparekonto, mndSparing, partnerEnabled, partnerVeikart, bsuCutoffMonths])
 
   const scenarioMonths = [0, 6, 12, 24, 36]
   const scenarios = scenarioMonths.map(m => {
     const pt = chartPoints[m]
-    const futureEquity = inputs.eq + inputs.savings * m
-    const futureBsu = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * m)
+    const futureEquity = projectBalanceMonthly(inputs.eq, inputs.savings, DEFAULT_SAVINGS_RATE, m)
+    const effectiveBsuM = bsuCutoffMonths !== null ? Math.min(m, bsuCutoffMonths) : m
+    const futureBsu = Math.min(BSU_MAX_TOTAL, inputs.bsuVal + inputs.bsuMonthly * effectiveBsuM)
     return {
       label: m === 0 ? 'Nå' : m < 12 ? `${m} mnd` : `${m / 12} år`,
       months: m,
@@ -463,18 +489,18 @@ export function VeikartPage() {
     if (inputs.mal <= 0 || klarMonth === 0) return []
     const items: { label: string; desc: string; gain: number | null }[] = []
 
-    const with5k = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings + 5000, inputs.bsuMonthly, inputs.mal)
+    const with5k = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income, inputs.debt, inputs.savings + 5000, inputs.bsuMonthly, bsuCutoffMonths, inputs.mal)
     if (klarMonth !== null && with5k !== null)
       items.push({ label: '+5 000 kr/mnd sparing', desc: `${fmtMonths(klarMonth - with5k)} raskere`, gain: klarMonth - with5k })
     else if (klarMonth === null && with5k !== null)
       items.push({ label: '+5 000 kr/mnd sparing', desc: `Når målet om ${fmtMonths(with5k)}`, gain: null })
 
-    const with10kIncome = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income + 10000 * 12, inputs.debt, inputs.savings, inputs.bsuMonthly, inputs.mal)
+    const with10kIncome = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income + 10000 * 12, inputs.debt, inputs.savings, inputs.bsuMonthly, bsuCutoffMonths, inputs.mal)
     if (klarMonth !== null && with10kIncome !== null)
       items.push({ label: '+10 000 kr/mnd brutto', desc: `${fmtMonths(klarMonth - with10kIncome)} raskere`, gain: klarMonth - with10kIncome })
 
     if (inputs.debt > 100_000) {
-      const withLessDebt = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, Math.max(0, inputs.debt - 100_000), inputs.savings, inputs.bsuMonthly, inputs.mal)
+      const withLessDebt = findKlarMonth(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income, Math.max(0, inputs.debt - 100_000), inputs.savings, inputs.bsuMonthly, bsuCutoffMonths, inputs.mal)
       if (klarMonth !== null && withLessDebt !== null)
         items.push({ label: 'Nedbetal 100k gjeld', desc: `${fmtMonths(klarMonth - withLessDebt)} raskere`, gain: klarMonth - withLessDebt })
     }
@@ -487,7 +513,7 @@ export function VeikartPage() {
     }
 
     return items.slice(0, 4)
-  }, [inputs, klarMonth])
+  }, [inputs, klarMonth, bsuCutoffMonths])
 
   // Sjekkliste
   const bremsene = useMemo(() => [
@@ -822,8 +848,8 @@ export function VeikartPage() {
               const soloFond = inputs.fondVal
               const soloIncome = parseFloat(arslonn) || 0
               const soloSavings = parseFloat(mndSparing) || 0
-              const soloNow = calcKjøpekraft(soloEq, soloBsu, soloFond, soloIncome, inputs.debt, soloSavings, inputs.bsuMonthly, 0)
-              const combinedNow = calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, 0)
+              const soloNow = calcKjøpekraft(soloEq, soloBsu, soloFond, inputs.fondMnd, soloIncome, inputs.debt, soloSavings, inputs.bsuMonthly, bsuCutoffMonths, 0)
+              const combinedNow = calcKjøpekraft(inputs.eq, inputs.bsuVal, inputs.fondVal, inputs.fondMnd, inputs.income, inputs.debt, inputs.savings, inputs.bsuMonthly, bsuCutoffMonths, 0)
               const gain = combinedNow - soloNow
               const pct = soloNow > 0 ? Math.round((gain / soloNow) * 100) : 0
               return (
