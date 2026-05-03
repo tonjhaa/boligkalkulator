@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
+import { useAppStore } from '@/store/useAppStore'
 import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -97,7 +98,7 @@ export function SavingsPage() {
   const [showAddAccount, setShowAddAccount] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [showAddGoal, setShowAddGoal] = useState(false)
-  const [subTab, setSubTab] = useState<SavingsSubTab>('kontoer')
+  const { savingsSubTab: subTab, setSavingsSubTab: setSubTab } = useAppStore()
 
   const now = new Date()
   const currentYear = now.getFullYear()
@@ -498,7 +499,7 @@ function projectDebtBalance(debt: DebtAccount, months: number): number {
 }
 
 // ─── TYPES ────────────────────────────────────────────────────
-type PlanSubTab = 'plan' | 'kontoer' | 'feedback'
+// PlanSubTab er definert i useAppStore som 'plan' | 'kontoer' | 'feedback'
 
 interface AccountRow {
   id: string
@@ -572,8 +573,8 @@ function SparePlanTab({
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
 
-  // ── Sub-tab state ──────────────────────────────────────────
-  const [subTab, setSubTab] = useState<PlanSubTab>('plan')
+  // ── Sub-tab state (persistert i useAppStore) ───────────────
+  const { sparePlanSubTab: subTab, setSparePlanSubTab: setSubTab } = useAppStore()
   const [chartTab, setChartTab] = useState<'vekst' | 'bidrag' | 'avkastning'>('vekst')
   const [showWizard, setShowWizard] = useState(false)
   const [showAddScenario, setShowAddScenario] = useState(false)

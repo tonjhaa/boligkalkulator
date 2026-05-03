@@ -23,11 +23,15 @@ interface AppState {
   sidebarOpen: boolean
   currentView: AppView
   currentEconomyPage: EconomySubPage
+  savingsSubTab: 'kontoer' | 'spareplan'
+  sparePlanSubTab: 'plan' | 'kontoer' | 'feedback'
 
   setTheme: (theme: 'dark' | 'light' | 'system') => void
   setSidebarOpen: (open: boolean) => void
   setCurrentView: (view: AppView) => void
   setCurrentEconomyPage: (page: EconomySubPage) => void
+  setSavingsSubTab: (tab: 'kontoer' | 'spareplan') => void
+  setSparePlanSubTab: (tab: 'plan' | 'kontoer' | 'feedback') => void
 
   addScenario: (scenario: ScenarioInput) => void
   updateScenario: (id: string, updates: Partial<ScenarioInput>) => void
@@ -56,11 +60,15 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: true,
       currentView: 'economy',
       currentEconomyPage: 'dashboard',
+      savingsSubTab: 'kontoer',
+      sparePlanSubTab: 'plan',
 
       setTheme: (theme) => set({ theme }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       setCurrentView: (view) => set({ currentView: view }),
       setCurrentEconomyPage: (page) => set({ currentEconomyPage: page }),
+      setSavingsSubTab: (tab) => set({ savingsSubTab: tab }),
+      setSparePlanSubTab: (tab) => set({ sparePlanSubTab: tab }),
 
       addScenario: (scenario) =>
         set((state) => ({
@@ -158,6 +166,8 @@ export const useAppStore = create<AppState>()(
         config: state.config,
         currentView: state.currentView,
         currentEconomyPage: state.currentEconomyPage,
+        savingsSubTab: state.savingsSubTab,
+        sparePlanSubTab: state.sparePlanSubTab,
       }),
     }
   )
