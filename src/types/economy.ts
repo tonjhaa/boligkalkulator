@@ -301,6 +301,10 @@ export interface SavingsAccount {
   expectedReturn?: number
   /** Faktisk oppnådd avkastning siste 12 mnd i prosent. Null = ikke registrert. */
   actualReturn?: number | null
+  /** Startdato for fast månedssparing (ISO "YYYY-MM-DD"). Ingen dato = alltid aktiv. */
+  monthlyContributionFromDate?: string
+  /** Sluttdato for fast månedssparing (ISO "YYYY-MM-DD"). Ingen dato = ingen sluttdato. */
+  monthlyContributionToDate?: string
 }
 
 export interface SavingsGoal {

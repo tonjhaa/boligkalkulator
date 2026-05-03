@@ -551,7 +551,11 @@ export function computeBudgetTable(
 
   for (const acc of savingsAccounts.filter((a) => a.monthlyContribution > 0 || (a.contributions ?? []).length > 0)) {
     sparingRows.push(mkRow(`sav-${acc.id}`, acc.label, uniform12(
-      (m) => budgetVal(`sav-${acc.id}`, m, -acc.monthlyContribution),
+      (m) => {
+        // Respekter fra/til-periode for fast månedssparing
+        if (!monthInDateRange(year, m, acc.monthlyContributionFromDate, acc.monthlyContributionToDate)) return 0
+        return budgetVal(`sav-${acc.id}`, m, -acc.monthlyContribution)
+      },
       (m) => {
         const actual = computeMonthContributions(acc, year, m)
         return actual > 0 ? -actual : null

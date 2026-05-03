@@ -1787,50 +1787,97 @@ function AccountCard({
           )}
         </div>
 
-        {/* Fast sparebeløp */}
-        <div className="flex items-center justify-between text-xs border-t border-border/30 pt-2">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Repeat2 className="h-3 w-3" />
-            <span>Fast sparebeløp/mnd</span>
+        {/* Fast sparebeløp med periode */}
+        <div className="border-t border-border/30 pt-2 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Repeat2 className="h-3 w-3" />
+              <span>Fast sparebeløp/mnd</span>
+            </div>
+            {!editingMonthlySaving && (
+              <button
+                className="flex items-center gap-1.5 hover:text-foreground text-muted-foreground transition-colors group"
+                onClick={() => {
+                  setMonthlySavingInput(String(Math.round(account.monthlyContribution) || ''))
+                  setEditingMonthlySaving(true)
+                }}
+              >
+                <span className={account.monthlyContribution > 0 ? 'text-foreground font-mono' : 'italic'}>
+                  {account.monthlyContribution > 0
+                    ? `${account.monthlyContribution.toLocaleString('no-NO', { maximumFractionDigits: 0 })} kr`
+                    : 'Ikke satt'}
+                </span>
+                <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+              </button>
+            )}
           </div>
-          {editingMonthlySaving ? (
-            <div className="flex items-center gap-1">
-              <input
-                autoFocus
-                type="number"
-                min={0}
-                placeholder="0"
-                className="h-6 w-24 rounded border border-border bg-background px-2 text-xs text-right"
-                value={monthlySavingInput}
-                onChange={(e) => setMonthlySavingInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+
+          {/* Periode-visning (når ikke redigerer) */}
+          {!editingMonthlySaving && (account.monthlyContributionFromDate || account.monthlyContributionToDate) && (
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-4">
+              <span>
+                {account.monthlyContributionFromDate
+                  ? `Fra ${new Date(account.monthlyContributionFromDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}`
+                  : 'Alltid'}
+                {account.monthlyContributionToDate
+                  ? ` → ${new Date(account.monthlyContributionToDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}`
+                  : ' → ingen sluttdato'}
+              </span>
+            </div>
+          )}
+
+          {/* Redigering */}
+          {editingMonthlySaving && (
+            <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-2.5">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Rediger fast spareplan</p>
+              <div>
+                <label className="text-[10px] text-muted-foreground block mb-1">Beløp per måned (kr)</label>
+                <input
+                  autoFocus
+                  type="number"
+                  min={0}
+                  step={100}
+                  placeholder="f.eks. 2292"
+                  className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+                  value={monthlySavingInput}
+                  onChange={(e) => setMonthlySavingInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setEditingMonthlySaving(false) }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Fra dato (valgfri)</label>
+                  <input
+                    type="month"
+                    className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                    value={account.monthlyContributionFromDate?.slice(0, 7) ?? ''}
+                    onChange={(e) => onUpdate({ monthlyContributionFromDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Til dato (valgfri)</label>
+                  <input
+                    type="month"
+                    className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                    value={account.monthlyContributionToDate?.slice(0, 7) ?? ''}
+                    onChange={(e) => onUpdate({ monthlyContributionToDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-1.5 justify-end">
+                <button
+                  onClick={() => setEditingMonthlySaving(false)}
+                  className="px-3 py-1 rounded text-xs border border-border text-muted-foreground hover:text-foreground transition-colors"
+                >Avbryt</button>
+                <button
+                  onClick={() => {
                     onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0)
                     setEditingMonthlySaving(false)
-                  }
-                  if (e.key === 'Escape') setEditingMonthlySaving(false)
-                }}
-              />
-              <button className="text-green-400 hover:text-green-300" onClick={() => {
-                onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0)
-                setEditingMonthlySaving(false)
-              }}><Check className="h-3.5 w-3.5" /></button>
-              <button className="text-muted-foreground hover:text-foreground" onClick={() => setEditingMonthlySaving(false)}>
-                <X className="h-3.5 w-3.5" />
-              </button>
+                  }}
+                  className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >Lagre</button>
+              </div>
             </div>
-          ) : (
-            <button
-              className="flex items-center gap-1.5 hover:text-foreground text-muted-foreground transition-colors group"
-              onClick={() => { setMonthlySavingInput(String(account.monthlyContribution || '')); setEditingMonthlySaving(true) }}
-            >
-              <span className={account.monthlyContribution > 0 ? 'text-foreground font-mono' : 'italic'}>
-                {account.monthlyContribution > 0
-                  ? `${account.monthlyContribution.toLocaleString('no-NO')} kr`
-                  : 'Ikke satt'}
-              </span>
-              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-            </button>
           )}
         </div>
 
