@@ -154,8 +154,13 @@ export function SalaryPage() {
   const taxHistory = [...taxByYear.entries()]
     .sort(([a], [b]) => a - b)
     .map(([year, { total, count }]) => ({ year, pct: total / count }))
-  const currentTaxRate = latestSlipRecord?.slipData && latestSlipRecord.slipData.bruttoSum > 0
-    ? (latestSlipRecord.slipData.skattetrekk / latestSlipRecord.slipData.bruttoSum) * 100
+  // Bruk gjennomsnitt av siste 3 slipp for å unngå at én atypisk måned blåser opp satsen
+  const recentSlips = [...importedSlips]
+    .sort((a, b) => a.year !== b.year ? b.year - a.year : b.month - a.month)
+    .filter(m => m.slipData && m.slipData.bruttoSum > 0)
+    .slice(0, 3)
+  const currentTaxRate = recentSlips.length > 0
+    ? recentSlips.reduce((s, m) => s + (m.slipData!.skattetrekk / m.slipData!.bruttoSum) * 100, 0) / recentSlips.length
     : null
 
   return (
