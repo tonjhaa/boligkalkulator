@@ -1,0 +1,1 @@
+function o(n){return n.accounts.length>0?n.accounts.reduce((t,a)=>t+a.balance,0):n.equity}function u(n){return n.accounts.length>0?n.accounts.reduce((t,a)=>t+a.monthlyContribution,0):n.monthlySavings}export{u as a,o as p};
