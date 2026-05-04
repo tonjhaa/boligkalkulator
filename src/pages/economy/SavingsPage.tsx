@@ -35,6 +35,7 @@ import type {
   EmploymentProfile,
   DebtAccount,
   BudgetTemplate,
+  PartnerAccount,
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { FondPage } from '@/pages/economy/FondPage'
@@ -584,7 +585,7 @@ function MånedsoversiktTable({
     ((profile?.baseMonthly ?? 0) + (profile?.fixedAdditions?.reduce((s, a) => s + a.amount, 0) ?? 0)) * 12
     + (hasPartner ? partnerVeikart.annualIncome : 0)
 
-  const { accMeta, monthRows } = useMemo(() => {
+  const { accMeta, partnerAccMeta, monthRows } = useMemo(() => {
     const effectiveFondMnd = fondOverride ?? fondMonthlyDeposit
 
     const accMeta = accounts.map(acc => ({
@@ -596,10 +597,14 @@ function MånedsoversiktTable({
       rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
     }))
 
+    // Partner accounts meta
+    const partnerAccMeta: (PartnerAccount & { runningBal: number })[] = hasPartner
+      ? (partnerVeikart.accounts ?? []).map(a => ({ ...a, runningBal: a.balance }))
+      : []
+
     // Month-by-month simulation — handles BSU cap correctly
     const runningBals = accMeta.map(a => a.startBalance)
     let fondBal = fondCurrentValue
-    let partnerSparingBal = hasPartner ? (partnerVeikart.equity ?? 0) : 0
     let partnerBsuBal = hasPartner ? (partnerVeikart.bsu ?? 0) : 0
 
     const monthRows = Array.from({ length: HORIZON }, (_, i) => {
@@ -626,11 +631,13 @@ function MånedsoversiktTable({
       // Fond — compound at FOND_RATE_TABLE
       fondBal = fondBal * (1 + FOND_RATE_TABLE / 100 / 12) + effectiveFondMnd
 
-      // Partner sparing — compound at SAVINGS_RATE_TABLE
-      const partnerMndSparing = hasPartner ? Math.round(partnerVeikart.monthlySavings ?? 0) : 0
-      if (hasPartner) {
-        partnerSparingBal = partnerSparingBal * (1 + SAVINGS_RATE_TABLE / 100 / 12) + partnerMndSparing
-      }
+      // Partner accounts — each with own rate
+      const partnerAccBalances = partnerAccMeta.map(acc => {
+        const contrib = Math.round(acc.monthlyContribution)
+        const bal = acc.runningBal * (1 + (acc.rate || SAVINGS_RATE_TABLE) / 100 / 12) + contrib
+        acc.runningBal = bal
+        return { id: acc.id, balance: bal, contribution: contrib }
+      })
 
       // Partner BSU — simple deposit, capped at BSU_MAX_TOTAL
       const rawPartnerBsuMnd = hasPartner ? Math.round(partnerVeikart.bsuMonthlyContribution ?? 0) : 0
@@ -641,7 +648,7 @@ function MånedsoversiktTable({
       const totalEK =
         accountBalances.reduce((s, a) => s + a.balance, 0) +
         (hasFond ? fondBal : 0) +
-        (hasPartner ? partnerSparingBal + partnerBsuBal : 0)
+        (hasPartner ? partnerAccBalances.reduce((s, a) => s + a.balance, 0) + partnerBsuBal : 0)
 
       const debtBalance = debts
         .filter(d => d.status !== 'nedbetalt')
@@ -653,8 +660,7 @@ function MånedsoversiktTable({
         accountBalances,
         fondBalance: fondBal,
         fondContrib: Math.round(effectiveFondMnd),
-        partnerSparingBalance: partnerSparingBal,
-        partnerSparingContrib: partnerMndSparing,
+        partnerAccBalances,
         partnerBsuBalance: partnerBsuBal,
         partnerBsuContrib: partnerBsuMnd,
         totalEK,
@@ -662,14 +668,15 @@ function MånedsoversiktTable({
       }
     })
 
-    return { accMeta, monthRows }
+    return { accMeta, partnerAccMeta: partnerAccMeta as PartnerAccount[], monthRows }
   }, [accounts, fondCurrentValue, fondMonthlyDeposit, fondOverride, debts, annualIncome, hasFond, hasPartner, partnerVeikart, now, contribOverrides])
 
   const years = [...new Set(monthRows.map(r => r.year))]
 
   // Column spans for group headers
   const userCols = accMeta.length * 2 + (hasFond ? 2 : 0)
-  const partnerCols = hasPartner ? 4 : 0 // BSU(2) + Sparing(2)
+  const hasBsu = hasPartner && (partnerVeikart.bsu > 0 || partnerVeikart.bsuMonthlyContribution > 0)
+  const partnerCols = hasPartner ? (hasBsu ? 2 : 0) + partnerAccMeta.length * 2 : 0
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -728,14 +735,15 @@ function MånedsoversiktTable({
                 Fond <span className="text-[10px] text-muted-foreground font-normal">{FOND_RATE_TABLE}%</span>
               </th>
             )}
-            {hasPartner && (
-              <>
-                <th colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-violet-300 font-semibold whitespace-nowrap">BSU</th>
-                <th colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-violet-300 font-semibold whitespace-nowrap">
-                  Sparing <span className="text-[10px] text-muted-foreground font-normal">{SAVINGS_RATE_TABLE}%</span>
-                </th>
-              </>
+            {hasPartner && hasBsu && (
+              <th colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-violet-300 font-semibold whitespace-nowrap">BSU</th>
             )}
+            {partnerAccMeta.map(acc => (
+              <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-violet-300 font-semibold whitespace-nowrap">
+                {acc.label}
+                {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
+              </th>
+            ))}
             <th className="px-3 py-1.5 text-right border-r border-border text-blue-400 font-semibold whitespace-nowrap">Total EK</th>
             <th className="px-3 py-1.5 text-right text-green-400 font-semibold whitespace-nowrap">Max kjøpesum</th>
           </tr>
@@ -758,22 +766,22 @@ function MånedsoversiktTable({
                 </div>
               </th>
             )}
-            {hasPartner && (
-              <>
-                <th colSpan={2} className="border-r border-border p-0">
-                  <div className="flex">
-                    <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
-                    <span className="flex-1 px-3 py-1 text-right text-violet-300 font-medium">Saldo</span>
-                  </div>
-                </th>
-                <th colSpan={2} className="border-r border-border p-0">
-                  <div className="flex">
-                    <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
-                    <span className="flex-1 px-3 py-1 text-right text-violet-300 font-medium">Saldo</span>
-                  </div>
-                </th>
-              </>
+            {hasPartner && hasBsu && (
+              <th colSpan={2} className="border-r border-border p-0">
+                <div className="flex">
+                  <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
+                  <span className="flex-1 px-3 py-1 text-right text-violet-300 font-medium">Saldo</span>
+                </div>
+              </th>
             )}
+            {partnerAccMeta.map(acc => (
+              <th key={acc.id} colSpan={2} className="border-r border-border p-0">
+                <div className="flex">
+                  <span className="flex-1 px-3 py-1 text-right text-muted-foreground font-normal">Innskudd</span>
+                  <span className="flex-1 px-3 py-1 text-right text-violet-300 font-medium">Saldo</span>
+                </div>
+              </th>
+            ))}
             <th className="px-3 py-1 border-r border-border" />
             <th className="px-3 py-1" />
           </tr>
@@ -809,26 +817,29 @@ function MånedsoversiktTable({
                       </div>
                     </td>
                   )}
-                  {hasPartner && (
-                    <>
-                      <td colSpan={2} className="border-r border-border p-0">
-                        <div className="flex">
-                          <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
-                            {yearData.reduce((s, r) => s + r.partnerBsuContrib, 0).toLocaleString('no-NO')}
-                          </span>
-                          <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(last.partnerBsuBalance)}</span>
-                        </div>
-                      </td>
-                      <td colSpan={2} className="border-r border-border p-0">
-                        <div className="flex">
-                          <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
-                            {yearData.reduce((s, r) => s + r.partnerSparingContrib, 0).toLocaleString('no-NO')}
-                          </span>
-                          <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(last.partnerSparingBalance)}</span>
-                        </div>
-                      </td>
-                    </>
+                  {hasPartner && hasBsu && (
+                    <td colSpan={2} className="border-r border-border p-0">
+                      <div className="flex">
+                        <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
+                          {yearData.reduce((s, r) => s + r.partnerBsuContrib, 0).toLocaleString('no-NO')}
+                        </span>
+                        <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(last.partnerBsuBalance)}</span>
+                      </div>
+                    </td>
                   )}
+                  {partnerAccMeta.map(acc => {
+                    const lastAb = last.partnerAccBalances.find(a => a.id === acc.id)!
+                    return (
+                      <td key={acc.id} colSpan={2} className="border-r border-border p-0">
+                        <div className="flex">
+                          <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
+                            {yearData.reduce((s, r) => s + (r.partnerAccBalances.find(a => a.id === acc.id)?.contribution ?? 0), 0).toLocaleString('no-NO')}
+                          </span>
+                          <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(lastAb?.balance ?? 0)}</span>
+                        </div>
+                      </td>
+                    )
+                  })}
                   <td className="px-3 py-2 text-right text-blue-400 font-semibold border-r border-border">{fmtNOK(last.totalEK)}</td>
                   <td className="px-3 py-2 text-right text-green-400 font-semibold">{last.maxKjøpesum > 0 ? fmtNOK(last.maxKjøpesum) : '—'}</td>
                 </tr>
@@ -867,22 +878,22 @@ function MånedsoversiktTable({
                         </div>
                       </td>
                     )}
-                    {hasPartner && (
-                      <>
-                        <td colSpan={2} className="border-r border-border p-0">
-                          <div className="flex items-center">
-                            <span className="flex-1 px-3 py-1 text-right text-muted-foreground">{Math.round(row.partnerBsuContrib).toLocaleString('no-NO')}</span>
-                            <span className="flex-1 px-3 py-1 text-right font-mono text-violet-300">{fmtNOK(row.partnerBsuBalance)}</span>
-                          </div>
-                        </td>
-                        <td colSpan={2} className="border-r border-border p-0">
-                          <div className="flex items-center">
-                            <span className="flex-1 px-3 py-1 text-right text-muted-foreground">{Math.round(row.partnerSparingContrib).toLocaleString('no-NO')}</span>
-                            <span className="flex-1 px-3 py-1 text-right font-mono text-violet-300">{fmtNOK(row.partnerSparingBalance)}</span>
-                          </div>
-                        </td>
-                      </>
+                    {hasPartner && hasBsu && (
+                      <td colSpan={2} className="border-r border-border p-0">
+                        <div className="flex items-center">
+                          <span className="flex-1 px-3 py-1 text-right text-muted-foreground">{Math.round(row.partnerBsuContrib).toLocaleString('no-NO')}</span>
+                          <span className="flex-1 px-3 py-1 text-right font-mono text-violet-300">{fmtNOK(row.partnerBsuBalance)}</span>
+                        </div>
+                      </td>
                     )}
+                    {row.partnerAccBalances.map(ab => (
+                      <td key={ab.id} colSpan={2} className="border-r border-border p-0">
+                        <div className="flex items-center">
+                          <span className="flex-1 px-3 py-1 text-right text-muted-foreground">{Math.round(ab.contribution).toLocaleString('no-NO')}</span>
+                          <span className="flex-1 px-3 py-1 text-right font-mono text-violet-300">{fmtNOK(ab.balance)}</span>
+                        </div>
+                      </td>
+                    ))}
                     <td className="px-3 py-1 text-right font-mono text-blue-300 border-r border-border">{fmtNOK(row.totalEK)}</td>
                     <td className="px-3 py-1 text-right text-green-300/60">{row.maxKjøpesum > 0 ? fmtNOK(row.maxKjøpesum) : '—'}</td>
                   </tr>

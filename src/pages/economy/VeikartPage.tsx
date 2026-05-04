@@ -10,6 +10,7 @@ import {
   BSU_MAX_YEARLY, BSU_MAX_TOTAL, BSU_TAX_BENEFIT, EK_KRAV, MAX_GJELDSGRAD,
 } from '@/hooks/useVeikart'
 import { computeEffectiveBalance, projectBalanceMonthly } from '@/domain/economy/savingsCalculator'
+import { partnerNonBsuEquity, partnerMonthlySavingsTotal } from '@/types/economy'
 import { cn } from '@/lib/utils'
 
 const CURRENT_RATE = 0.0425
@@ -402,7 +403,7 @@ export function VeikartPage() {
 
   const inputs = useMemo(() => {
     const myEq = parseFloat(sparekonto) || 0
-    const partnerEq = partnerEnabled ? partnerVeikart.equity : 0
+    const partnerEq = partnerEnabled ? partnerNonBsuEquity(partnerVeikart) : 0
     const eq = myEq + partnerEq
 
     const myBsu = parseFloat(bsu) || 0
@@ -416,7 +417,7 @@ export function VeikartPage() {
 
     // Sparing ekskl. fond og BSU (fond er en separat akkumulator)
     const mySavings = parseFloat(mndSparing) || 0
-    const partnerSavings = partnerEnabled ? partnerVeikart.monthlySavings : 0
+    const partnerSavings = partnerEnabled ? partnerMonthlySavingsTotal(partnerVeikart) : 0
     const savings = mySavings + partnerSavings
 
     const myBsuMonthly = Math.min(BSU_MAX_YEARLY, parseFloat(arligBSU) || 0) / 12
@@ -449,8 +450,8 @@ export function VeikartPage() {
   const sparePlanData = useMemo(() => {
     const spKonto = parseFloat(sparekonto) || 0
     const mndSpar = parseFloat(mndSparing) || 0
-    const pEK = partnerEnabled ? partnerVeikart.equity : 0
-    const pMnd = partnerEnabled ? partnerVeikart.monthlySavings : 0
+    const pEK = partnerEnabled ? partnerNonBsuEquity(partnerVeikart) : 0
+    const pMnd = partnerEnabled ? partnerMonthlySavingsTotal(partnerVeikart) : 0
     return Array.from({ length: 73 }, (_, m) => {
       // BSU med aldersgrense
       const effectiveBsuM = bsuCutoffMonths !== null ? Math.min(m, bsuCutoffMonths) : m
@@ -647,7 +648,7 @@ export function VeikartPage() {
                 </span>
                 <span className="text-muted-foreground">EK (eks. BSU)</span>
                 <span className="font-mono text-right">
-                  {partnerVeikart.equity > 0 ? fmtNOK(partnerVeikart.equity, true) : '—'}
+                  {partnerNonBsuEquity(partnerVeikart) > 0 ? fmtNOK(partnerNonBsuEquity(partnerVeikart), true) : '—'}
                 </span>
                 <span className="text-muted-foreground">BSU</span>
                 <span className="font-mono text-right">
@@ -655,7 +656,7 @@ export function VeikartPage() {
                 </span>
                 <span className="text-muted-foreground">Mnd. sparing</span>
                 <span className="font-mono text-right">
-                  {partnerVeikart.monthlySavings > 0 ? fmtNOK(partnerVeikart.monthlySavings, true) + '/mnd' : '—'}
+                  {partnerMonthlySavingsTotal(partnerVeikart) > 0 ? fmtNOK(partnerMonthlySavingsTotal(partnerVeikart), true) + '/mnd' : '—'}
                 </span>
               </div>
             </div>

@@ -30,6 +30,7 @@ import type {
   UserPreferences,
   LonnsoppgjorRecord,
   PartnerVeikart,
+  PartnerAccount,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -86,6 +87,9 @@ interface EconomyState {
   // Partner (Veikart + Dashboard)
   partnerVeikart: PartnerVeikart
   setPartnerVeikart: (p: PartnerVeikart) => void
+  addPartnerAccount: (account: PartnerAccount) => void
+  updatePartnerAccount: (id: string, updates: Partial<PartnerAccount>) => void
+  removePartnerAccount: (id: string) => void
 
   // Spareplan
   savingsPlanTarget: number
@@ -250,8 +254,24 @@ export const useEconomyStore = create<EconomyState>()(
         bsuMonthlyContribution: 0,
         bsuBirthYear: undefined,
         monthlySavings: 0,
+        accounts: [],
       },
       setPartnerVeikart: (p) => set({ partnerVeikart: p }),
+      addPartnerAccount: (account) => set((state) => ({
+        partnerVeikart: { ...state.partnerVeikart, accounts: [...state.partnerVeikart.accounts, account] },
+      })),
+      updatePartnerAccount: (id, updates) => set((state) => ({
+        partnerVeikart: {
+          ...state.partnerVeikart,
+          accounts: state.partnerVeikart.accounts.map((a) => a.id === id ? { ...a, ...updates } : a),
+        },
+      })),
+      removePartnerAccount: (id) => set((state) => ({
+        partnerVeikart: {
+          ...state.partnerVeikart,
+          accounts: state.partnerVeikart.accounts.filter((a) => a.id !== id),
+        },
+      })),
 
       // --- Spareplan ---
       savingsPlanTarget: 0,
@@ -922,7 +942,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 9,
+      version: 10,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -991,6 +1011,19 @@ export const useEconomyStore = create<EconomyState>()(
           const prefs = state.userPreferences as { enabledTabs?: string[] }
           if (Array.isArray(prefs.enabledTabs) && !prefs.enabledTabs.includes('veikart')) {
             prefs.enabledTabs = [...prefs.enabledTabs, 'veikart']
+          }
+        }
+        // v9 → v10: migrer partner equity/monthlySavings til accounts-liste
+        if (fromVersion < 10) {
+          const p = (state.partnerVeikart ?? {}) as Record<string, unknown>
+          if (!Array.isArray(p.accounts)) p.accounts = []
+          const acc = p.accounts as Array<Record<string, unknown>>
+          const equity = (p.equity as number) ?? 0
+          const monthly = (p.monthlySavings as number) ?? 0
+          if ((equity > 0 || monthly > 0) && acc.length === 0) {
+            acc.push({ id: crypto.randomUUID(), label: 'Sparing', balance: equity, monthlyContribution: monthly, rate: 3.5 })
+            p.equity = 0
+            p.monthlySavings = 0
           }
         }
         // v6 → v7: utvid PartnerVeikart med nye felt + persister den

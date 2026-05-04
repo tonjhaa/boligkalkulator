@@ -629,15 +629,35 @@ export interface UserPreferences {
   housingStatus?: 'leier' | 'eier'  // nåværende boligsituasjon
 }
 
+/** Enkel sparekonto for partner — ingen full transaksjonshistorikk */
+export interface PartnerAccount {
+  id: string
+  label: string
+  balance: number
+  monthlyContribution: number
+  rate: number   // % per år
+}
+
 /** Partners tall brukt i Veikart og Dashboard */
 export interface PartnerVeikart {
   enabled: boolean
   annualIncome: number         // årslønn (brutto) — brukes til låneevne
   annualNetIncome: number      // årslønn (netto) — brukes til sparekraft
-  equity: number               // sparekonto + fond (IKKE BSU)
+  equity: number               // legacy — erstattet av accounts
   bsu: number                  // BSU-saldo
   bsuMonthlyContribution: number // BSU-innskudd per måned
   bsuBirthYear?: number        // fødselsår — for BSU-aldersgrense
-  monthlySavings: number       // mnd. sparing eks. BSU
+  monthlySavings: number       // legacy — erstattet av accounts
+  accounts: PartnerAccount[]   // navngitte sparekontoer
+}
+
+/** Samlet ikke-BSU sparing for partner (fra accounts, faller tilbake på legacy-felt) */
+export function partnerNonBsuEquity(p: PartnerVeikart): number {
+  return p.accounts.length > 0 ? p.accounts.reduce((s, a) => s + a.balance, 0) : p.equity
+}
+
+/** Samlet månedlig sparing eks. BSU for partner */
+export function partnerMonthlySavingsTotal(p: PartnerVeikart): number {
+  return p.accounts.length > 0 ? p.accounts.reduce((s, a) => s + a.monthlyContribution, 0) : p.monthlySavings
 }
 

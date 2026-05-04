@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Upload, Trash2, Smartphone, User, Users } from 'lucide-react'
+import { Download, Upload, Trash2, Smartphone, User, Users, Plus } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -63,6 +63,9 @@ function PersonaliaSection() {
   const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
   const partnerVeikart = useEconomyStore((s) => s.partnerVeikart)
   const setPartnerVeikart = useEconomyStore((s) => s.setPartnerVeikart)
+  const addPartnerAccount = useEconomyStore((s) => s.addPartnerAccount)
+  const updatePartnerAccount = useEconomyStore((s) => s.updatePartnerAccount)
+  const removePartnerAccount = useEconomyStore((s) => s.removePartnerAccount)
 
   const [birthYearInput, setBirthYearInput] = useState(
     userPreferences?.birthYear ? String(userPreferences.birthYear) : ''
@@ -223,30 +226,10 @@ function PersonaliaSection() {
               </div>
             </div>
 
-            {/* EK og sparing */}
+            {/* BSU */}
             <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Egenkapital og sparing</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">BSU</p>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Sparekonto + fond</Label>
-                  <Input
-                    type="number"
-                    value={p.equity || ''}
-                    onChange={(e) => updatePartner({ equity: parseFloat(e.target.value) || 0 })}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Månedlig sparing (eks. BSU)</Label>
-                  <Input
-                    type="number"
-                    value={p.monthlySavings || ''}
-                    onChange={(e) => updatePartner({ monthlySavings: parseFloat(e.target.value) || 0 })}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
-                </div>
                 <div className="space-y-1">
                   <Label className="text-xs">BSU-saldo</Label>
                   <Input
@@ -269,6 +252,63 @@ function PersonaliaSection() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Sparekontoer */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Sparekontoer</p>
+                <button
+                  onClick={() => addPartnerAccount({ id: crypto.randomUUID(), label: 'Ny konto', balance: 0, monthlyContribution: 0, rate: 3.5 })}
+                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-muted/40 transition-colors"
+                >
+                  <Plus className="h-3 w-3" /> Ny konto
+                </button>
+              </div>
+              {p.accounts.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">Ingen kontoer. Klikk «Ny konto» for å legge til.</p>
+              ) : (
+                <div className="space-y-2">
+                  {p.accounts.map((acc) => (
+                    <div key={acc.id} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end rounded border border-border bg-background p-2">
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px]">Navn</Label>
+                        <Input
+                          value={acc.label}
+                          onChange={(e) => updatePartnerAccount(acc.id, { label: e.target.value })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px]">Saldo (kr)</Label>
+                        <Input
+                          type="number"
+                          value={acc.balance || ''}
+                          onChange={(e) => updatePartnerAccount(acc.id, { balance: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <Label className="text-[10px]">Mnd. innskudd (kr)</Label>
+                        <Input
+                          type="number"
+                          value={acc.monthlyContribution || ''}
+                          onChange={(e) => updatePartnerAccount(acc.id, { monthlyContribution: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <button
+                        onClick={() => removePartnerAccount(acc.id)}
+                        className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

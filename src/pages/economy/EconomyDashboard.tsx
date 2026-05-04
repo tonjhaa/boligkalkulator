@@ -12,6 +12,7 @@ import { forecastJune } from '@/domain/economy/holidayPayCalculator'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import { useAppStore } from '@/store/useAppStore'
 import { useVeikart, calcMaxPurchase } from '@/hooks/useVeikart'
+import { partnerNonBsuEquity } from '@/types/economy'
 import { cn } from '@/lib/utils'
 import { HeroBand, calcHealthScore } from '@/components/economy/widgets/HeroBand'
 import { FormueChart } from '@/components/economy/charts/FormueChart'
@@ -395,7 +396,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       {/* ── 3. PARTNER-KJØPEKRAFT ── */}
       {partnerVeikart.enabled && (() => {
         const soloMax = veikartData.maxPurchase
-        const combinedEq = veikartData.totalEquity + partnerVeikart.equity
+        const combinedEq = veikartData.totalEquity + partnerNonBsuEquity(partnerVeikart)
         const combinedIncome = veikartData.annualIncome + partnerVeikart.annualIncome
         const combinedMax = calcMaxPurchase(combinedEq, combinedIncome, veikartData.existingDebt)
         const gain = combinedMax - soloMax
