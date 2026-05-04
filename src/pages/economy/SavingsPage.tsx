@@ -1551,6 +1551,7 @@ function AccountCard({
             monthlyContribution={account.monthlyContribution}
             onRemoveContribution={onRemoveContribution}
             onRemoveWithdrawal={onRemoveWithdrawal}
+            onClearMonthlyContribution={() => onUpdateMonthlyContribution(0)}
           />
         )}
       </CardContent>
@@ -1568,12 +1569,14 @@ function TransactionLog({
   monthlyContribution,
   onRemoveContribution,
   onRemoveWithdrawal,
+  onClearMonthlyContribution,
 }: {
   contributions: SavingsContribution[]
   withdrawals: WithdrawalEntry[]
   monthlyContribution: number
   onRemoveContribution: (id: string) => void
   onRemoveWithdrawal: (id: string) => void
+  onClearMonthlyContribution: () => void
 }) {
   // Merge and sort all entries newest first
   type Entry =
@@ -1608,10 +1611,16 @@ function TransactionLog({
                 </span>
               </td>
               <td className="px-2 py-1 text-right font-mono text-blue-400">
-                +{monthlyContribution.toLocaleString('no-NO')} kr
+                +{Math.round(monthlyContribution).toLocaleString('no-NO')} kr
               </td>
               <td className="px-2 py-1 text-muted-foreground text-[10px]">Planlagt · vises i budsjett</td>
-              <td />
+              <td className="px-1 py-1">
+                <button
+                  className="text-muted-foreground hover:text-red-400 transition-colors"
+                  title="Fjern fast bidrag"
+                  onClick={onClearMonthlyContribution}
+                >×</button>
+              </td>
             </tr>
           )}
           {entries.map((entry) => {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2 } from 'lucide-react'
+import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -86,6 +86,7 @@ export function BudgetPage() {
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
   const [addingTaxLine, setAddingTaxLine] = useState(false)
+  const [editingLine, setEditingLine] = useState<BudgetLine | null>(null)
   const [trekktabellLoaded, setTrekktabellLoaded] = useState(false)
 
   // Last trekktabelldata for brukerens tabellnummer inn i minne-cachen
@@ -148,7 +149,7 @@ export function BudgetPage() {
   ])
   const SAVINGS_CATS_SET = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
 
-  // Alle manuelle (ikke-låste) rader: map fra rowId → lineId for å støtte sletting
+  // Alle manuelle (ikke-låste) rader: map fra rowId → lineId for å støtte sletting/redigering
   const deletableRowMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const line of budgetTemplate.lines) {
@@ -159,6 +160,20 @@ export function BudgetPage() {
       else if (EXPENSE_CATS_SET.has(line.category)) rowId = line.isVariable ? `var-${line.id}` : `exp-${line.id}`
       else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
       if (rowId) map[rowId] = line.id
+    }
+    return map
+  }, [budgetTemplate.lines])
+
+  const editableRowMap = useMemo(() => {
+    const map: Record<string, BudgetLine> = {}
+    for (const line of budgetTemplate.lines) {
+      if (line.isLocked) continue
+      let rowId: string | null = null
+      if (line.category === 'skatteoppgjor') rowId = `skattoppgjor-${line.id}`
+      else if (line.category === 'annen_inntekt') rowId = `income-${line.id}`
+      else if (EXPENSE_CATS_SET.has(line.category)) rowId = line.isVariable ? `var-${line.id}` : `exp-${line.id}`
+      else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
+      if (rowId) map[rowId] = line
     }
     return map
   }, [budgetTemplate.lines])
@@ -437,6 +452,9 @@ export function BudgetPage() {
                       onOverride={(month, value) => handleOverride(row.id, month, value)}
                       highlightedMonth={highlightedMonth}
                       temporaryInfo={temporaryMap[row.id]}
+                      onEdit={editableRowMap[row.id]
+                        ? () => setEditingLine(editableRowMap[row.id])
+                        : undefined}
                       onDelete={deletableRowMap[row.id]
                         ? () => removeBudgetLine(deletableRowMap[row.id])
                         : undefined}
@@ -475,6 +493,31 @@ export function BudgetPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ---- Edit budget line modal ---- */}
+      {editingLine && (
+        <AddBudgetLineModal
+          activeYear={activeYear}
+          prefill={editingLine}
+          editMode
+          onSave={(saved) => {
+            updateBudgetLine(editingLine.id, {
+              label: saved.label,
+              category: saved.category,
+              amount: saved.amount,
+              isRecurring: saved.isRecurring,
+              isVariable: saved.isVariable,
+              isTemporary: saved.isTemporary,
+              temporaryFromDate: saved.temporaryFromDate,
+              temporaryToDate: saved.temporaryToDate,
+              specificMonth: saved.specificMonth,
+              specificYear: saved.specificYear,
+            })
+            setEditingLine(null)
+          }}
+          onCancel={() => setEditingLine(null)}
+        />
       )}
 
       {/* ---- Add budget line modal ---- */}
@@ -855,6 +898,7 @@ function DataRow({
   onOverride,
   highlightedMonth,
   temporaryInfo,
+  onEdit,
   onDelete,
 }: {
   row: BudgetRow
@@ -865,6 +909,7 @@ function DataRow({
   onOverride?: (month: number, value: number | null) => void
   highlightedMonth?: number | null
   temporaryInfo?: { isTemporary: boolean; onToggle: () => void }
+  onEdit?: () => void
   onDelete?: () => void
 }) {
   const [editingMonth, setEditingMonth] = useState<number | null>(null)
@@ -978,6 +1023,13 @@ function DataRow({
               )}
               title={temporaryInfo.isTemporary ? 'Fjern tidsbegrenset-merke' : 'Merk som tidsbegrenset'}
             >T</button>
+          )}
+          {onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit() }}
+              className="shrink-0 opacity-0 group-hover/row:opacity-100 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-foreground transition-colors"
+              title="Rediger linje"
+            ><Pencil className="h-2.5 w-2.5 inline" /></button>
           )}
           {onDelete && (
             <button
@@ -1130,11 +1182,13 @@ function AddBudgetLineModal({
   onSave,
   onCancel,
   prefill,
+  editMode,
 }: {
   activeYear: number
   onSave: (line: BudgetLine) => void
   onCancel: () => void
   prefill?: Partial<BudgetLine>
+  editMode?: boolean
 }) {
   const now = new Date()
   const [label, setLabel] = useState(prefill?.label ?? '')
@@ -1151,7 +1205,7 @@ function AddBudgetLineModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-background rounded-lg p-5 w-full max-w-sm mx-4 space-y-4 border border-border">
-        <p className="font-semibold text-sm">Ny budsjettlinje</p>
+        <p className="font-semibold text-sm">{editMode ? 'Rediger budsjettlinje' : 'Ny budsjettlinje'}</p>
 
         <div className="space-y-3">
           <div className="space-y-1">
