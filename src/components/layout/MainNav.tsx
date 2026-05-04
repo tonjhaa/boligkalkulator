@@ -18,15 +18,24 @@ export function MainNav() {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false)
       }
     }
-    if (menuOpen) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClick)
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [menuOpen])
 
   const initials = user?.email
@@ -65,7 +74,11 @@ export function MainNav() {
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-border bg-card shadow-md z-50 overflow-hidden">
+          <div
+            role="menu"
+            aria-label="Brukermeny"
+            className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-border bg-card shadow-md z-50 overflow-hidden"
+          >
             <div className="px-3 py-2.5 border-b border-border">
               <div className="flex items-center gap-2">
                 <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -73,6 +86,7 @@ export function MainNav() {
               </div>
             </div>
             <button
+              role="menuitem"
               onClick={() => { setMenuOpen(false); signOut() }}
               className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-left hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
             >

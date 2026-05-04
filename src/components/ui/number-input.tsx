@@ -13,6 +13,7 @@ interface NumberInputProps {
   className?: string
   disabled?: boolean
   id?: string
+  error?: string
 }
 
 /**
@@ -31,6 +32,7 @@ export function NumberInput({
   className,
   disabled,
   id,
+  error,
 }: NumberInputProps) {
   const [focused, setFocused] = React.useState(false)
   const toRaw = (v: number) => (v === 0 ? '' : v.toString())
@@ -84,36 +86,40 @@ export function NumberInput({
   }
 
   return (
-    <div className="relative flex items-center">
-      {prefix && (
-        <span className="absolute left-3 text-sm text-muted-foreground select-none">{prefix}</span>
-      )}
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        disabled={disabled}
-        placeholder={placeholder ?? '0'}
-        value={focused ? rawValue : formatted}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          'flex h-10 w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-foreground',
-          'placeholder:text-muted-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-          prefix && 'pl-7',
-          suffix && 'pr-10',
-          className
+    <div className="w-full">
+      <div className="relative flex items-center">
+        {prefix && (
+          <span className="absolute left-3 text-sm text-muted-foreground select-none">{prefix}</span>
         )}
-      />
-      {suffix && (
-        <span className="absolute right-3 text-sm text-muted-foreground select-none pointer-events-none">
-          {suffix}
-        </span>
-      )}
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          disabled={disabled}
+          placeholder={placeholder ?? '0'}
+          value={focused ? rawValue : formatted}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            'flex h-10 w-full rounded-md border bg-input px-3 py-2 text-sm text-foreground',
+            'placeholder:text-muted-foreground',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            error ? 'border-destructive focus-visible:ring-destructive' : 'border-border',
+            prefix && 'pl-7',
+            suffix && 'pr-10',
+            className
+          )}
+        />
+        {suffix && (
+          <span className="absolute right-3 text-sm text-muted-foreground select-none pointer-events-none">
+            {suffix}
+          </span>
+        )}
+      </div>
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   )
 }

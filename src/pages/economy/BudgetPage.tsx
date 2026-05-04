@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
@@ -319,10 +320,10 @@ export function BudgetPage() {
       <div className="overflow-auto flex-1">
         <table className="text-xs border-collapse min-w-max">
           {/* === HEADER === */}
-          <thead className="sticky top-0 z-20">
+          <thead className="sticky top-0 z-30">
             {/* Row 1: Month names (each spans 2 cols) */}
             <tr className="bg-muted/90 border-b border-border">
-              <th className="sticky left-0 z-30 bg-muted/90 px-3 py-2 text-left font-medium min-w-[160px] border-r border-border">
+              <th className="sticky left-0 z-40 bg-muted/90 px-3 py-2 text-left font-medium min-w-[160px] border-r border-border">
                 Post
               </th>
               {metas.map((meta) => (
@@ -369,7 +370,7 @@ export function BudgetPage() {
 
             {/* Row 2: Sub-headers (Bud | Fak or Prog) */}
             <tr className="bg-muted/70 border-b border-border">
-              <th className="sticky left-0 z-30 bg-muted/70 px-3 py-1 border-r border-border" />
+              <th className="sticky left-0 z-40 bg-muted/70 px-3 py-1 border-r border-border" />
               {metas.map((meta) => (
                 meta.hasSlip ? (
                   <th
@@ -456,31 +457,31 @@ export function BudgetPage() {
       )}
 
       {/* ---- Payslip modal ---- */}
-      {showSlipFor !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-background rounded-lg p-5 w-full max-w-lg mx-4 space-y-4 border border-border">
-            <p className="font-semibold text-sm">
-              Last opp lønnsslipp — {MONTH_SHORT[showSlipFor]} {activeYear}
-            </p>
-            <PayslipImporter onImported={() => setShowSlipFor(null)} />
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (!monthHistory.find((m) => m.year === activeYear && m.month === showSlipFor)) {
-                    lockMonth(activeYear, showSlipFor)
-                  }
-                  setShowSlipFor(null)
-                }}
-              >
-                <Lock className="h-3 w-3 mr-1" /> Lås uten slipp
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowSlipFor(null)}>Avbryt</Button>
-            </div>
+      <Dialog open={showSlipFor !== null} onOpenChange={(open) => { if (!open) setShowSlipFor(null) }}>
+        <DialogContent className="max-w-lg space-y-4">
+          <DialogHeader>
+            <DialogTitle>
+              Last opp lønnsslipp — {showSlipFor != null ? `${MONTH_SHORT[showSlipFor]} ${activeYear}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          {showSlipFor != null && <PayslipImporter onImported={() => setShowSlipFor(null)} />}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (showSlipFor != null && !monthHistory.find((m) => m.year === activeYear && m.month === showSlipFor)) {
+                  lockMonth(activeYear, showSlipFor)
+                }
+                setShowSlipFor(null)
+              }}
+            >
+              <Lock className="h-3 w-3 mr-1" /> Lås uten slipp
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setShowSlipFor(null)}>Avbryt</Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* ---- Edit budget line modal ---- */}
       {editingLine && (
@@ -943,7 +944,7 @@ function DataRow({
   if (row.isCumulative) {
     return (
       <tr className="border-b border-border/20 hover:bg-muted/10">
-        <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate text-muted-foreground text-xs">
+        <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate text-muted-foreground text-xs" title={row.label}>
           {row.label}
         </td>
         {metas.map((meta) => {
@@ -988,7 +989,7 @@ function DataRow({
         isGrunnlag && 'text-muted-foreground italic',
       )}>
         <span className={cn('flex items-center gap-1 min-w-0', isHidden && 'line-through')}>
-          <span className="truncate">{row.label}</span>
+          <span className="truncate" title={row.label}>{row.label}</span>
           {isGrunnlag && (
             <span
               className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground cursor-help leading-none"
@@ -1190,9 +1191,11 @@ function AddBudgetLineModal({
   const [specificYear, setSpecificYear] = useState<number>(prefill?.specificYear ?? activeYear)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-background rounded-lg p-5 w-full max-w-sm mx-4 space-y-4 border border-border">
-        <p className="font-semibold text-sm">{editMode ? 'Rediger budsjettlinje' : 'Ny budsjettlinje'}</p>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{editMode ? 'Rediger budsjettlinje' : 'Ny budsjettlinje'}</DialogTitle>
+        </DialogHeader>
 
         <div className="space-y-3">
           <div className="space-y-1">
@@ -1316,7 +1319,7 @@ function AddBudgetLineModal({
           )}
         </div>
 
-        <div className="flex gap-2 justify-end">
+        <div className="flex gap-2 justify-end mt-4">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
           <Button
             size="sm"
@@ -1342,8 +1345,8 @@ function AddBudgetLineModal({
             Lagre
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

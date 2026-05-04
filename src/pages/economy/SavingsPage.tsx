@@ -1,6 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { Plus, Trash2, Upload, ChevronDown, ChevronUp, Repeat2, Pencil, Check, X } from 'lucide-react'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -961,8 +962,11 @@ function SavingsPlanWizard({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-background shadow-2xl">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-md p-0 rounded-t-2xl sm:rounded-2xl fixed bottom-0 sm:bottom-auto left-[50%] top-auto sm:top-[50%] translate-x-[-50%] translate-y-0 sm:translate-y-[-50%]"
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
             <h3 className="font-semibold text-sm">Sparewizard</h3>
@@ -1077,8 +1081,8 @@ function SavingsPlanWizard({
             </Button>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 

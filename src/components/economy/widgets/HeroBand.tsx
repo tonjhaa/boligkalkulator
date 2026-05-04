@@ -142,7 +142,7 @@ export function HeroBand({
     : 'text-foreground'
 
   return (
-    <div className="flex items-stretch border-b border-border/50 bg-card/30 shrink-0 overflow-hidden">
+    <div className="flex items-stretch border-b border-border/50 bg-card/30 shrink-0 overflow-x-auto">
       {/* Cell 1: Helse-score + klokke */}
       <div className="flex items-center gap-3 px-5 py-3 shrink-0">
         <HealthRing score={healthScore} />

@@ -378,7 +378,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       />
 
       {/* ── 2. MIDT-RAD ── */}
-      <div className="grid grid-cols-[260px_1fr_260px] gap-3 px-5 py-3 shrink-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_260px] gap-3 px-3 md:px-5 py-3 shrink-0">
         <MonthlyFlowCard
           nettoInn={nettoFraBudsjett || nettoInn}
           fasteUt={fasteUt}
@@ -427,7 +427,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
       })()}
 
       {/* ── 3. BUNN-GRID ── */}
-      <div className="grid grid-cols-4 gap-3 px-5 pb-4 flex-1 min-h-0">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-3 md:px-5 pb-4 flex-1 min-h-0">
         <SpareMaalCard
           goals={savingsGoals}
           accounts={savingsAccounts}
@@ -574,7 +574,7 @@ function SpareMaalCard({
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-1 min-w-0">
                     <span>{goal.icon}</span>
-                    <span className="font-medium truncate">{goal.label}</span>
+                    <span className="font-medium truncate" title={goal.label}>{goal.label}</span>
                   </span>
                   <span className="text-muted-foreground shrink-0 ml-1">{Math.round(progress.percent)}%</span>
                 </div>

@@ -71,6 +71,12 @@ function PersonaliaSection() {
     userPreferences?.birthYear ? String(userPreferences.birthYear) : ''
   )
 
+  const birthYearError = birthYearInput
+    ? (isNaN(parseInt(birthYearInput)) || parseInt(birthYearInput) < 1950 || parseInt(birthYearInput) > 2010)
+      ? 'Ugyldig år (1950–2010)'
+      : undefined
+    : undefined
+
   function saveBirthYear() {
     const yr = parseInt(birthYearInput)
     if (!yr || yr < 1950 || yr > 2010) return
@@ -122,6 +128,7 @@ function PersonaliaSection() {
                 onBlur={saveBirthYear}
                 placeholder="f.eks. 1995"
                 className="h-8 text-sm w-28"
+                error={birthYearError}
               />
               {userPreferences?.birthYear && (
                 <span className={cn(

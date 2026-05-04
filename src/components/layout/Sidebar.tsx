@@ -37,7 +37,7 @@ function ScenarioItem({ scenario }: { scenario: ScenarioInput }) {
         )}
       />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{scenario.label}</p>
+        <p className="text-sm font-medium text-foreground truncate" title={scenario.label}>{scenario.label}</p>
         {analysis && (
           <p className="text-xs text-muted-foreground">
             {new Intl.NumberFormat('nb-NO', {
