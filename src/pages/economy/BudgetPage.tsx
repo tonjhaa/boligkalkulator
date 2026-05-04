@@ -149,9 +149,10 @@ export function BudgetPage() {
   ])
   const SAVINGS_CATS_SET = new Set(['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'])
 
-  // Alle manuelle (ikke-låste) rader: map fra rowId → lineId for å støtte sletting/redigering
-  const deletableRowMap = useMemo(() => {
-    const map: Record<string, string> = {}
+  // Alle manuelle (ikke-låste) rader: map fra rowId → lineId/linje for sletting/redigering
+  const { deletableRowMap, editableRowMap } = useMemo(() => {
+    const deletable: Record<string, string> = {}
+    const editable: Record<string, BudgetLine> = {}
     for (const line of budgetTemplate.lines) {
       if (line.isLocked) continue
       let rowId: string | null = null
@@ -159,23 +160,9 @@ export function BudgetPage() {
       else if (line.category === 'annen_inntekt') rowId = `income-${line.id}`
       else if (EXPENSE_CATS_SET.has(line.category)) rowId = line.isVariable ? `var-${line.id}` : `exp-${line.id}`
       else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
-      if (rowId) map[rowId] = line.id
+      if (rowId) { deletable[rowId] = line.id; editable[rowId] = line }
     }
-    return map
-  }, [budgetTemplate.lines])
-
-  const editableRowMap = useMemo(() => {
-    const map: Record<string, BudgetLine> = {}
-    for (const line of budgetTemplate.lines) {
-      if (line.isLocked) continue
-      let rowId: string | null = null
-      if (line.category === 'skatteoppgjor') rowId = `skattoppgjor-${line.id}`
-      else if (line.category === 'annen_inntekt') rowId = `income-${line.id}`
-      else if (EXPENSE_CATS_SET.has(line.category)) rowId = line.isVariable ? `var-${line.id}` : `exp-${line.id}`
-      else if (SAVINGS_CATS_SET.has(line.category)) rowId = `sav-t-${line.id}`
-      if (rowId) map[rowId] = line
-    }
-    return map
+    return { deletableRowMap: deletable, editableRowMap: editable }
   }, [budgetTemplate.lines])
   const temporaryMap = useMemo(() => {
     const map: Record<string, { isTemporary: boolean; onToggle: () => void }> = {}

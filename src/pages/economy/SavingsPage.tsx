@@ -36,6 +36,7 @@ import type {
   DebtAccount,
   BudgetTemplate,
   PartnerAccount,
+  partnerNonBsuEquity,
 } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { FondPage } from '@/pages/economy/FondPage'
@@ -427,7 +428,7 @@ function RådTab({
     insights.push({ icon: '⚖️', color: 'amber', text: `Gjelden (${fmtNOK(totalDebt)}) er høy relativt til sparingen. Vurder ekstra nedbetaling av dyr gjeld.` })
 
   const totalEKNow = savingsAccounts.reduce((s, a) => s + computeEffectiveBalance(a, now), 0) + fondCurrentValue
-    + (partnerVeikart?.enabled ? (partnerVeikart.equity ?? 0) + (partnerVeikart.bsu ?? 0) : 0)
+    + (partnerVeikart?.enabled ? partnerNonBsuEquity(partnerVeikart) + (partnerVeikart.bsu ?? 0) : 0)
   const requiredEK = savingsPlanTarget > 0 ? Math.max(savingsPlanTarget * 0.1, 0) : 0
   if (requiredEK > 0) {
     const pctGoal = Math.min(100, (totalEKNow / requiredEK) * 100)
