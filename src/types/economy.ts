@@ -636,6 +636,8 @@ export interface PartnerAccount {
   balance: number
   monthlyContribution: number
   rate: number   // % per år
+  fromDate?: string   // ISO "YYYY-MM-DD" — innskudd starter fra denne måneden
+  toDate?: string     // ISO "YYYY-MM-DD" — innskudd slutter etter denne måneden
 }
 
 /** Partners tall brukt i Veikart og Dashboard */

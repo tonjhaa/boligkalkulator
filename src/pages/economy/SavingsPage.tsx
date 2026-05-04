@@ -530,6 +530,15 @@ const FOND_RATE_TABLE = 7.0
 const SAVINGS_RATE_TABLE = 3.5
 const FULL_MONTH_NAMES = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember']
 
+/** Sjekker om et gitt år/måned faller innenfor en valgfri from/to-periode */
+function isActiveMonth(year: number, month: number, fromDate?: string, toDate?: string): boolean {
+  if (!fromDate && !toDate) return true
+  const ym = year * 100 + month
+  const from = fromDate ? parseInt(fromDate.slice(0, 4)) * 100 + parseInt(fromDate.slice(5, 7)) : 0
+  const to = toDate ? parseInt(toDate.slice(0, 4)) * 100 + parseInt(toDate.slice(5, 7)) : 999999
+  return ym >= from && ym <= to
+}
+
 function InnskuddCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [editing, setEditing] = useState(false)
   const [tmp, setTmp] = useState('')
@@ -595,6 +604,8 @@ function MånedsoversiktTable({
       startBalance: computeEffectiveBalance(acc, now),
       monthly: Math.round(contribOverrides[acc.id] ?? acc.monthlyContribution ?? 0),
       rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
+      fromDate: acc.monthlyContributionFromDate,
+      toDate: acc.monthlyContributionToDate,
     }))
 
     // Partner accounts meta
@@ -615,7 +626,8 @@ function MånedsoversiktTable({
       // User accounts
       const accountBalances = accMeta.map((acc, j) => {
         const bal0 = runningBals[j]
-        let contrib = acc.monthly
+        const active = isActiveMonth(year, month, acc.fromDate, acc.toDate)
+        let contrib = active ? acc.monthly : 0
         let bal: number
         if (acc.type === 'BSU') {
           const room = Math.max(0, BSU_MAX_TOTAL - bal0)
@@ -631,9 +643,10 @@ function MånedsoversiktTable({
       // Fond — compound at FOND_RATE_TABLE
       fondBal = fondBal * (1 + FOND_RATE_TABLE / 100 / 12) + effectiveFondMnd
 
-      // Partner accounts — each with own rate
+      // Partner accounts — each with own rate and optional period
       const partnerAccBalances = partnerAccMeta.map(acc => {
-        const contrib = Math.round(acc.monthlyContribution)
+        const active = isActiveMonth(year, month, acc.fromDate, acc.toDate)
+        const contrib = active ? Math.round(acc.monthlyContribution) : 0
         const bal = acc.runningBal * (1 + (acc.rate || SAVINGS_RATE_TABLE) / 100 / 12) + contrib
         acc.runningBal = bal
         return { id: acc.id, balance: bal, contribution: contrib }
@@ -728,6 +741,11 @@ function MånedsoversiktTable({
               <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border font-semibold whitespace-nowrap">
                 {acc.label}
                 {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
+                {(acc.fromDate || acc.toDate) && (
+                  <span className="ml-1 text-[10px] text-amber-400 font-normal">
+                    {acc.fromDate ? acc.fromDate.slice(0, 7) : '…'}–{acc.toDate ? acc.toDate.slice(0, 7) : '…'}
+                  </span>
+                )}
               </th>
             ))}
             {hasFond && (
@@ -742,6 +760,11 @@ function MånedsoversiktTable({
               <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border text-violet-300 font-semibold whitespace-nowrap">
                 {acc.label}
                 {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
+                {(acc.fromDate || acc.toDate) && (
+                  <span className="ml-1 text-[10px] text-amber-400 font-normal">
+                    {acc.fromDate ? acc.fromDate.slice(0, 7) : '…'}–{acc.toDate ? acc.toDate.slice(0, 7) : '…'}
+                  </span>
+                )}
               </th>
             ))}
             <th className="px-3 py-1.5 text-right border-r border-border text-blue-400 font-semibold whitespace-nowrap">Total EK</th>

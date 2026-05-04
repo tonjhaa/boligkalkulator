@@ -270,41 +270,63 @@ function PersonaliaSection() {
               ) : (
                 <div className="space-y-2">
                   {p.accounts.map((acc) => (
-                    <div key={acc.id} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end rounded border border-border bg-background p-2">
-                      <div className="space-y-0.5">
-                        <Label className="text-[10px]">Navn</Label>
-                        <Input
-                          value={acc.label}
-                          onChange={(e) => updatePartnerAccount(acc.id, { label: e.target.value })}
-                          className="h-7 text-xs"
-                        />
+                    <div key={acc.id} className="rounded border border-border bg-background p-2 space-y-2">
+                      <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
+                        <div className="space-y-0.5">
+                          <Label className="text-[10px]">Navn</Label>
+                          <Input
+                            value={acc.label}
+                            onChange={(e) => updatePartnerAccount(acc.id, { label: e.target.value })}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <Label className="text-[10px]">Saldo (kr)</Label>
+                          <Input
+                            type="number"
+                            value={acc.balance || ''}
+                            onChange={(e) => updatePartnerAccount(acc.id, { balance: parseFloat(e.target.value) || 0 })}
+                            placeholder="0"
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <Label className="text-[10px]">Mnd. innskudd (kr)</Label>
+                          <Input
+                            type="number"
+                            value={acc.monthlyContribution || ''}
+                            onChange={(e) => updatePartnerAccount(acc.id, { monthlyContribution: parseFloat(e.target.value) || 0 })}
+                            placeholder="0"
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        <button
+                          onClick={() => removePartnerAccount(acc.id)}
+                          className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                      <div className="space-y-0.5">
-                        <Label className="text-[10px]">Saldo (kr)</Label>
-                        <Input
-                          type="number"
-                          value={acc.balance || ''}
-                          onChange={(e) => updatePartnerAccount(acc.id, { balance: parseFloat(e.target.value) || 0 })}
-                          placeholder="0"
-                          className="h-7 text-xs"
-                        />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-0.5">
+                          <Label className="text-[10px] text-muted-foreground">Innskudd fra (valgfritt)</Label>
+                          <input
+                            type="month"
+                            value={acc.fromDate?.slice(0, 7) ?? ''}
+                            onChange={(e) => updatePartnerAccount(acc.id, { fromDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                            className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                          />
+                        </div>
+                        <div className="space-y-0.5">
+                          <Label className="text-[10px] text-muted-foreground">Innskudd til (valgfritt)</Label>
+                          <input
+                            type="month"
+                            value={acc.toDate?.slice(0, 7) ?? ''}
+                            onChange={(e) => updatePartnerAccount(acc.id, { toDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                            className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-0.5">
-                        <Label className="text-[10px]">Mnd. innskudd (kr)</Label>
-                        <Input
-                          type="number"
-                          value={acc.monthlyContribution || ''}
-                          onChange={(e) => updatePartnerAccount(acc.id, { monthlyContribution: parseFloat(e.target.value) || 0 })}
-                          placeholder="0"
-                          className="h-7 text-xs"
-                        />
-                      </div>
-                      <button
-                        onClick={() => removePartnerAccount(acc.id)}
-                        className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
                     </div>
                   ))}
                 </div>
