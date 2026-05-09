@@ -1460,20 +1460,41 @@ function RatesTab() {
         onToggle={() => toggleSection('relasjon')}
       >
         <div className="space-y-3">
-          {(Object.keys(weightRules.relationshipBaseAmounts) as RelationshipType[]).map((k) => (
-            <SliderRow
-              key={k}
-              label={RELATIONSHIP_LABELS[k]}
-              value={weightRules.relationshipBaseAmounts[k]}
-              min={0}
-              max={5000}
-              step={50}
-              onChange={(v) => updateWeightRules({
-                relationshipBaseAmounts: { ...weightRules.relationshipBaseAmounts, [k]: v },
-              })}
-              displayValue={fmtNOK(weightRules.relationshipBaseAmounts[k])}
-            />
-          ))}
+          {([
+            { label: 'Partner/samboer',            keys: ['partner'] as RelationshipType[] },
+            { label: 'Foreldre / svigerforeldre',  keys: ['foreldre', 'svigerforeldre'] as RelationshipType[] },
+            { label: 'Søsken / svigersøsken',      keys: ['søsken', 'svigersøsken'] as RelationshipType[] },
+            { label: 'Besteforeldre',              keys: ['besteforeldre'] as RelationshipType[] },
+            { label: 'Barn / stebarn',             keys: ['barn', 'stebarn'] as RelationshipType[] },
+            { label: 'Tante/onkel',                keys: ['tante_onkel'] as RelationshipType[] },
+            { label: 'Niese/nevø',                 keys: ['niese_nevø'] as RelationshipType[] },
+            { label: 'Fadderbarn',                 keys: ['fadderbarn'] as RelationshipType[] },
+            { label: 'Nær venn',                   keys: ['nær_venn'] as RelationshipType[] },
+            { label: 'Venn',                       keys: ['venn'] as RelationshipType[] },
+            { label: 'Kollega',                    keys: ['kollega'] as RelationshipType[] },
+            { label: 'Nabo',                       keys: ['nabo'] as RelationshipType[] },
+            { label: 'Vertskap',                   keys: ['vertskap'] as RelationshipType[] },
+            { label: 'Annet',                      keys: ['annet'] as RelationshipType[] },
+          ]).map(({ label, keys }) => {
+            const value = weightRules.relationshipBaseAmounts[keys[0]]
+            return (
+              <SliderRow
+                key={keys[0]}
+                label={label}
+                value={value}
+                min={0}
+                max={5000}
+                step={50}
+                onChange={(v) => {
+                  const updates = Object.fromEntries(keys.map((k) => [k, v])) as Record<RelationshipType, number>
+                  updateWeightRules({
+                    relationshipBaseAmounts: { ...weightRules.relationshipBaseAmounts, ...updates },
+                  })
+                }}
+                displayValue={fmtNOK(value)}
+              />
+            )
+          })}
         </div>
       </WeightSection>
 
