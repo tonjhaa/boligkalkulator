@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useGiftStore } from '@/application/useGiftStore'
 import {
-  OCCASION_LABELS, RELATIONSHIP_LABELS, CLOSENESS_LABELS,
+  OCCASION_LABELS, RELATIONSHIP_LABELS,
   LIFE_PHASE_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, DISTRIBUTION_LABELS,
   DEFAULT_WEIGHT_RULES,
 } from '@/domain/gifts/defaultWeights'
@@ -23,7 +23,7 @@ import {
 } from '@/domain/gifts/giftCalculator'
 import type {
   GiftRecipient, GiftEvent, Occasion, RelationshipType,
-  ClosenessLevel, LifePhase, Ownership, EventStatus,
+  LifePhase, Ownership, EventStatus,
 } from '@/types/gifts'
 
 // ─── Formattering ───────────────────────────────────────────────
@@ -497,7 +497,7 @@ function RecipientsTab() {
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {RELATIONSHIP_LABELS[r.relationshipType]} · {CLOSENESS_LABELS[r.closeness]} · {LIFE_PHASE_LABELS[r.lifePhase]}
+                {RELATIONSHIP_LABELS[r.relationshipType]} · {LIFE_PHASE_LABELS[r.lifePhase]}
               </p>
               <p className="text-xs mt-0.5 flex gap-2.5">
                 <span className={r.receivesBirthdayGift ? 'text-foreground/80' : 'text-muted-foreground/40'}>
@@ -552,7 +552,6 @@ function RecipientModal({
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [relType, setRelType] = useState<RelationshipType>(initial?.relationshipType ?? 'venn')
-  const [closeness, setCloseness] = useState<ClosenessLevel>(initial?.closeness ?? 'normal')
   const [lifePhase, setLifePhase] = useState<LifePhase>(initial?.lifePhase ?? 'voksen')
   const [ownership, setOwnership] = useState<Ownership>(initial?.ownership ?? 'felles')
   const [birthDate, setBirthDate] = useState(
@@ -567,7 +566,6 @@ function RecipientModal({
   useEffect(() => {
     setName(initial?.name ?? '')
     setRelType(initial?.relationshipType ?? 'venn')
-    setCloseness(initial?.closeness ?? 'normal')
     setLifePhase(initial?.lifePhase ?? 'voksen')
     setOwnership(initial?.ownership ?? 'felles')
     setBirthDate(initial?.birthDate ?? (initial?.birthYear
@@ -589,7 +587,6 @@ function RecipientModal({
       id: initial?.id ?? '',
       name: name.trim(),
       relationshipType: relType,
-      closeness,
       lifePhase,
       ownership,
       birthDate: birthDate || undefined,
@@ -613,29 +610,16 @@ function RecipientModal({
             <Label className="text-xs">Navn</Label>
             <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="f.eks. Mamma" />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Relasjon</Label>
-              <Select value={relType} onValueChange={(v) => setRelType(v as RelationshipType)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(RELATIONSHIP_LABELS) as RelationshipType[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{RELATIONSHIP_LABELS[k]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Nærhet</Label>
-              <Select value={closeness} onValueChange={(v) => setCloseness(v as ClosenessLevel)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CLOSENESS_LABELS) as ClosenessLevel[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{CLOSENESS_LABELS[k]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Relasjon</Label>
+            <Select value={relType} onValueChange={(v) => setRelType(v as RelationshipType)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(RELATIONSHIP_LABELS) as RelationshipType[]).map((k) => (
+                  <SelectItem key={k} value={k} className="text-xs">{RELATIONSHIP_LABELS[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
@@ -1365,11 +1349,6 @@ function SavingsPlanTab() {
 
 // ─── Satser ─────────────────────────────────────────────────────
 
-function pctLabel(w: number): string {
-  const pct = Math.round((w - 1) * 100)
-  if (pct === 0) return 'Normalt'
-  return pct > 0 ? `+${pct} %` : `${pct} %`
-}
 
 function SliderRow({
   label, value, min, max, step, onChange, displayValue,
@@ -1428,124 +1407,148 @@ function RatesTab() {
   const weightRules = useGiftStore((s) => s.weightRules)
   const updateWeightRules = useGiftStore((s) => s.updateWeightRules)
 
-  const [expanded, setExpanded] = useState<string | null>('anledning')
+  const [expanded, setExpanded] = useState<string | null>('relasjon')
+  const [newOverride, setNewOverride] = useState<{ rel: RelationshipType; occasion: Occasion; amount: string } | null>(null)
 
   function toggleSection(s: string) {
     setExpanded(expanded === s ? null : s)
   }
 
-  // Representativt grunnbeløp for å vise "ca. X kr" under relasjonsslidere
-  const repBase = weightRules.occasionBaseAmounts.bursdag ?? 400
+  function saveOverride() {
+    if (!newOverride) return
+    const amount = parseInt(newOverride.amount)
+    if (isNaN(amount) || amount < 0) return
+    updateWeightRules({
+      occasionOverrides: {
+        ...weightRules.occasionOverrides,
+        [newOverride.rel]: {
+          ...(weightRules.occasionOverrides?.[newOverride.rel] ?? {}),
+          [newOverride.occasion]: amount,
+        },
+      },
+    })
+    setNewOverride(null)
+  }
+
+  function removeOverride(rel: RelationshipType, occasion: Occasion) {
+    const relOverrides = { ...(weightRules.occasionOverrides?.[rel] ?? {}) }
+    delete relOverrides[occasion]
+    const updated = { ...weightRules.occasionOverrides }
+    if (Object.keys(relOverrides).length === 0) delete updated[rel]
+    else updated[rel] = relOverrides
+    updateWeightRules({ occasionOverrides: updated })
+  }
+
+  const overrideList = Object.entries(weightRules.occasionOverrides ?? {}).flatMap(
+    ([rel, occasions]) => Object.entries(occasions ?? {}).map(([occ, amount]) => ({
+      rel: rel as RelationshipType,
+      occasion: occ as Occasion,
+      amount: amount as number,
+    }))
+  )
 
   return (
     <div className="p-4 space-y-2">
       <p className="text-xs text-muted-foreground mb-3">
-        Dra i sliderne for å justere hva du typisk bruker på gaver.
+        Sett fast beløp per relasjon. Legg til egne beløp for jubileum, bryllup og andre anledninger.
       </p>
 
-      {/* Grunnbeløp */}
+      {/* Per-relasjon grunnbeløp */}
       <WeightSection
         title="Hva bruker du typisk på..."
-        expanded={expanded === 'anledning'}
-        onToggle={() => toggleSection('anledning')}
-      >
-        <div className="space-y-3">
-          {(Object.keys(weightRules.occasionBaseAmounts) as Occasion[]).map((k) => (
-            <SliderRow
-              key={k}
-              label={OCCASION_LABELS[k]}
-              value={weightRules.occasionBaseAmounts[k]}
-              min={0}
-              max={3000}
-              step={50}
-              onChange={(v) => updateWeightRules({
-                occasionBaseAmounts: { ...weightRules.occasionBaseAmounts, [k]: v },
-              })}
-              displayValue={`${weightRules.occasionBaseAmounts[k].toLocaleString('no-NO')} kr`}
-            />
-          ))}
-        </div>
-      </WeightSection>
-
-      {/* Relasjon */}
-      <WeightSection
-        title="Hvem er gaven til?"
         expanded={expanded === 'relasjon'}
         onToggle={() => toggleSection('relasjon')}
       >
-        <p className="text-xs text-muted-foreground mb-3">
-          Juster opp eller ned basert på hvem du normalt bruker mer eller mindre på.
-          Tallene viser et typisk gavebeløp for bursdager.
-        </p>
         <div className="space-y-3">
-          {(Object.keys(weightRules.relationshipWeights) as RelationshipType[]).map((k) => (
+          {(Object.keys(weightRules.relationshipBaseAmounts) as RelationshipType[]).map((k) => (
             <SliderRow
               key={k}
               label={RELATIONSHIP_LABELS[k]}
-              value={weightRules.relationshipWeights[k]}
-              min={0.25}
-              max={3.0}
-              step={0.05}
+              value={weightRules.relationshipBaseAmounts[k]}
+              min={0}
+              max={5000}
+              step={50}
               onChange={(v) => updateWeightRules({
-                relationshipWeights: { ...weightRules.relationshipWeights, [k]: v },
+                relationshipBaseAmounts: { ...weightRules.relationshipBaseAmounts, [k]: v },
               })}
-              displayValue={`ca. ${Math.round(repBase * weightRules.relationshipWeights[k]).toLocaleString('no-NO')} kr`}
+              displayValue={fmtNOK(weightRules.relationshipBaseAmounts[k])}
             />
           ))}
         </div>
       </WeightSection>
 
-      {/* Nærhet */}
+      {/* Spesielle anledninger */}
       <WeightSection
-        title="Hvor godt kjenner du dem?"
-        expanded={expanded === 'nærhet'}
-        onToggle={() => toggleSection('nærhet')}
+        title="Spesielle anledninger"
+        expanded={expanded === 'override'}
+        onToggle={() => toggleSection('override')}
       >
         <p className="text-xs text-muted-foreground mb-3">
-          Nærhet justerer gavebeløpet opp eller ned uavhengig av relasjon.
+          Sett eget beløp for en relasjon på en spesifikk anledning — f.eks. foreldre på jubileum.
         </p>
-        <div className="space-y-3">
-          {(Object.keys(weightRules.closenessWeights) as ClosenessLevel[]).map((k) => (
-            <SliderRow
-              key={k}
-              label={CLOSENESS_LABELS[k]}
-              value={weightRules.closenessWeights[k]}
-              min={0.25}
-              max={2.0}
-              step={0.05}
-              onChange={(v) => updateWeightRules({
-                closenessWeights: { ...weightRules.closenessWeights, [k]: v },
-              })}
-              displayValue={pctLabel(weightRules.closenessWeights[k])}
-            />
+        <div className="space-y-2">
+          {overrideList.map(({ rel, occasion, amount }) => (
+            <div key={rel + occasion} className="flex items-center justify-between rounded border border-border/40 px-3 py-2 text-xs">
+              <span>
+                <span className="font-medium">{RELATIONSHIP_LABELS[rel]}</span>
+                <span className="text-muted-foreground mx-1.5">·</span>
+                <span>{OCCASION_LABELS[occasion]}</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono">{fmtNOK(amount)}</span>
+                <Button
+                  variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-red-400"
+                  onClick={() => removeOverride(rel, occasion)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
           ))}
-        </div>
-      </WeightSection>
-
-      {/* Livsfase */}
-      <WeightSection
-        title="Hvilken livsfase er de i?"
-        expanded={expanded === 'livsfase'}
-        onToggle={() => toggleSection('livsfase')}
-      >
-        <p className="text-xs text-muted-foreground mb-3">
-          Noen livsfaser gir litt høyere eller lavere gavebeløp automatisk.
-        </p>
-        <div className="space-y-3">
-          {(Object.keys(weightRules.lifePhaseWeights) as LifePhase[]).map((k) => (
-            <SliderRow
-              key={k}
-              label={LIFE_PHASE_LABELS[k]}
-              value={weightRules.lifePhaseWeights[k]}
-              min={0.5}
-              max={2.0}
-              step={0.05}
-              onChange={(v) => updateWeightRules({
-                lifePhaseWeights: { ...weightRules.lifePhaseWeights, [k]: v },
-              })}
-              displayValue={pctLabel(weightRules.lifePhaseWeights[k])}
-            />
-          ))}
+          {overrideList.length === 0 && !newOverride && (
+            <p className="text-xs text-muted-foreground text-center py-2">Ingen spesialanledninger ennå</p>
+          )}
+          {newOverride && (
+            <div className="rounded border border-primary/30 px-3 py-2.5 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={newOverride.rel} onValueChange={(v) => setNewOverride({ ...newOverride, rel: v as RelationshipType })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(RELATIONSHIP_LABELS) as RelationshipType[]).map((k) => (
+                      <SelectItem key={k} value={k} className="text-xs">{RELATIONSHIP_LABELS[k]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={newOverride.occasion} onValueChange={(v) => setNewOverride({ ...newOverride, occasion: v as Occasion })}>
+                  <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(OCCASION_LABELS) as Occasion[]).map((k) => (
+                      <SelectItem key={k} value={k} className="text-xs">{OCCASION_LABELS[k]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="Beløp (kr)"
+                  value={newOverride.amount}
+                  onChange={(e) => setNewOverride({ ...newOverride, amount: e.target.value })}
+                  className="h-7 text-xs flex-1"
+                />
+                <Button size="sm" className="h-7 text-xs px-3" onClick={saveOverride}>Lagre</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setNewOverride(null)}>Avbryt</Button>
+              </div>
+            </div>
+          )}
+          {!newOverride && (
+            <Button
+              variant="outline" size="sm" className="w-full text-xs mt-1"
+              onClick={() => setNewOverride({ rel: 'foreldre', occasion: 'jubileum', amount: '' })}
+            >
+              <Plus className="h-3 w-3 mr-1" /> Legg til spesialanledning
+            </Button>
+          )}
         </div>
       </WeightSection>
 

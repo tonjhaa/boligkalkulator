@@ -8,8 +8,6 @@ export type RelationshipType =
   | 'fadderbarn' | 'nær_venn' | 'venn' | 'kollega' | 'nabo'
   | 'vertskap' | 'annet'
 
-export type ClosenessLevel = 'svært_nær' | 'nær' | 'normal' | 'perifer' | 'symbolsk'
-
 export type LifePhase =
   | 'barn_0_12' | 'tenåring' | 'ung_voksen' | 'voksen' | 'senior'
   | 'student' | 'nyetablert' | 'småbarnsforelder' | 'pensjonist' | 'ikke_relevant'
@@ -29,7 +27,6 @@ export interface GiftRecipient {
   id: string
   name: string
   relationshipType: RelationshipType
-  closeness: ClosenessLevel
   birthDate?: string        // "YYYY-MM-DD"
   birthMonth?: number       // 1–12 (brukes hvis fullstendig dato ikke er kjent)
   birthYear?: number
@@ -73,10 +70,10 @@ export interface GiftSettings {
 }
 
 export interface WeightRules {
-  occasionBaseAmounts: Record<Occasion, number>
-  relationshipWeights: Record<RelationshipType, number>
-  closenessWeights: Record<ClosenessLevel, number>
-  lifePhaseWeights: Record<LifePhase, number>
+  // Fast grunnbeløp per relasjonstype (brukes for alle anledninger med mindre override)
+  relationshipBaseAmounts: Record<RelationshipType, number>
+  // Spesifikke beløp for relasjon × anledning (overstyrer grunnbeløpet)
+  occasionOverrides: Partial<Record<RelationshipType, Partial<Record<Occasion, number>>>>
 }
 
 export interface EventShare {

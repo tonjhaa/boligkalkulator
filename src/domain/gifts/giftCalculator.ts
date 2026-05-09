@@ -2,7 +2,6 @@ import type {
   GiftEvent, GiftRecipient, GiftSettings, WeightRules,
   EventShare, MonthlyBreakdown, GiftCalculationResult,
 } from '@/types/gifts'
-import { getMilestoneWeight } from './defaultWeights'
 
 // ── Hjelpere ──────────────────────────────────────────────────
 
@@ -19,50 +18,38 @@ export function roundGiftAmount(amount: number, nearest: 1 | 50 | 100): number {
   return Math.round(amount / nearest) * nearest
 }
 
-function recipientAge(recipient: GiftRecipient): number | undefined {
-  const currentYear = new Date().getFullYear()
-  if (recipient.birthYear) return currentYear - recipient.birthYear
-  if (recipient.birthDate) {
-    const yr = parseInt(recipient.birthDate.split('-')[0], 10)
-    if (!isNaN(yr)) return currentYear - yr
-  }
-  return undefined
-}
-
 // ── Kjernekalkulator ───────────────────────────────────────────
 
 /**
- * Beregner gavebeløp basert på formelen:
- * C = B_O × W_R × W_N × W_A × W_J
+ * Beregner gavebeløp:
+ * 1. Sjekk occasionOverrides[relasjon][anledning] — spesifikt beløp
+ * 2. Fall tilbake på relationshipBaseAmounts[relasjon] — flat takst
  */
 export function calculateGiftAmount(
   event: GiftEvent,
   recipient: GiftRecipient,
-  weights: WeightRules,
+  rules: WeightRules,
 ): number {
-  const base = weights.occasionBaseAmounts[event.occasion] ?? 400
-  const wR = weights.relationshipWeights[recipient.relationshipType] ?? 1.0
-  const wN = weights.closenessWeights[recipient.closeness] ?? 1.0
-  const wA = weights.lifePhaseWeights[recipient.lifePhase] ?? 1.0
-  const age = recipientAge(recipient)
-  const wJ = getMilestoneWeight(event.occasion, age)
-
-  return base * wR * wN * wA * wJ
+  const relOverrides = rules.occasionOverrides?.[recipient.relationshipType]
+  if (relOverrides) {
+    const override = relOverrides[event.occasion]
+    if (override !== undefined) return override
+  }
+  return rules.relationshipBaseAmounts[recipient.relationshipType] ?? 500
 }
 
 /** Returnerer en forklarende tekst for beregnet beløp */
 export function giftAmountExplanation(
   event: GiftEvent,
   recipient: GiftRecipient,
-  weights: WeightRules,
+  rules: WeightRules,
 ): string {
-  const base = weights.occasionBaseAmounts[event.occasion] ?? 400
-  const wR = weights.relationshipWeights[recipient.relationshipType] ?? 1.0
-  const wN = weights.closenessWeights[recipient.closeness] ?? 1.0
-  const wA = weights.lifePhaseWeights[recipient.lifePhase] ?? 1.0
-  const age = recipientAge(recipient)
-  const wJ = getMilestoneWeight(event.occasion, age)
-  return `${base} kr × ${wR} (relasjon) × ${wN} (nærhet) × ${wA} (livsfase) × ${wJ} (milepæl)`
+  const relOverrides = rules.occasionOverrides?.[recipient.relationshipType]
+  if (relOverrides?.[event.occasion] !== undefined) {
+    return `Spesialbeløp for denne anledningen`
+  }
+  const base = rules.relationshipBaseAmounts[recipient.relationshipType] ?? 500
+  return `Grunnbeløp for relasjonstype: ${base.toLocaleString('no-NO')} kr`
 }
 
 // ── Inntektsandeler ────────────────────────────────────────────

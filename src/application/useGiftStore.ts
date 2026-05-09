@@ -115,7 +115,15 @@ export const useGiftStore = create<GiftState>()(
     }),
     {
       name: 'lommeboka-gaver-v1',
-      version: 1,
+      version: 2,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as Record<string, unknown>
+        if (version < 2) {
+          // Ny beregningsmodell: flat takst per relasjon — nullstill weightRules
+          return { ...state, weightRules: DEFAULT_WEIGHT_RULES }
+        }
+        return state
+      },
       partialize: (state) => ({
         settings: state.settings,
         weightRules: state.weightRules,
