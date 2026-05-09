@@ -591,6 +591,19 @@ function EventModal({
   const [actualAmount, setActualAmount] = useState(initial?.actualAmount != null ? String(initial.actualAmount) : '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
+  useEffect(() => {
+    setRecipientId(initial?.recipientId ?? (recipients[0]?.id ?? ''))
+    setOccasion(initial?.occasion ?? 'bursdag')
+    setDate(initial?.date ?? '')
+    setMonth(initial?.month ? String(initial.month) : '')
+    setOwnership(initial?.ownership ?? 'felles')
+    setManualAmount(initial?.manualAmount != null ? String(initial.manualAmount) : '')
+    setIsLocked(initial?.isLocked ?? false)
+    setStatus(initial?.status ?? 'planlagt')
+    setActualAmount(initial?.actualAmount != null ? String(initial.actualAmount) : '')
+    setNotes(initial?.notes ?? '')
+  }, [initial, recipients])
+
   const recipient = recipients.find((r) => r.id === recipientId)
 
   const suggestedAmount = useMemo(() => {
