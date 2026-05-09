@@ -501,6 +501,10 @@ function RecipientsTab() {
 
   const [editing, setEditing] = useState<GiftRecipient | null>(null)
   const [adding, setAdding] = useState(false)
+  const [modalKey, setModalKey] = useState(0)
+
+  function openAdding() { setModalKey((k) => k + 1); setAdding(true) }
+  function openEditing(r: GiftRecipient) { setModalKey((k) => k + 1); setEditing(r) }
 
   function handleSave(r: GiftRecipient) {
     if (r.id && recipients.find((x) => x.id === r.id)) {
@@ -516,7 +520,7 @@ function RecipientsTab() {
     <div className="p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">{recipients.length} mottakere</p>
-        <Button size="sm" onClick={() => setAdding(true)}>
+        <Button size="sm" onClick={openAdding}>
           <Plus className="h-3.5 w-3.5 mr-1" /> Legg til
         </Button>
       </div>
@@ -557,7 +561,7 @@ function RecipientsTab() {
               </p>
             </div>
             <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)}>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditing(r)}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button
@@ -575,12 +579,13 @@ function RecipientsTab() {
           <div className="text-center py-8 text-muted-foreground">
             <Users className="h-6 w-6 mx-auto mb-2 opacity-30" />
             <p className="text-sm mb-3">Ingen mottakere ennå</p>
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>Legg til mottaker</Button>
+            <Button size="sm" variant="outline" onClick={openAdding}>Legg til mottaker</Button>
           </div>
         )}
       </div>
 
       <RecipientModal
+        key={modalKey}
         open={adding || editing !== null}
         initial={editing ?? undefined}
         onSave={handleSave}
