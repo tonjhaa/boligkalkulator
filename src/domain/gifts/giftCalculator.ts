@@ -15,7 +15,7 @@ export function getEventMonth(event: GiftEvent): number | null {
   return null
 }
 
-export function roundGiftAmount(amount: number, nearest: 50 | 100): number {
+export function roundGiftAmount(amount: number, nearest: 1 | 50 | 100): number {
   return Math.round(amount / nearest) * nearest
 }
 

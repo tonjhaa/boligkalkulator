@@ -447,7 +447,17 @@ function RecipientsTab() {
   const addRecipient = useGiftStore((s) => s.addRecipient)
   const updateRecipient = useGiftStore((s) => s.updateRecipient)
   const removeRecipient = useGiftStore((s) => s.removeRecipient)
-  const events = useGiftStore((s) => s.events)
+  const settings = useGiftStore((s) => s.settings)
+  const weightRules = useGiftStore((s) => s.weightRules)
+
+  function calcOccasionAmount(r: GiftRecipient, occasion: import('@/types/gifts').Occasion): number {
+    const event: import('@/types/gifts').GiftEvent = {
+      id: '', recipientId: r.id, occasion,
+      ownership: r.ownership, calculatedAmount: 0,
+      isLocked: false, status: 'planlagt',
+    }
+    return roundGiftAmount(calculateGiftAmount(event, r, weightRules), settings.roundingNearest)
+  }
 
   const [editing, setEditing] = useState<GiftRecipient | null>(null)
   const [adding, setAdding] = useState(false)
@@ -460,16 +470,6 @@ function RecipientsTab() {
     }
     setEditing(null)
     setAdding(false)
-  }
-
-  function nextEvent(id: string): string {
-    const today = new Date().toISOString().split('T')[0]
-    const ev = events
-      .filter((e) => e.recipientId === id && e.status === 'planlagt')
-      .filter((e) => (e.date ?? '9999') >= today)
-      .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))[0]
-    if (!ev) return '—'
-    return `${OCCASION_LABELS[ev.occasion]}${ev.date ? ' · ' + ev.date : ''}`
   }
 
   return (
@@ -499,7 +499,14 @@ function RecipientsTab() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {RELATIONSHIP_LABELS[r.relationshipType]} · {CLOSENESS_LABELS[r.closeness]} · {LIFE_PHASE_LABELS[r.lifePhase]}
               </p>
-              <p className="text-xs text-muted-foreground">Neste: {nextEvent(r.id)}</p>
+              <p className="text-xs mt-0.5 flex gap-2.5">
+                <span className={r.receivesBirthdayGift ? 'text-foreground/80' : 'text-muted-foreground/40'}>
+                  Bursdag {fmtNOK(calcOccasionAmount(r, 'bursdag'))}
+                </span>
+                <span className={r.receivesChristmasGift ? 'text-foreground/80' : 'text-muted-foreground/40'}>
+                  Jul {fmtNOK(calcOccasionAmount(r, 'jul'))}
+                </span>
+              </p>
             </div>
             <div className="flex gap-1 shrink-0">
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)}>
@@ -1201,10 +1208,11 @@ function DistributionTab() {
             <Label className="text-xs">Avrund beløp til nærmeste</Label>
             <Select
               value={String(settings.roundingNearest)}
-              onValueChange={(v) => updateSettings({ roundingNearest: parseInt(v) as 50 | 100 })}
+              onValueChange={(v) => updateSettings({ roundingNearest: parseInt(v) as 1 | 50 | 100 })}
             >
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="1" className="text-xs">Ingen avrunding</SelectItem>
                 <SelectItem value="50" className="text-xs">50 kr</SelectItem>
                 <SelectItem value="100" className="text-xs">100 kr</SelectItem>
               </SelectContent>

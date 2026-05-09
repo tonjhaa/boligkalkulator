@@ -142,7 +142,7 @@ export const DEFAULT_GIFT_SETTINGS: GiftSettings = {
   memberB: { name: 'Person B', monthlyNetIncome: 0 },
   bufferPercent: 12,
   annualCap: undefined,
-  roundingNearest: 50,
+  roundingNearest: 1,
   distributionModel: 'hybrid',
   primaryResponsibilityShare: 0.80,
   supportShare: 0.20,

@@ -66,7 +66,7 @@ export interface GiftSettings {
   memberB: HouseholdMember
   bufferPercent: number             // f.eks. 12
   annualCap?: number                // valgfri øvre ramme
-  roundingNearest: 50 | 100
+  roundingNearest: 1 | 50 | 100
   distributionModel: DistributionModel
   primaryResponsibilityShare: number  // standard 0.80
   supportShare: number                // standard 0.20

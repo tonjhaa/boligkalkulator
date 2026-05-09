@@ -132,7 +132,7 @@ export function createGiftEvent(
   params: Omit<GiftEvent, 'id' | 'calculatedAmount'> & { calculatedAmount?: number },
   recipient: GiftRecipient,
   weightRules: WeightRules,
-  roundingNearest: 50 | 100,
+  roundingNearest: 1 | 50 | 100,
 ): GiftEvent {
   const event: GiftEvent = {
     ...params,
