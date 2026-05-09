@@ -619,7 +619,7 @@ export interface JuneForecast {
 export type EconomyTab =
   | 'dashboard' | 'budget' | 'salary' | 'atf' | 'feriepenger'
   | 'savings' | 'fond' | 'debt' | 'absence' | 'tax'
-  | 'subscriptions' | 'ivf' | 'vacation' | 'settings' | 'veikart'
+  | 'subscriptions' | 'ivf' | 'vacation' | 'settings' | 'veikart' | 'gaver'
 
 export interface UserPreferences {
   onboardingCompleted: boolean

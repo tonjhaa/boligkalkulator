@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Shield, Briefcase, PiggyBank, BarChart2, CreditCard,
   FileText, TrendingUp, RefreshCw, HeartPulse, Umbrella,
-  Palmtree, CheckCircle2, ArrowRight, ChevronLeft, Map,
+  Palmtree, CheckCircle2, ArrowRight, ChevronLeft, Map, Gift,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -99,6 +99,13 @@ export const MODULES: ModuleOption[] = [
     label: 'Boligveikart',
     desc: 'Fremtidsplaner og kjøpekraftprognose',
     icon: Map,
+    defaultFor: ['forsvaret', 'custom'],
+  },
+  {
+    tab: 'gaver',
+    label: 'Gaveplanlegger',
+    desc: 'Planlegg og fordel gaveutgifter gjennom året',
+    icon: Gift,
     defaultFor: ['forsvaret', 'custom'],
   },
 ]
