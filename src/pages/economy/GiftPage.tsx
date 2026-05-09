@@ -39,6 +39,19 @@ function fmtMonth(m: number) {
 }
 
 
+/** Returnerer alderen ved neste bursdag hvis den er rund (delelig med 10), ellers null */
+function roundBirthdayAge(birthDate: string): number | null {
+  const parts = birthDate.split('-').map(Number)
+  if (parts.length < 3) return null
+  const [year, mo, day] = parts
+  const today = new Date()
+  const thisYear = today.getFullYear()
+  const thisYearDate = new Date(thisYear, mo - 1, day)
+  const nextBirthYear = thisYearDate < today ? thisYear + 1 : thisYear
+  const age = nextBirthYear - year
+  return age % 10 === 0 ? age : null
+}
+
 function lifePhaseFromBirthDate(dateStr: string): LifePhase | null {
   if (!dateStr) return null
   const birth = new Date(dateStr)
@@ -293,11 +306,15 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
                       <span className="ml-1.5 opacity-50">
                         {nextDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: nextDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}
                       </span>
-                      {e.occasion === 'bursdag' && rec?.birthDate && (
-                        <span className="ml-1 opacity-50">
-                          · {nextDate.getFullYear() - parseInt(rec.birthDate.split('-')[0])} år
-                        </span>
-                      )}
+                      {e.occasion === 'bursdag' && rec?.birthDate && (() => {
+                        const age = nextDate.getFullYear() - parseInt(rec.birthDate.split('-')[0])
+                        const isRound = age % 10 === 0
+                        return (
+                          <span className={cn('ml-1', isRound ? 'text-amber-400 font-medium' : 'opacity-50')}>
+                            · {age} år{isRound ? ' ★' : ''}
+                          </span>
+                        )
+                      })()}
                     </p>
                   </div>
                   <span className="font-mono font-medium ml-4 shrink-0">{fmtNOK(amount)}</span>
@@ -489,6 +506,14 @@ function RecipientsTab() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium truncate" title={r.name}>{r.name}</span>
+                {r.birthDate && (() => {
+                  const age = roundBirthdayAge(r.birthDate)
+                  return age ? (
+                    <span className="text-xs px-1.5 py-0.5 rounded border shrink-0 border-amber-500/50 text-amber-400 bg-amber-500/10">
+                      ★ {age} år
+                    </span>
+                  ) : null
+                })()}
                 <span className={cn(
                   'text-xs px-1.5 py-0.5 rounded border shrink-0',
                   r.ownership === 'A' ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' :
