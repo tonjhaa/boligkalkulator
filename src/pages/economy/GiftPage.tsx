@@ -488,7 +488,6 @@ function RecipientsTab() {
   const removeRecipient = useGiftStore((s) => s.removeRecipient)
   const settings = useGiftStore((s) => s.settings)
   const weightRules = useGiftStore((s) => s.weightRules)
-  const ownershipLabels = ownershipLabelsFor(settings)
 
   function calcOccasionAmount(r: GiftRecipient, occasion: import('@/types/gifts').Occasion): number {
     const event: import('@/types/gifts').GiftEvent = {
@@ -516,73 +515,186 @@ function RecipientsTab() {
     setAdding(false)
   }
 
+  type SortMode = 'eierskap' | 'bursdag' | 'gaveverdi' | 'relasjon'
+  const [sort, setSort] = useState<SortMode>('eierskap')
+
+  const FAMILY_RELS = new Set<RelationshipType>(['partner', 'foreldre', 'svigerforeldre', 'søsken', 'svigersøsken', 'besteforeldre', 'barn', 'stebarn', 'tante_onkel', 'niese_nevø', 'fadderbarn'])
+  const FRIEND_RELS = new Set<RelationshipType>(['nær_venn', 'venn'])
+
+  function nextBDays(r: GiftRecipient): number {
+    if (!r.birthDate) return 9999
+    const [, mo, day] = r.birthDate.split('-').map(Number)
+    const today = new Date(); today.setHours(0,0,0,0)
+    let next = new Date(today.getFullYear(), mo - 1, day)
+    if (next < today) next = new Date(today.getFullYear() + 1, mo - 1, day)
+    return Math.round((next.getTime() - today.getTime()) / 86400000)
+  }
+
+  function nextBStr(r: GiftRecipient): string | null {
+    if (!r.birthDate) return null
+    const days = nextBDays(r)
+    if (days === 9999) return null
+    if (days === 0) return 'I dag! 🎉'
+    if (days === 1) return 'I morgen'
+    if (days < 14) return `Om ${days} dager`
+    if (days < 60) return `Om ${Math.round(days / 7)} uker`
+    return `Om ${Math.round(days / 30.5)} mnd`
+  }
+
+  function totalValue(r: GiftRecipient): number {
+    return (r.receivesBirthdayGift ? calcOccasionAmount(r, 'bursdag') : 0)
+      + (r.receivesChristmasGift ? calcOccasionAmount(r, 'jul') : 0)
+  }
+
+  const nameA = settings.memberA.name || 'Person A'
+  const nameB = settings.memberB.name || 'Person B'
+
+  const sections = useMemo(() => {
+    type Section = { title: string; items: GiftRecipient[] }
+    const sorted = [...recipients]
+
+    if (sort === 'bursdag') {
+      sorted.sort((a, b) => nextBDays(a) - nextBDays(b))
+      return [{ title: '', items: sorted }] as Section[]
+    }
+    if (sort === 'gaveverdi') {
+      sorted.sort((a, b) => totalValue(b) - totalValue(a))
+      return [{ title: '', items: sorted }] as Section[]
+    }
+    if (sort === 'relasjon') {
+      const groups: Record<string, GiftRecipient[]> = { Familie: [], Venner: [], Andre: [] }
+      for (const r of sorted) {
+        if (FAMILY_RELS.has(r.relationshipType)) groups.Familie.push(r)
+        else if (FRIEND_RELS.has(r.relationshipType)) groups.Venner.push(r)
+        else groups.Andre.push(r)
+      }
+      return Object.entries(groups).filter(([, v]) => v.length > 0).map(([t, v]) => ({ title: t, items: v })) as Section[]
+    }
+    // eierskap (default)
+    return [
+      { title: nameA, items: sorted.filter((r) => r.ownership === 'A') },
+      { title: nameB, items: sorted.filter((r) => r.ownership === 'B') },
+      { title: 'Felles', items: sorted.filter((r) => r.ownership === 'felles') },
+    ].filter((s) => s.items.length > 0) as Section[]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipients, sort, nameA, nameB])
+
   return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{recipients.length} mottakere</p>
-        <Button size="sm" onClick={openAdding}>
+    <div className="p-4 space-y-4">
+      {/* Topplinje */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-1 flex-wrap">
+          {([
+            ['eierskap', 'Eierskap'],
+            ['bursdag', 'Bursdag'],
+            ['gaveverdi', 'Gaveverdi'],
+            ['relasjon', 'Relasjon'],
+          ] as [SortMode, string][]).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setSort(m)}
+              className={cn(
+                'text-xs px-2.5 py-1 rounded-full border transition-colors',
+                sort === m
+                  ? 'border-primary/50 bg-primary/10 text-foreground'
+                  : 'border-border/40 text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Button size="sm" onClick={openAdding} className="shrink-0">
           <Plus className="h-3.5 w-3.5 mr-1" /> Legg til
         </Button>
       </div>
 
-      <div className="space-y-2">
-        {recipients.map((r) => (
-          <div key={r.id} className="flex items-center justify-between rounded-lg border border-border bg-card/30 px-3 py-2.5">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium truncate" title={r.name}>{r.name}</span>
-                {r.birthDate && (() => {
-                  const age = roundBirthdayAge(r.birthDate)
-                  return age ? (
-                    <span className="text-xs px-1.5 py-0.5 rounded border shrink-0 border-amber-500/50 text-amber-400 bg-amber-500/10">
-                      ★ {age} år
-                    </span>
-                  ) : null
-                })()}
-                <span className={cn(
-                  'text-xs px-1.5 py-0.5 rounded border shrink-0',
-                  r.ownership === 'A' ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' :
-                  r.ownership === 'B' ? 'border-violet-500/40 text-violet-400 bg-violet-500/10' :
-                  'border-border text-muted-foreground'
-                )}>
-                  {ownershipLabels[r.ownership]}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {RELATIONSHIP_LABELS[r.relationshipType]} · {LIFE_PHASE_LABELS[r.lifePhase]}
+      {/* Seksjoner */}
+      {recipients.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <Users className="h-8 w-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm mb-3">Ingen mottakere ennå</p>
+          <Button size="sm" variant="outline" onClick={openAdding}>Legg til mottaker</Button>
+        </div>
+      ) : (
+        sections.map(({ title, items }) => (
+          <div key={title || '_'}>
+            {title && (
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {title} <span className="font-normal opacity-60">({items.length})</span>
               </p>
-              <p className="text-xs mt-0.5 flex gap-2.5">
-                <span className={r.receivesBirthdayGift ? 'text-foreground/80' : 'text-muted-foreground/40'}>
-                  Bursdag {fmtNOK(calcOccasionAmount(r, 'bursdag'))}
-                </span>
-                <span className={r.receivesChristmasGift ? 'text-foreground/80' : 'text-muted-foreground/40'}>
-                  Jul {fmtNOK(calcOccasionAmount(r, 'jul'))}
-                </span>
-              </p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditing(r)}>
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-red-400"
-                onClick={() => removeRecipient(r.id)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {items.map((r) => {
+                const initials = r.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+                const roundAge = r.birthDate ? roundBirthdayAge(r.birthDate) : null
+                const nextB = nextBStr(r)
+                const bVal = calcOccasionAmount(r, 'bursdag')
+                const jVal = calcOccasionAmount(r, 'jul')
+                const hasOverride = r.occasionOverrides && Object.keys(r.occasionOverrides).length > 0
+                return (
+                  <div key={r.id} className={cn(
+                    'relative rounded-lg border bg-card/40 p-2.5 flex flex-col gap-1.5',
+                    r.ownership === 'A' ? 'border-blue-500/20' :
+                    r.ownership === 'B' ? 'border-violet-500/20' :
+                    'border-border/60'
+                  )}>
+                    {/* Avatar + navn */}
+                    <div className="flex items-start gap-2">
+                      <div className={cn(
+                        'h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5',
+                        r.ownership === 'A' ? 'bg-blue-500/20 text-blue-400' :
+                        r.ownership === 'B' ? 'bg-violet-500/20 text-violet-400' :
+                        'bg-muted/50 text-muted-foreground'
+                      )}>
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium leading-tight truncate" title={r.name}>{r.name}</p>
+                        <p className="text-xs text-muted-foreground leading-tight truncate">
+                          {RELATIONSHIP_LABELS[r.relationshipType]}
+                        </p>
+                      </div>
+                      {/* Edit/delete */}
+                      <div className="flex gap-0.5 shrink-0">
+                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground" onClick={() => openEditing(r)}>
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-red-400" onClick={() => removeRecipient(r.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rund dag badge */}
+                    {roundAge && (
+                      <span className="self-start text-xs px-1.5 py-0.5 rounded border border-amber-500/50 text-amber-400 bg-amber-500/10 leading-tight">
+                        ★ {roundAge} år
+                      </span>
+                    )}
+
+                    {/* Gave-beløp */}
+                    <div className="flex gap-2 text-xs">
+                      <span className={r.receivesBirthdayGift ? 'text-foreground/80' : 'text-muted-foreground/25'}>
+                        🎂 {fmtNOK(bVal)}
+                      </span>
+                      <span className={r.receivesChristmasGift ? 'text-foreground/80' : 'text-muted-foreground/25'}>
+                        🎄 {fmtNOK(jVal)}
+                      </span>
+                      {hasOverride && <span className="text-primary/60 text-xs">✎</span>}
+                    </div>
+
+                    {/* Neste bursdag */}
+                    {nextB && (
+                      <p className="text-xs text-muted-foreground/60 leading-tight">{nextB}</p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
-        ))}
-        {recipients.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <Users className="h-6 w-6 mx-auto mb-2 opacity-30" />
-            <p className="text-sm mb-3">Ingen mottakere ennå</p>
-            <Button size="sm" variant="outline" onClick={openAdding}>Legg til mottaker</Button>
-          </div>
-        )}
-      </div>
+        ))
+      )}
 
       <RecipientModal
         key={modalKey}
