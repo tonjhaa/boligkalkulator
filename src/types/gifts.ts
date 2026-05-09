@@ -68,6 +68,7 @@ export interface GiftSettings {
   distributionModel: DistributionModel
   primaryResponsibilityShare: number  // standard 0.80
   supportShare: number                // standard 0.20
+  excludeChristmasFromSavings?: boolean
 }
 
 export interface WeightRules {

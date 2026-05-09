@@ -106,7 +106,18 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
 
   const effectiveEvents = useMemo(() => [...events, ...autoEvents], [events, autoEvents])
 
-  const result = useMemo(() => calculateGiftResult(effectiveEvents, settings, recipients), [effectiveEvents, settings, recipients])
+  const excludeXmas = settings.excludeChristmasFromSavings ?? false
+
+  const savingsEvents = useMemo(
+    () => excludeXmas ? effectiveEvents.filter((e) => e.occasion !== 'jul') : effectiveEvents,
+    [effectiveEvents, excludeXmas]
+  )
+
+  // Sparepuls-beregning (respekterer jul-ekskludering)
+  const result = useMemo(() => calculateGiftResult(savingsEvents, settings, recipients), [savingsEvents, settings, recipients])
+
+  // Totalkostnad inkl. jul (til månedsgraf og kostnadsdrivere)
+  const fullResult = useMemo(() => calculateGiftResult(effectiveEvents, settings, recipients), [effectiveEvents, settings, recipients])
 
   const recipientMap = useMemo(
     () => new Map(recipients.map((r) => [r.id, r])),
@@ -388,16 +399,16 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
       )}
 
       {/* Gavebelastning per måned */}
-      {hasEvents && result.monthlyBreakdown.some((m) => m.totalCost > 0) && (
+      {hasEvents && fullResult.monthlyBreakdown.some((m) => m.totalCost > 0) && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Utgifter per måned</p>
-          <MonthLoadChart months={result.monthlyBreakdown} />
+          <MonthLoadChart months={fullResult.monthlyBreakdown} />
         </div>
       )}
 
       {/* Kostnadsdrivere */}
       {hasEvents && (() => {
-        const annual = result.annualTotal
+        const annual = fullResult.annualTotal
         if (annual === 0) return null
         const drivers = recipients
           .map((r) => {
@@ -1424,10 +1435,28 @@ function SavingsPlanTab() {
   const settings = useGiftStore((s) => s.settings)
   const recipients = useGiftStore((s) => s.recipients)
   const weightRules = useGiftStore((s) => s.weightRules)
+  const updateSettings = useGiftStore((s) => s.updateSettings)
 
-  const effectiveEvents = useMemo(
+  const excludeXmas = settings.excludeChristmasFromSavings ?? false
+
+  const allEffectiveEvents = useMemo(
     () => [...events, ...deriveAutoEvents(recipients, events, weightRules, settings)],
     [events, recipients, weightRules, settings]
+  )
+
+  const effectiveEvents = useMemo(
+    () => excludeXmas ? allEffectiveEvents.filter((e) => e.occasion !== 'jul') : allEffectiveEvents,
+    [allEffectiveEvents, excludeXmas]
+  )
+
+  const xmasEvents = useMemo(
+    () => allEffectiveEvents.filter((e) => e.occasion === 'jul' && e.status !== 'droppet'),
+    [allEffectiveEvents]
+  )
+
+  const xmasTotal = useMemo(
+    () => xmasEvents.reduce((s, e) => s + (e.manualAmount ?? e.calculatedAmount), 0),
+    [xmasEvents]
   )
 
   const result = useMemo(() => calculateGiftResult(effectiveEvents, settings, recipients), [effectiveEvents, settings, recipients])
@@ -1440,6 +1469,22 @@ function SavingsPlanTab() {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Jul-toggle */}
+      <div className="flex items-center justify-between rounded border border-border/40 bg-muted/10 px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-xs font-medium">Ekskluder julegaver fra spareplan</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {excludeXmas && xmasTotal > 0
+              ? `Julegaver holdes utenfor — ${fmtNOK(xmasTotal)}/år betales separat`
+              : 'Spar kun til bursdager og andre hendelser'}
+          </p>
+        </div>
+        <Switch
+          checked={excludeXmas}
+          onCheckedChange={(v) => updateSettings({ excludeChristmasFromSavings: v })}
+        />
+      </div>
+
       {/* Spareoppsummering */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <MetricCard label="Totalt per mnd" value={fmtNOK(result.personAMonthlySaving + result.personBMonthlySaving)} />
@@ -1449,6 +1494,13 @@ function SavingsPlanTab() {
         <MetricCard label="Med buffer" value={fmtNOK(result.annualTotalWithBuffer)} />
         <MetricCard label={`${nameA} år`} value={fmtNOK(result.personATotal)} colorClass="text-blue-400" />
       </div>
+
+      {excludeXmas && xmasTotal > 0 && (
+        <div className="rounded border border-border/30 bg-muted/5 px-3 py-2 text-xs text-muted-foreground">
+          + Julegaver ikke inkludert: <span className="font-mono text-foreground">{fmtNOK(xmasTotal)}/år</span>
+          <span className="ml-1">({fmtNOK(xmasTotal / 12)}/mnd · {xmasEvents.length} mottakere)</span>
+        </div>
+      )}
 
       <p className="text-xs text-muted-foreground">
         Flat månedlig sparing anbefales som utgangspunkt. Månedlig beløp er jevnt fordelt over 12 måneder, inkludert {settings.bufferPercent} % buffer.
