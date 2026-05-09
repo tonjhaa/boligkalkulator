@@ -258,7 +258,11 @@ function RecipientsTab() {
           </div>
         ))}
         {recipients.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">Ingen mottakere ennå</p>
+          <div className="text-center py-8 text-muted-foreground">
+            <Users className="h-6 w-6 mx-auto mb-2 opacity-30" />
+            <p className="text-sm mb-3">Ingen mottakere ennå</p>
+            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>Legg til mottaker</Button>
+          </div>
         )}
       </div>
 
@@ -546,7 +550,13 @@ function EventsTab() {
           )
         })}
         {filtered.length === 0 && (
-          <p className="text-center text-sm text-muted-foreground py-8">Ingen hendelser</p>
+          <div className="text-center py-8 text-muted-foreground">
+            <Calendar className="h-6 w-6 mx-auto mb-2 opacity-30" />
+            <p className="text-sm mb-3">Ingen hendelser{recipients.length === 0 ? ' — legg til mottakere først' : ''}</p>
+            {recipients.length > 0 && (
+              <Button size="sm" variant="outline" onClick={() => setAdding(true)}>Legg til hendelse</Button>
+            )}
+          </div>
         )}
       </div>
 
