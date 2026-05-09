@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
   Gift, Plus, Trash2, Pencil, AlertTriangle,
-  Calendar, Users, SlidersHorizontal, TrendingUp, Wallet, ChevronDown, ChevronUp,
+  Users, SlidersHorizontal, TrendingUp, Wallet, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import * as RadixSlider from '@radix-ui/react-slider'
 import { cn } from '@/lib/utils'
@@ -78,12 +78,11 @@ function lifePhaseFromBirthDate(dateStr: string): LifePhase | null {
 
 // ─── Interne tabs ───────────────────────────────────────────────
 
-type GiftTab = 'oversikt' | 'mottakere' | 'hendelser' | 'fordeling' | 'spareplan' | 'satser'
+type GiftTab = 'oversikt' | 'mottakere' | 'fordeling' | 'spareplan' | 'satser'
 
 const TABS: { id: GiftTab; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { id: 'oversikt', label: 'Oversikt', Icon: TrendingUp },
   { id: 'mottakere', label: 'Mottakere', Icon: Users },
-  { id: 'hendelser', label: 'Hendelser', Icon: Calendar },
   { id: 'fordeling', label: 'Fordeling', Icon: Wallet },
   { id: 'spareplan', label: 'Spareplan', Icon: Gift },
   { id: 'satser', label: 'Tilpass', Icon: SlidersHorizontal },
@@ -498,12 +497,35 @@ function RecipientsTab() {
     return roundGiftAmount(calculateGiftAmount(event, r, weightRules), settings.roundingNearest)
   }
 
+  const events = useGiftStore((s) => s.events)
+  const addEvent = useGiftStore((s) => s.addEvent)
+  const updateEvent = useGiftStore((s) => s.updateEvent)
+
   const [editing, setEditing] = useState<GiftRecipient | null>(null)
   const [adding, setAdding] = useState(false)
   const [modalKey, setModalKey] = useState(0)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [specialEventRecipient, setSpecialEventRecipient] = useState<string | null>(null)
+  const [specialEventKey, setSpecialEventKey] = useState(0)
 
   function openAdding() { setModalKey((k) => k + 1); setAdding(true) }
   function openEditing(r: GiftRecipient) { setModalKey((k) => k + 1); setEditing(r) }
+
+  function toggleSelected(id: string) { setSelectedId((prev) => prev === id ? null : id) }
+
+  function promoteEvent(autoEvent: import('@/types/gifts').GiftEvent, status: import('@/types/gifts').EventStatus) {
+    const stored = events.find((e) => e.recipientId === autoEvent.recipientId && e.occasion === autoEvent.occasion)
+    if (stored) {
+      updateEvent(stored.id, { status })
+    } else {
+      addEvent({ ...autoEvent, id: crypto.randomUUID(), status })
+    }
+  }
+
+  function resetEventStatus(recipientId: string, occasion: Occasion) {
+    const stored = events.find((e) => e.recipientId === recipientId && e.occasion === occasion)
+    if (stored) updateEvent(stored.id, { status: 'planlagt' })
+  }
 
   function handleSave(r: GiftRecipient) {
     if (r.id && recipients.find((x) => x.id === r.id)) {
@@ -633,11 +655,17 @@ function RecipientsTab() {
                 const jVal = calcOccasionAmount(r, 'jul')
                 const hasOverride = r.occasionOverrides && Object.keys(r.occasionOverrides).length > 0
                 return (
-                  <div key={r.id} className={cn(
-                    'relative rounded-lg border bg-card/40 p-2.5 flex flex-col gap-1.5',
-                    r.ownership === 'A' ? 'border-blue-500/20' :
-                    r.ownership === 'B' ? 'border-violet-500/20' :
-                    'border-border/60'
+                  <div key={r.id}
+                    onClick={() => toggleSelected(r.id)}
+                    className={cn(
+                    'relative rounded-lg border bg-card/40 p-2.5 flex flex-col gap-1.5 cursor-pointer transition-colors',
+                    selectedId === r.id
+                      ? r.ownership === 'A' ? 'border-blue-500/50 bg-blue-500/5'
+                        : r.ownership === 'B' ? 'border-violet-500/50 bg-violet-500/5'
+                        : 'border-primary/40 bg-muted/20'
+                      : r.ownership === 'A' ? 'border-blue-500/20 hover:border-blue-500/35'
+                      : r.ownership === 'B' ? 'border-violet-500/20 hover:border-violet-500/35'
+                      : 'border-border/60 hover:border-border'
                   )}>
                     {/* Avatar + navn */}
                     <div className="flex items-start gap-2">
@@ -657,10 +685,10 @@ function RecipientsTab() {
                       </div>
                       {/* Edit/delete */}
                       <div className="flex gap-0.5 shrink-0">
-                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground" onClick={() => openEditing(r)}>
+                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-foreground" onClick={(e) => { e.stopPropagation(); openEditing(r) }}>
                           <Pencil className="h-3 w-3" />
                         </button>
-                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-red-400" onClick={() => removeRecipient(r.id)}>
+                        <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground/50 hover:text-red-400" onClick={(e) => { e.stopPropagation(); removeRecipient(r.id) }}>
                           <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
@@ -696,12 +724,103 @@ function RecipientsTab() {
         ))
       )}
 
+      {/* Person-hendelser panel */}
+      {selectedId && (() => {
+        const person = recipients.find((r) => r.id === selectedId)
+        if (!person) return null
+        const autoEvs = deriveAutoEvents([person], events, weightRules, settings)
+        const storedEvs = events.filter((e) => e.recipientId === selectedId)
+        const allEvs: import('@/types/gifts').GiftEvent[] = [
+          ...storedEvs,
+          ...autoEvs.filter((ae) => !storedEvs.some((se) => se.occasion === ae.occasion)),
+        ]
+        return (
+          <div className="rounded-lg border border-border/60 bg-card/30 p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">{person.name} — hendelser</p>
+              <button className="text-xs text-muted-foreground/50 hover:text-muted-foreground" onClick={() => setSelectedId(null)}>✕</button>
+            </div>
+            <div className="space-y-1.5">
+              {allEvs.length === 0 && (
+                <p className="text-xs text-muted-foreground/60 py-1">Ingen hendelser ennå</p>
+              )}
+              {allEvs.map((ev) => {
+                const isAuto = !storedEvs.some((se) => se.id === ev.id)
+                const amount = ev.manualAmount ?? ev.calculatedAmount
+                const status = storedEvs.find((se) => se.occasion === ev.occasion)?.status ?? 'planlagt'
+                return (
+                  <div key={ev.id} className={cn(
+                    'flex items-center justify-between rounded border px-2.5 py-1.5 text-xs transition-colors',
+                    status === 'kjøpt' ? 'border-green-500/20 bg-green-500/5' :
+                    status === 'droppet' ? 'border-border/20 bg-muted/5 opacity-50' :
+                    'border-border/30 bg-card/20'
+                  )}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium">{OCCASION_LABELS[ev.occasion]}</span>
+                      <span className="text-muted-foreground">
+                        {ev.date
+                          ? new Date(ev.date).toLocaleDateString('no-NO', { day: 'numeric', month: 'short' })
+                          : ev.month ? fmtMonth(ev.month) : '—'}
+                      </span>
+                      <span className="font-mono text-muted-foreground">{fmtNOK(amount)}</span>
+                      {isAuto && <span className="text-muted-foreground/30">auto</span>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {status === 'kjøpt' ? (
+                        <button
+                          className="px-2 py-0.5 rounded border border-green-500/30 text-green-400 bg-green-500/10"
+                          onClick={() => resetEventStatus(selectedId, ev.occasion)}
+                        >✓ Kjøpt</button>
+                      ) : (
+                        <button
+                          className="px-2 py-0.5 rounded border border-border/30 text-muted-foreground/60 hover:border-green-500/30 hover:text-green-400"
+                          onClick={() => promoteEvent(ev, 'kjøpt')}
+                        >Kjøpt</button>
+                      )}
+                      {status === 'droppet' ? (
+                        <button
+                          className="px-2 py-0.5 rounded border border-red-500/20 text-red-400/70 hover:text-muted-foreground"
+                          onClick={() => resetEventStatus(selectedId, ev.occasion)}
+                        >↩ Angre</button>
+                      ) : (
+                        <button
+                          className="px-2 py-0.5 rounded border border-border/20 text-muted-foreground/40 hover:text-red-400 hover:border-red-500/20"
+                          onClick={() => promoteEvent(ev, 'droppet')}
+                        >Dropp</button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <button
+              className="text-xs text-muted-foreground/50 hover:text-muted-foreground border border-dashed border-border/30 rounded px-3 py-1.5 w-full"
+              onClick={() => { setSpecialEventKey((k) => k + 1); setSpecialEventRecipient(selectedId) }}
+            >
+              + Legg til spesiell hendelse
+            </button>
+          </div>
+        )
+      })()}
+
       <RecipientModal
         key={modalKey}
         open={adding || editing !== null}
         initial={editing ?? undefined}
         onSave={handleSave}
         onClose={() => { setAdding(false); setEditing(null) }}
+      />
+
+      {/* EventModal for spesielle hendelser */}
+      <EventModal
+        key={specialEventKey}
+        open={specialEventRecipient !== null}
+        defaultRecipientId={specialEventRecipient ?? undefined}
+        recipients={recipients}
+        settings={settings}
+        weightRules={weightRules}
+        onSave={(ev) => { addEvent(ev); setSpecialEventRecipient(null) }}
+        onClose={() => setSpecialEventRecipient(null)}
       />
     </div>
   )
@@ -907,160 +1026,6 @@ function RecipientModal({
 
 // ─── Hendelser ──────────────────────────────────────────────────
 
-function EventsTab() {
-  const events = useGiftStore((s) => s.events)
-  const recipients = useGiftStore((s) => s.recipients)
-  const settings = useGiftStore((s) => s.settings)
-  const weightRules = useGiftStore((s) => s.weightRules)
-  const ownershipLabels = ownershipLabelsFor(settings)
-  const addEvent = useGiftStore((s) => s.addEvent)
-  const updateEvent = useGiftStore((s) => s.updateEvent)
-  const removeEvent = useGiftStore((s) => s.removeEvent)
-
-  const [editing, setEditing] = useState<GiftEvent | null>(null)
-  const [adding, setAdding] = useState(false)
-  const [filter, setFilter] = useState<EventStatus | 'alle'>('alle')
-
-  const recipientMap = useMemo(() => new Map(recipients.map((r) => [r.id, r])), [recipients])
-
-  const filtered = useMemo(() => {
-    const evs = filter === 'alle' ? events : events.filter((e) => e.status === filter)
-    return [...evs].sort((a, b) => {
-      const da = a.date ?? `9999-${String(a.month ?? 12).padStart(2, '0')}-01`
-      const db = b.date ?? `9999-${String(b.month ?? 12).padStart(2, '0')}-01`
-      return da.localeCompare(db)
-    })
-  }, [events, filter])
-
-  function handleSave(ev: GiftEvent) {
-    if (events.find((e) => e.id === ev.id)) {
-      updateEvent(ev.id, ev)
-    } else {
-      addEvent({ ...ev, id: crypto.randomUUID() })
-    }
-    setEditing(null)
-    setAdding(false)
-  }
-
-  const totalPlanned = filtered.reduce((s, e) => s + (e.manualAmount ?? e.calculatedAmount), 0)
-
-  return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex gap-1">
-          {(['alle', 'planlagt', 'kjøpt', 'droppet'] as const).map((s) => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={cn(
-                'text-xs px-2.5 py-1 rounded border transition-colors',
-                filter === s
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {s === 'alle' ? 'Alle' : STATUS_LABELS[s]}
-            </button>
-          ))}
-        </div>
-        <Button size="sm" disabled={recipients.length === 0} onClick={() => setAdding(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1" /> Legg til
-        </Button>
-      </div>
-
-      {recipients.length === 0 && (
-        <p className="text-xs text-muted-foreground bg-muted/20 rounded px-3 py-2">
-          Legg til mottakere først for å registrere gavehendelser.
-        </p>
-      )}
-
-      <div className="space-y-2">
-        {filtered.map((ev) => {
-          const rec = recipientMap.get(ev.recipientId)
-          const amount = ev.manualAmount ?? ev.calculatedAmount
-          return (
-            <div key={ev.id} className={cn(
-              'rounded-lg border px-3 py-2.5',
-              ev.status === 'kjøpt' ? 'border-green-500/30 bg-green-500/5' :
-              ev.status === 'droppet' ? 'border-border/30 opacity-50 bg-muted/10' :
-              'border-border bg-card/30'
-            )}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium">{rec?.name ?? '—'}</span>
-                    <span className="text-xs text-muted-foreground">{OCCASION_LABELS[ev.occasion]}</span>
-                    <span className={cn(
-                      'text-xs px-1 py-0.5 rounded border',
-                      ev.ownership === 'A' ? 'border-blue-500/40 text-blue-400' :
-                      ev.ownership === 'B' ? 'border-violet-500/40 text-violet-400' :
-                      'border-border text-muted-foreground'
-                    )}>
-                      {ownershipLabels[ev.ownership]}
-                    </span>
-                    {ev.isLocked && <span className="text-xs text-amber-400 border border-amber-500/30 px-1 rounded">Låst</span>}
-                  </div>
-                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-xs text-muted-foreground">
-                      {ev.date ?? (ev.month ? fmtMonth(ev.month) : 'Udatert')}
-                    </span>
-                    <span className="text-xs font-mono text-foreground">{fmtNOK(amount)}</span>
-                    {ev.manualAmount !== undefined && (
-                      <span className="text-xs text-amber-400">Manuelt</span>
-                    )}
-                    {ev.actualAmount !== undefined && (
-                      <span className={cn('text-xs font-mono', ev.actualAmount > amount ? 'text-red-400' : 'text-green-400')}>
-                        Faktisk: {fmtNOK(ev.actualAmount)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(ev)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-red-400"
-                    onClick={() => removeEvent(ev.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-        {filtered.length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            <Calendar className="h-6 w-6 mx-auto mb-2 opacity-30" />
-            <p className="text-sm mb-3">Ingen hendelser{recipients.length === 0 ? ' — legg til mottakere først' : ''}</p>
-            {recipients.length > 0 && (
-              <Button size="sm" variant="outline" onClick={() => setAdding(true)}>Legg til hendelse</Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {filtered.length > 0 && (
-        <div className="flex justify-end pt-1 border-t border-border/40">
-          <span className="text-xs text-muted-foreground">Total: <span className="font-mono text-foreground">{fmtNOK(totalPlanned)}</span></span>
-        </div>
-      )}
-
-      <EventModal
-        open={adding || editing !== null}
-        initial={editing ?? undefined}
-        recipients={recipients}
-        settings={settings}
-        weightRules={weightRules}
-        onSave={handleSave}
-        onClose={() => { setAdding(false); setEditing(null) }}
-      />
-    </div>
-  )
-}
 
 function EventModal({
   open, initial, defaultRecipientId, defaultOccasion, recipients, settings, weightRules, onSave, onClose,
@@ -1856,7 +1821,6 @@ export function GiftPage() {
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'oversikt' && <OverviewTab setTab={setActiveTab} />}
         {activeTab === 'mottakere' && <RecipientsTab />}
-        {activeTab === 'hendelser' && <EventsTab />}
         {activeTab === 'fordeling' && <DistributionTab />}
         {activeTab === 'spareplan' && <SavingsPlanTab />}
         {activeTab === 'satser' && <RatesTab />}
