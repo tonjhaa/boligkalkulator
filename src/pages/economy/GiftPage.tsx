@@ -227,7 +227,7 @@ function RecipientsTab() {
           <div key={r.id} className="flex items-center justify-between rounded-lg border border-border bg-card/30 px-3 py-2.5">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium truncate">{r.name}</span>
+                <span className="text-sm font-medium truncate" title={r.name}>{r.name}</span>
                 <span className={cn(
                   'text-xs px-1.5 py-0.5 rounded border shrink-0',
                   r.ownership === 'A' ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' :
@@ -854,9 +854,9 @@ function DistributionTab() {
               <span className="text-xs text-violet-400 w-8 tabular-nums">{pB}%</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground w-8 text-right truncate">{nameA || 'A'}</span>
+              <span className="text-xs text-muted-foreground w-8 text-right truncate" title={nameA || 'A'}>{nameA || 'A'}</span>
               <div className="w-40" />
-              <span className="text-xs text-muted-foreground w-8 truncate">{nameB || 'B'}</span>
+              <span className="text-xs text-muted-foreground w-8 truncate" title={nameB || 'B'}>{nameB || 'B'}</span>
             </div>
           </div>
         )}
