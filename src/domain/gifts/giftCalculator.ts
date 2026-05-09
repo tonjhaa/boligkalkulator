@@ -342,6 +342,61 @@ export function calculateGiftResult(
   }
 }
 
+/**
+ * Utleder auto-genererte gavehendelser fra mottakerdata.
+ * - receivesBirthdayGift + birthDate  → neste bursdag
+ * - receivesChristmasGift             → jul (desember)
+ * Returnerer kun hendelser som ikke allerede finnes i storedEvents (per recipientId + occasion).
+ */
+export function deriveAutoEvents(
+  recipients: GiftRecipient[],
+  storedEvents: GiftEvent[],
+  weightRules: WeightRules,
+  settings: GiftSettings,
+): GiftEvent[] {
+  const manualKeys = new Set(storedEvents.map((e) => `${e.recipientId}-${e.occasion}`))
+  const auto: GiftEvent[] = []
+  const today = new Date()
+  const currentYear = today.getFullYear()
+
+  for (const r of recipients) {
+    if (r.receivesBirthdayGift && r.birthDate && !manualKeys.has(`${r.id}-bursdag`)) {
+      const [, mo, day] = r.birthDate.split('-').map(Number)
+      const thisYearDate = new Date(currentYear, mo - 1, day)
+      const bYear = thisYearDate < today ? currentYear + 1 : currentYear
+      const date = `${bYear}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const event: GiftEvent = {
+        id: `auto-bursdag-${r.id}`,
+        recipientId: r.id,
+        occasion: 'bursdag',
+        date,
+        ownership: r.ownership,
+        calculatedAmount: 0,
+        isLocked: false,
+        status: 'planlagt',
+      }
+      const raw = calculateGiftAmount(event, r, weightRules)
+      auto.push({ ...event, calculatedAmount: roundGiftAmount(raw, settings.roundingNearest) })
+    }
+
+    if (r.receivesChristmasGift && !manualKeys.has(`${r.id}-jul`)) {
+      const event: GiftEvent = {
+        id: `auto-jul-${r.id}`,
+        recipientId: r.id,
+        occasion: 'jul',
+        month: 12,
+        ownership: r.ownership,
+        calculatedAmount: 0,
+        isLocked: false,
+        status: 'planlagt',
+      }
+      const raw = calculateGiftAmount(event, r, weightRules)
+      auto.push({ ...event, calculatedAmount: roundGiftAmount(raw, settings.roundingNearest) })
+    }
+  }
+  return auto
+}
+
 /** Beregner faktisk vs planlagt avvik */
 export function calculateActualVsPlanned(events: GiftEvent[]): {
   planned: number

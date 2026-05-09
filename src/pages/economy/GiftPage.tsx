@@ -19,7 +19,7 @@ import {
 } from '@/domain/gifts/defaultWeights'
 import {
   calculateGiftAmount, calculateGiftResult, calculateActualVsPlanned,
-  giftAmountExplanation, roundGiftAmount,
+  giftAmountExplanation, roundGiftAmount, deriveAutoEvents,
 } from '@/domain/gifts/giftCalculator'
 import type {
   GiftRecipient, GiftEvent, Occasion, RelationshipType,
@@ -78,22 +78,28 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
   const weightRules = useGiftStore((s) => s.weightRules)
   const [prefill, setPrefill] = useState<{ recipientId: string; occasion: Occasion } | null>(null)
 
-  const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
+  const autoEvents = useMemo(
+    () => deriveAutoEvents(recipients, events, weightRules, settings),
+    [recipients, events, weightRules, settings]
+  )
+
+  const effectiveEvents = useMemo(() => [...events, ...autoEvents], [events, autoEvents])
+
+  const result = useMemo(() => calculateGiftResult(effectiveEvents, settings, recipients), [effectiveEvents, settings, recipients])
 
   const recipientMap = useMemo(
     () => new Map(recipients.map((r) => [r.id, r])),
     [recipients]
   )
 
-  const activeEvents = events.filter((e) => e.status !== 'droppet')
   const hasRecipients = recipients.length > 0
-  const hasEvents = activeEvents.length > 0
+  const hasEvents = effectiveEvents.filter((e) => e.status !== 'droppet').length > 0
 
   // Neste hendelser med dato, sortert — bursdager fremhevet
   const upcoming = useMemo(() => {
     const today = new Date()
     const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())
-    return events
+    return effectiveEvents
       .filter((e) => e.status !== 'droppet' && e.date)
       .map((e) => {
         const d = new Date(e.date!)
@@ -108,22 +114,23 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
       .filter(({ nextDate }) => nextDate <= nextYear)
       .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime())
       .slice(0, 8)
-  }, [events])
+  }, [effectiveEvents])
 
+  // Foreslåtte hendelser: kun de som IKKE dekkes av auto-events (dvs. mangler birthDate)
   const missingEvents = useMemo(() => {
     const suggestions: { recipient: GiftRecipient; occasion: Occasion }[] = []
     for (const r of recipients) {
-      const hasB = events.some((e) => e.recipientId === r.id && e.occasion === 'bursdag')
+      const hasB = effectiveEvents.some((e) => e.recipientId === r.id && e.occasion === 'bursdag')
       if (r.receivesBirthdayGift && r.birthDate && !hasB) {
         suggestions.push({ recipient: r, occasion: 'bursdag' })
       }
-      const hasJ = events.some((e) => e.recipientId === r.id && e.occasion === 'jul')
+      const hasJ = effectiveEvents.some((e) => e.recipientId === r.id && e.occasion === 'jul')
       if (r.receivesChristmasGift && !hasJ) {
         suggestions.push({ recipient: r, occasion: 'jul' })
       }
     }
     return suggestions
-  }, [recipients, events])
+  }, [recipients, effectiveEvents])
 
   const nameA = settings.memberA.name || 'Person A'
   const nameB = settings.memberB.name || 'Person B'
