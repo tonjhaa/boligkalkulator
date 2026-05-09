@@ -644,6 +644,11 @@ function EventModal({
         <DialogHeader>
           <DialogTitle>{initial?.id ? 'Rediger hendelse' : 'Ny gavehendelse'}</DialogTitle>
         </DialogHeader>
+        {recipients.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            Legg til en mottaker under «Mottakere» før du oppretter en gavehendelse.
+          </p>
+        ) : null}
         <div className="space-y-3">
           <div className="space-y-1">
             <Label className="text-xs">Mottaker</Label>
@@ -688,6 +693,9 @@ function EventModal({
             <div className="space-y-1">
               <Label className="text-xs">Dato</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs" />
+              {!date && !month && (
+                <p className="text-[10px] text-muted-foreground">Uten dato vises ikke gaven i månedsoversikten.</p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Eller måned</Label>
