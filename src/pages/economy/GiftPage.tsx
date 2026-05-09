@@ -187,13 +187,16 @@ function OverviewTab() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{rec?.name ?? '—'}</span>
                       <span className="text-muted-foreground">{OCCASION_LABELS[e.occasion]}</span>
-                      {isSoon && <span className="text-amber-400">·</span>}
+                      {isSoon && <span className="text-amber-400 font-bold">!</span>}
                     </div>
                     <p className={cn('mt-0.5', isSoon ? 'text-amber-400' : 'text-muted-foreground')}>
                       {fmtRelDate(nextDate)}
+                      <span className="ml-1.5 opacity-50">
+                        {nextDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: nextDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}
+                      </span>
                       {e.occasion === 'bursdag' && rec?.birthDate && (
-                        <span className="ml-1 opacity-60">
-                          ({new Date().getFullYear() - parseInt(rec.birthDate.split('-')[0])} år)
+                        <span className="ml-1 opacity-50">
+                          · {nextDate.getFullYear() - parseInt(rec.birthDate.split('-')[0])} år
                         </span>
                       )}
                     </p>
@@ -211,6 +214,103 @@ function OverviewTab() {
           Ingen kommende hendelser med dato. Legg til datoer på hendelsene dine.
         </p>
       )}
+
+      {/* Gavebelastning per måned — søylediagram */}
+      {hasData && result.monthlyBreakdown.some((m) => m.totalCost > 0) && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Gavebelastning per måned</p>
+          <MonthLoadChart months={result.monthlyBreakdown} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MonthLoadChart({ months }: { months: import('@/types/gifts').MonthlyBreakdown[] }) {
+  const MONTH_SHORT = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
+  const maxCost = Math.max(...months.map((m) => m.totalCost), 1)
+  const currentMonth = new Date().getMonth() + 1
+  const [hovered, setHovered] = useState<number | null>(null)
+
+  return (
+    <div className="space-y-1">
+      {/* Bars */}
+      <div className="flex items-end gap-0.5 h-20">
+        {months.map((m) => {
+          const pct = m.totalCost / maxCost
+          const isHeavy = m.isHeavy
+          const isCurrent = m.month === currentMonth
+          const isHovered = hovered === m.month
+          return (
+            <div
+              key={m.month}
+              className="flex-1 flex flex-col justify-end cursor-default"
+              onMouseEnter={() => setHovered(m.month)}
+              onMouseLeave={() => setHovered(null)}
+            >
+              <div
+                className={cn(
+                  'rounded-t transition-opacity',
+                  isHeavy
+                    ? 'bg-amber-500/70'
+                    : isCurrent
+                    ? 'bg-primary/60'
+                    : 'bg-muted-foreground/30',
+                  isHovered && 'opacity-100',
+                  !isHovered && 'opacity-80'
+                )}
+                style={{ height: m.totalCost > 0 ? `${Math.max(pct * 100, 4)}%` : '2px' }}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Labels */}
+      <div className="flex gap-0.5">
+        {months.map((m) => (
+          <div
+            key={m.month}
+            className={cn(
+              'flex-1 text-center text-xs leading-tight cursor-default',
+              m.month === currentMonth ? 'text-primary' : 'text-muted-foreground/50',
+              m.isHeavy && 'text-amber-400'
+            )}
+            onMouseEnter={() => setHovered(m.month)}
+            onMouseLeave={() => setHovered(null)}
+          >
+            {MONTH_SHORT[m.month - 1]}
+          </div>
+        ))}
+      </div>
+
+      {/* Tooltip for hovered month */}
+      {hovered !== null && (() => {
+        const m = months[hovered - 1]
+        if (!m || m.totalCost === 0) return (
+          <p className="text-xs text-muted-foreground text-center py-1">{fmtMonth(hovered)} — ingen gaver</p>
+        )
+        return (
+          <div className={cn(
+            'rounded border px-3 py-2 text-xs',
+            m.isHeavy ? 'border-amber-500/30 bg-amber-500/5 text-amber-400' : 'border-border bg-muted/10 text-foreground'
+          )}>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">{fmtMonth(hovered)}{m.isHeavy ? ' ⚡ Gaveintensiv' : ''}</span>
+              <span className="font-mono">{fmtNOK(m.totalCost)}</span>
+            </div>
+            {m.events.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {m.events.map((e) => (
+                  <span key={e.id} className="opacity-70 border border-current/20 rounded px-1 py-0.5">
+                    {OCCASION_LABELS[e.occasion]}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
