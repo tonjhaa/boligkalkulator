@@ -1254,8 +1254,14 @@ function SavingsPlanTab() {
   const events = useGiftStore((s) => s.events)
   const settings = useGiftStore((s) => s.settings)
   const recipients = useGiftStore((s) => s.recipients)
+  const weightRules = useGiftStore((s) => s.weightRules)
 
-  const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
+  const effectiveEvents = useMemo(
+    () => [...events, ...deriveAutoEvents(recipients, events, weightRules, settings)],
+    [events, recipients, weightRules, settings]
+  )
+
+  const result = useMemo(() => calculateGiftResult(effectiveEvents, settings, recipients), [effectiveEvents, settings, recipients])
   const [showAll, setShowAll] = useState(false)
 
   const nameA = settings.memberA.name
