@@ -38,6 +38,23 @@ function fmtMonth(m: number) {
   return names[m - 1] ?? ''
 }
 
+
+function lifePhaseFromBirthDate(dateStr: string): LifePhase | null {
+  if (!dateStr) return null
+  const birth = new Date(dateStr)
+  if (isNaN(birth.getTime())) return null
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  if (age < 0) return null
+  if (age <= 12) return 'barn_0_12'
+  if (age <= 17) return 'tenåring'
+  if (age <= 25) return 'ung_voksen'
+  if (age <= 66) return 'voksen'
+  return 'senior'
+}
+
 // ─── Interne tabs ───────────────────────────────────────────────
 
 type GiftTab = 'oversikt' | 'mottakere' | 'hendelser' | 'fordeling' | 'spareplan' | 'satser'
@@ -312,6 +329,11 @@ function RecipientModal({
     setNotes(initial?.notes ?? '')
   }, [initial])
 
+  useEffect(() => {
+    const auto = lifePhaseFromBirthDate(birthDate)
+    if (auto) setLifePhase(auto)
+  }, [birthDate])
+
   function handleSave() {
     if (!name.trim()) return
     const r: GiftRecipient = {
@@ -368,7 +390,12 @@ function RecipientModal({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">Livsfase</Label>
+              <Label className="text-xs flex items-center gap-1.5">
+                Livsfase
+                {birthDate && lifePhaseFromBirthDate(birthDate) === lifePhase && (
+                  <span className="text-xs text-muted-foreground font-normal">(automatisk)</span>
+                )}
+              </Label>
               <Select value={lifePhase} onValueChange={(v) => setLifePhase(v as LifePhase)}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
