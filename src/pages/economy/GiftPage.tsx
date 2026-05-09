@@ -174,9 +174,9 @@ function MetricCard({ label, value, sub, colorClass }: {
 }) {
   return (
     <div className="rounded-lg border border-border bg-card/50 p-3">
-      <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">{label}</p>
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">{label}</p>
       <p className={cn('text-lg font-bold font-mono', colorClass ?? 'text-foreground')}>{value}</p>
-      {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
+      {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -229,7 +229,7 @@ function RecipientsTab() {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium truncate">{r.name}</span>
                 <span className={cn(
-                  'text-[10px] px-1.5 py-0.5 rounded border shrink-0',
+                  'text-xs px-1.5 py-0.5 rounded border shrink-0',
                   r.ownership === 'A' ? 'border-blue-500/40 text-blue-400 bg-blue-500/10' :
                   r.ownership === 'B' ? 'border-violet-500/40 text-violet-400 bg-violet-500/10' :
                   'border-border text-muted-foreground'
@@ -237,10 +237,10 @@ function RecipientsTab() {
                   {OWNERSHIP_LABELS[r.ownership]}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {RELATIONSHIP_LABELS[r.relationshipType]} · {CLOSENESS_LABELS[r.closeness]} · {LIFE_PHASE_LABELS[r.lifePhase]}
               </p>
-              <p className="text-[11px] text-muted-foreground">Neste: {nextEvent(r.id)}</p>
+              <p className="text-xs text-muted-foreground">Neste: {nextEvent(r.id)}</p>
             </div>
             <div className="flex gap-1 shrink-0">
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(r)}>
@@ -504,25 +504,25 @@ function EventsTab() {
                     <span className="text-sm font-medium">{rec?.name ?? '—'}</span>
                     <span className="text-xs text-muted-foreground">{OCCASION_LABELS[ev.occasion]}</span>
                     <span className={cn(
-                      'text-[10px] px-1 py-0.5 rounded border',
+                      'text-xs px-1 py-0.5 rounded border',
                       ev.ownership === 'A' ? 'border-blue-500/40 text-blue-400' :
                       ev.ownership === 'B' ? 'border-violet-500/40 text-violet-400' :
                       'border-border text-muted-foreground'
                     )}>
                       {OWNERSHIP_LABELS[ev.ownership]}
                     </span>
-                    {ev.isLocked && <span className="text-[10px] text-amber-400 border border-amber-500/30 px-1 rounded">Låst</span>}
+                    {ev.isLocked && <span className="text-xs text-amber-400 border border-amber-500/30 px-1 rounded">Låst</span>}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {ev.date ?? (ev.month ? fmtMonth(ev.month) : 'Udatert')}
                     </span>
-                    <span className="text-[11px] font-mono text-foreground">{fmtNOK(amount)}</span>
+                    <span className="text-xs font-mono text-foreground">{fmtNOK(amount)}</span>
                     {ev.manualAmount !== undefined && (
-                      <span className="text-[10px] text-amber-400">Manuelt</span>
+                      <span className="text-xs text-amber-400">Manuelt</span>
                     )}
                     {ev.actualAmount !== undefined && (
-                      <span className={cn('text-[11px] font-mono', ev.actualAmount > amount ? 'text-red-400' : 'text-green-400')}>
+                      <span className={cn('text-xs font-mono', ev.actualAmount > amount ? 'text-red-400' : 'text-green-400')}>
                         Faktisk: {fmtNOK(ev.actualAmount)}
                       </span>
                     )}
@@ -694,7 +694,7 @@ function EventModal({
               <Label className="text-xs">Dato</Label>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs" />
               {!date && !month && (
-                <p className="text-[10px] text-muted-foreground">Uten dato vises ikke gaven i månedsoversikten.</p>
+                <p className="text-xs text-muted-foreground">Uten dato vises ikke gaven i månedsoversikten.</p>
               )}
             </div>
             <div className="space-y-1">
@@ -715,7 +715,7 @@ function EventModal({
           <div className="rounded bg-muted/20 px-3 py-2 text-xs">
             <p className="text-muted-foreground">Foreslått beløp: <span className="font-mono text-foreground font-semibold">{fmtNOK(suggestedAmount)}</span></p>
             {recipient && (
-              <p className="text-muted-foreground mt-0.5 text-[10px]">
+              <p className="text-muted-foreground mt-0.5 text-xs">
                 {giftAmountExplanation(
                   { id: '', recipientId, occasion, ownership, calculatedAmount: 0, isLocked: false, status: 'planlagt' },
                   recipient, weightRules
@@ -845,18 +845,18 @@ function DistributionTab() {
         </div>
         {totalIncome > 0 && (
           <div className="space-y-1">
-            <p className="text-[10px] text-muted-foreground">Inntektsfordeling</p>
+            <p className="text-xs text-muted-foreground">Inntektsfordeling</p>
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-blue-400 w-8 text-right tabular-nums">{pA}%</span>
+              <span className="text-xs text-blue-400 w-8 text-right tabular-nums">{pA}%</span>
               <div className="w-40 h-2 rounded-full bg-muted overflow-hidden">
                 <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pA}%` }} />
               </div>
-              <span className="text-[11px] text-violet-400 w-8 tabular-nums">{pB}%</span>
+              <span className="text-xs text-violet-400 w-8 tabular-nums">{pB}%</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-muted-foreground w-8 text-right truncate">{nameA || 'A'}</span>
+              <span className="text-xs text-muted-foreground w-8 text-right truncate">{nameA || 'A'}</span>
               <div className="w-40" />
-              <span className="text-[11px] text-muted-foreground w-8 truncate">{nameB || 'B'}</span>
+              <span className="text-xs text-muted-foreground w-8 truncate">{nameB || 'B'}</span>
             </div>
           </div>
         )}
@@ -878,7 +878,7 @@ function DistributionTab() {
               )}
             >
               <p className="font-medium">{DISTRIBUTION_LABELS[model]}</p>
-              <p className="text-[10px] mt-0.5 text-muted-foreground">
+              <p className="text-xs mt-0.5 text-muted-foreground">
                 {model === '50_50' && 'Dere deler likt på alle gaver, uansett hvem som kjenner mottakeren.'}
                 {model === 'inntekt' && 'Den med høyest inntekt betaler mer. Rettferdig hvis dere tjener ulikt.'}
                 {model === 'eierskap' && 'Du betaler egne familiegaver, partneren sine. Felles gaver deles etter inntekt.'}
@@ -901,7 +901,7 @@ function DistributionTab() {
               onChange={(e) => updateSettings({ bufferPercent: parseFloat(e.target.value) || 0 })}
               className="h-8 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground">Anbefalt: 12 %</p>
+            <p className="text-xs text-muted-foreground">Anbefalt: 12 %</p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Maks å bruke på gaver i år</Label>
@@ -984,7 +984,7 @@ function SavingsPlanTab() {
         <MetricCard label={`${nameA} år`} value={fmtNOK(result.personATotal)} colorClass="text-blue-400" />
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Flat månedlig sparing anbefales som utgangspunkt. Månedlig beløp er jevnt fordelt over 12 måneder, inkludert {settings.bufferPercent} % buffer.
       </p>
 
@@ -1011,7 +1011,7 @@ function SavingsPlanTab() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="font-medium w-20">{fmtMonth(m.month)}</span>
-                  {m.isHeavy && <span className="text-amber-400 text-[10px]">Gaveintensiv</span>}
+                  {m.isHeavy && <span className="text-amber-400 text-xs">Gaveintensiv</span>}
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground text-blue-400/70">{fmtNOK(m.personAShare)}</span>
@@ -1022,7 +1022,7 @@ function SavingsPlanTab() {
               {m.events.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {m.events.map((e) => (
-                    <span key={e.id} className="text-[10px] text-muted-foreground border border-border/30 rounded px-1 py-0.5">
+                    <span key={e.id} className="text-xs text-muted-foreground border border-border/30 rounded px-1 py-0.5">
                       {e.notes || OCCASION_LABELS[e.occasion]}
                     </span>
                   ))}
