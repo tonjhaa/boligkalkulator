@@ -62,7 +62,6 @@ export function giftAmountExplanation(
   const wA = weights.lifePhaseWeights[recipient.lifePhase] ?? 1.0
   const age = recipientAge(recipient)
   const wJ = getMilestoneWeight(event.occasion, age)
-  const factors = [base, wR, wN, wA, wJ].filter(f => f !== 1.0 || true)
   return `${base} kr × ${wR} (relasjon) × ${wN} (nærhet) × ${wA} (livsfase) × ${wJ} (milepæl)`
 }
 

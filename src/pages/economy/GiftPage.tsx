@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import {
-  Gift, Plus, Trash2, Pencil, Check, X, AlertTriangle, Info,
+  Gift, Plus, Trash2, Pencil, AlertTriangle, Info,
   Calendar, Users, Settings, TrendingUp, Wallet, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useGiftStore, createGiftEvent } from '@/application/useGiftStore'
+import { useGiftStore } from '@/application/useGiftStore'
 import {
   OCCASION_LABELS, RELATIONSHIP_LABELS, CLOSENESS_LABELS,
   LIFE_PHASE_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, DISTRIBUTION_LABELS,
@@ -18,7 +18,7 @@ import {
 } from '@/domain/gifts/defaultWeights'
 import {
   calculateGiftAmount, calculateGiftResult, calculateActualVsPlanned,
-  giftAmountExplanation, roundGiftAmount, MONTH_NO,
+  giftAmountExplanation, roundGiftAmount,
 } from '@/domain/gifts/giftCalculator'
 import type {
   GiftRecipient, GiftEvent, Occasion, RelationshipType,
@@ -613,9 +613,6 @@ function EventModal({
     return roundGiftAmount(raw, settings.roundingNearest)
   }, [recipient, occasion, ownership, date, month, weightRules, settings.roundingNearest, recipientId])
 
-  // Auto-set ownership from recipient when recipientId changes
-  const autoOwnership = recipient?.ownership ?? 'felles'
-
   function handleSave() {
     if (!recipientId) return
     const ev: GiftEvent = {
@@ -1071,7 +1068,6 @@ function RatesTab() {
 
       <WeightSection
         title="Grunnbeløp per anledning (kr)"
-        id="anledning"
         expanded={expanded === 'anledning'}
         onToggle={() => toggleSection('anledning')}
       >
@@ -1094,7 +1090,6 @@ function RatesTab() {
 
       <WeightSection
         title="Relasjonsvekter"
-        id="relasjon"
         expanded={expanded === 'relasjon'}
         onToggle={() => toggleSection('relasjon')}
       >
@@ -1118,7 +1113,6 @@ function RatesTab() {
 
       <WeightSection
         title="Nærhetsvekter"
-        id="nærhet"
         expanded={expanded === 'nærhet'}
         onToggle={() => toggleSection('nærhet')}
       >
@@ -1142,7 +1136,6 @@ function RatesTab() {
 
       <WeightSection
         title="Livsfasevekter"
-        id="livsfase"
         expanded={expanded === 'livsfase'}
         onToggle={() => toggleSection('livsfase')}
       >
@@ -1177,9 +1170,9 @@ function RatesTab() {
 }
 
 function WeightSection({
-  title, id, expanded, onToggle, children,
+  title, expanded, onToggle, children,
 }: {
-  title: string; id: string; expanded: boolean; onToggle: () => void; children: React.ReactNode
+  title: string; expanded: boolean; onToggle: () => void; children: React.ReactNode
 }) {
   return (
     <div className="rounded border border-border overflow-hidden">

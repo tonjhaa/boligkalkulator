@@ -37,8 +37,8 @@ import type {
   DebtAccount,
   BudgetTemplate,
   PartnerAccount,
-  partnerNonBsuEquity,
 } from '@/types/economy'
+import { partnerNonBsuEquity } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
 import { FondPage } from '@/pages/economy/FondPage'
 import { cn } from '@/lib/utils'
