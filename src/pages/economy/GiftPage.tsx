@@ -70,10 +70,13 @@ const TABS: { id: GiftTab; label: string; Icon: React.FC<{ className?: string }>
 
 // ─── Oversikt ───────────────────────────────────────────────────
 
-function OverviewTab() {
+function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
   const events = useGiftStore((s) => s.events)
   const settings = useGiftStore((s) => s.settings)
   const recipients = useGiftStore((s) => s.recipients)
+  const addEvent = useGiftStore((s) => s.addEvent)
+  const weightRules = useGiftStore((s) => s.weightRules)
+  const [prefill, setPrefill] = useState<{ recipientId: string; occasion: Occasion } | null>(null)
 
   const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
 
@@ -81,6 +84,10 @@ function OverviewTab() {
     () => new Map(recipients.map((r) => [r.id, r])),
     [recipients]
   )
+
+  const activeEvents = events.filter((e) => e.status !== 'droppet')
+  const hasRecipients = recipients.length > 0
+  const hasEvents = activeEvents.length > 0
 
   // Neste hendelser med dato, sortert — bursdager fremhevet
   const upcoming = useMemo(() => {
@@ -103,12 +110,26 @@ function OverviewTab() {
       .slice(0, 8)
   }, [events])
 
+  const missingEvents = useMemo(() => {
+    const suggestions: { recipient: GiftRecipient; occasion: Occasion }[] = []
+    for (const r of recipients) {
+      const hasB = events.some((e) => e.recipientId === r.id && e.occasion === 'bursdag')
+      if (r.receivesBirthdayGift && r.birthDate && !hasB) {
+        suggestions.push({ recipient: r, occasion: 'bursdag' })
+      }
+      const hasJ = events.some((e) => e.recipientId === r.id && e.occasion === 'jul')
+      if (r.receivesChristmasGift && !hasJ) {
+        suggestions.push({ recipient: r, occasion: 'jul' })
+      }
+    }
+    return suggestions
+  }, [recipients, events])
+
   const nameA = settings.memberA.name || 'Person A'
   const nameB = settings.memberB.name || 'Person B'
   const monthlyA = result.personAMonthlySaving
   const monthlyB = result.personBMonthlySaving
   const monthlyTotal = monthlyA + monthlyB
-  const hasData = events.filter((e) => e.status !== 'droppet').length > 0
 
   function daysUntil(d: Date) {
     const today = new Date()
@@ -127,6 +148,24 @@ function OverviewTab() {
     return `Om ${months} mnd`
   }
 
+  // State A: helt tom
+  if (!hasRecipients && !hasEvents) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-16 text-center gap-4 px-6">
+        <Gift className="h-12 w-12 opacity-20" />
+        <div>
+          <p className="font-medium text-sm">Kom i gang</p>
+          <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+            Legg til mottakere — folk du gir gaver til — og hendelsene vil hjelpe deg planlegge og spare.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setTab('mottakere')}>
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> Legg til mottaker
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5 p-4">
       {/* Advarsler */}
@@ -137,10 +176,33 @@ function OverviewTab() {
         </div>
       ))}
 
+      {/* State B: mottakere men ingen hendelser */}
+      {hasRecipients && !hasEvents && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mottakere ({recipients.length})</p>
+          <div className="grid grid-cols-2 gap-2">
+            {recipients.slice(0, 6).map((r) => (
+              <div key={r.id} className="flex items-center gap-2 rounded border border-border/40 bg-muted/10 px-2.5 py-2">
+                <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-xs font-semibold shrink-0">
+                  {r.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">{r.name}</p>
+                  <p className="text-xs text-muted-foreground">{RELATIONSHIP_LABELS[r.relationshipType]}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {recipients.length > 6 && (
+            <p className="text-xs text-muted-foreground">+{recipients.length - 6} til</p>
+          )}
+        </div>
+      )}
+
       {/* Sparepuls */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Sparepuls</p>
-        {hasData ? (
+      {hasEvents && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Sparepuls</p>
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-border bg-muted/10 px-3 py-3 text-center">
               <p className="text-xs text-muted-foreground mb-1">Totalt / mnd</p>
@@ -155,13 +217,43 @@ function OverviewTab() {
               <p className="text-lg font-semibold font-mono text-violet-400">{fmtNOK(monthlyB)}</p>
             </div>
           </div>
-        ) : (
-          <div className="rounded-lg border border-border bg-muted/10 px-4 py-6 text-center text-sm text-muted-foreground">
-            <Gift className="h-7 w-7 mx-auto mb-2 opacity-30" />
-            <p>Legg til mottakere og hendelser for å beregne gavebudsjettet.</p>
+        </div>
+      )}
+
+      {/* Foreslåtte hendelser */}
+      {missingEvents.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            Foreslåtte hendelser
+          </p>
+          <div className="space-y-1.5">
+            {missingEvents.slice(0, 5).map(({ recipient: r, occasion }) => (
+              <div
+                key={r.id + occasion}
+                className="flex items-center justify-between rounded border border-dashed border-border/50 px-3 py-2 text-xs bg-muted/5"
+              >
+                <div>
+                  <span className="font-medium">{r.name}</span>
+                  <span className="text-muted-foreground ml-1.5">
+                    mangler {OCCASION_LABELS[occasion]}
+                    {occasion === 'bursdag' && r.birthDate && (
+                      <> — {new Date().getFullYear() - parseInt(r.birthDate.split('-')[0])} år</>
+                    )}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs px-2"
+                  onClick={() => setPrefill({ recipientId: r.id, occasion })}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Legg til
+                </Button>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Kommende hendelser / bursdager */}
       {upcoming.length > 0 && (
@@ -209,18 +301,32 @@ function OverviewTab() {
         </div>
       )}
 
-      {hasData && upcoming.length === 0 && (
+      {hasEvents && upcoming.length === 0 && (
         <p className="text-xs text-muted-foreground bg-muted/20 rounded px-3 py-2">
           Ingen kommende hendelser med dato. Legg til datoer på hendelsene dine.
         </p>
       )}
 
       {/* Gavebelastning per måned — søylediagram */}
-      {hasData && result.monthlyBreakdown.some((m) => m.totalCost > 0) && (
+      {hasEvents && result.monthlyBreakdown.some((m) => m.totalCost > 0) && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Gavebelastning per måned</p>
           <MonthLoadChart months={result.monthlyBreakdown} />
         </div>
+      )}
+
+      {/* EventModal for suggestions */}
+      {prefill && (
+        <EventModal
+          open
+          defaultRecipientId={prefill.recipientId}
+          defaultOccasion={prefill.occasion}
+          recipients={recipients}
+          settings={settings}
+          weightRules={weightRules}
+          onSave={(ev) => { addEvent({ ...ev, id: crypto.randomUUID() }); setPrefill(null) }}
+          onClose={() => setPrefill(null)}
+        />
       )}
     </div>
   )
@@ -736,10 +842,12 @@ function EventsTab() {
 }
 
 function EventModal({
-  open, initial, recipients, settings, weightRules, onSave, onClose,
+  open, initial, defaultRecipientId, defaultOccasion, recipients, settings, weightRules, onSave, onClose,
 }: {
   open: boolean
   initial?: GiftEvent
+  defaultRecipientId?: string
+  defaultOccasion?: Occasion
   recipients: GiftRecipient[]
   settings: ReturnType<typeof useGiftStore.getState>['settings']
   weightRules: ReturnType<typeof useGiftStore.getState>['weightRules']
@@ -758,8 +866,8 @@ function EventModal({
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
   useEffect(() => {
-    setRecipientId(initial?.recipientId ?? (recipients[0]?.id ?? ''))
-    setOccasion(initial?.occasion ?? 'bursdag')
+    setRecipientId(initial?.recipientId ?? defaultRecipientId ?? (recipients[0]?.id ?? ''))
+    setOccasion(initial?.occasion ?? defaultOccasion ?? 'bursdag')
     setDate(initial?.date ?? '')
     setMonth(initial?.month ? String(initial.month) : '')
     setOwnership(initial?.ownership ?? 'felles')
@@ -768,7 +876,7 @@ function EventModal({
     setStatus(initial?.status ?? 'planlagt')
     setActualAmount(initial?.actualAmount != null ? String(initial.actualAmount) : '')
     setNotes(initial?.notes ?? '')
-  }, [initial, recipients])
+  }, [initial, defaultRecipientId, defaultOccasion, recipients])
 
   const recipient = recipients.find((r) => r.id === recipientId)
 
@@ -1460,7 +1568,7 @@ export function GiftPage() {
 
       {/* Innhold */}
       <div className="flex-1 overflow-y-auto">
-        {activeTab === 'oversikt' && <OverviewTab />}
+        {activeTab === 'oversikt' && <OverviewTab setTab={setActiveTab} />}
         {activeTab === 'mottakere' && <RecipientsTab />}
         {activeTab === 'hendelser' && <EventsTab />}
         {activeTab === 'fordeling' && <DistributionTab />}
