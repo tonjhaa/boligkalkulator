@@ -414,9 +414,11 @@ function MonthLoadChart({ months }: { months: import('@/types/gifts').MonthlyBre
             </div>
             {m.events.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
-                {m.events.map((e) => (
-                  <span key={e.id} className="opacity-70 border border-current/20 rounded px-1 py-0.5">
-                    {OCCASION_LABELS[e.occasion]}
+                {Object.entries(m.events.reduce<Record<string, number>>((acc, e) => {
+                  acc[e.occasion] = (acc[e.occasion] ?? 0) + 1; return acc
+                }, {})).map(([occ, count]) => (
+                  <span key={occ} className="opacity-70 border border-current/20 rounded px-1 py-0.5">
+                    {count > 1 ? `${count} × ` : ''}{OCCASION_LABELS[occ as Occasion]}
                   </span>
                 ))}
               </div>
@@ -1302,9 +1304,11 @@ function SavingsPlanTab() {
               </div>
               {m.events.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {m.events.map((e) => (
-                    <span key={e.id} className="text-xs text-muted-foreground border border-border/30 rounded px-1 py-0.5">
-                      {e.notes || OCCASION_LABELS[e.occasion]}
+                  {Object.entries(m.events.reduce<Record<string, number>>((acc, e) => {
+                    acc[e.occasion] = (acc[e.occasion] ?? 0) + 1; return acc
+                  }, {})).map(([occ, count]) => (
+                    <span key={occ} className="text-xs text-muted-foreground border border-border/30 rounded px-1 py-0.5">
+                      {count > 1 ? `${count} × ` : ''}{OCCASION_LABELS[occ as Occasion]}
                     </span>
                   ))}
                 </div>
