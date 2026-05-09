@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
 import {
   Gift, Plus, Trash2, Pencil, AlertTriangle, Info,
-  Calendar, Users, Settings, TrendingUp, Wallet, ChevronDown, ChevronUp,
+  Calendar, Users, SlidersHorizontal, TrendingUp, Wallet, ChevronDown, ChevronUp,
 } from 'lucide-react'
+import * as RadixSlider from '@radix-ui/react-slider'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,7 +48,7 @@ const TABS: { id: GiftTab; label: string; Icon: React.FC<{ className?: string }>
   { id: 'hendelser', label: 'Hendelser', Icon: Calendar },
   { id: 'fordeling', label: 'Fordeling', Icon: Wallet },
   { id: 'spareplan', label: 'Spareplan', Icon: Gift },
-  { id: 'satser', label: 'Satser', Icon: Settings },
+  { id: 'satser', label: 'Tilpass', Icon: SlidersHorizontal },
 ]
 
 // ─── Oversikt ───────────────────────────────────────────────────
@@ -1050,121 +1051,42 @@ function SavingsPlanTab() {
 
 // ─── Satser ─────────────────────────────────────────────────────
 
-function RatesTab() {
-  const weightRules = useGiftStore((s) => s.weightRules)
-  const updateWeightRules = useGiftStore((s) => s.updateWeightRules)
+function pctLabel(w: number): string {
+  const pct = Math.round((w - 1) * 100)
+  if (pct === 0) return 'Normalt'
+  return pct > 0 ? `+${pct} %` : `${pct} %`
+}
 
-  const [expanded, setExpanded] = useState<string | null>('anledning')
-
-  function toggleSection(s: string) {
-    setExpanded(expanded === s ? null : s)
-  }
-
+function SliderRow({
+  label, value, min, max, step, onChange, displayValue,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  step: number
+  onChange: (v: number) => void
+  displayValue: string
+}) {
   return (
-    <div className="p-4 space-y-2">
-      <p className="text-xs text-muted-foreground mb-3">
-        Satsene brukes til å beregne foreslåtte gavebeløp. Du kan justere enkelt-verdier.
-      </p>
-
-      <WeightSection
-        title="Grunnbeløp per anledning (kr)"
-        expanded={expanded === 'anledning'}
-        onToggle={() => toggleSection('anledning')}
+    <div className="space-y-1.5 py-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-foreground leading-tight">{label}</span>
+        <span className="text-xs font-medium text-primary tabular-nums shrink-0">{displayValue}</span>
+      </div>
+      <RadixSlider.Root
+        value={[value]}
+        min={min}
+        max={max}
+        step={step}
+        onValueChange={([v]) => onChange(v)}
+        className="relative flex items-center select-none touch-none w-full h-5"
       >
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(weightRules.occasionBaseAmounts) as Occasion[]).map((k) => (
-            <div key={k} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground truncate">{OCCASION_LABELS[k]}</span>
-              <Input
-                type="number"
-                value={weightRules.occasionBaseAmounts[k]}
-                onChange={(e) => updateWeightRules({
-                  occasionBaseAmounts: { ...weightRules.occasionBaseAmounts, [k]: parseFloat(e.target.value) || 0 },
-                })}
-                className="h-7 text-xs w-20 text-right"
-              />
-            </div>
-          ))}
-        </div>
-      </WeightSection>
-
-      <WeightSection
-        title="Relasjonsvekter"
-        expanded={expanded === 'relasjon'}
-        onToggle={() => toggleSection('relasjon')}
-      >
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(weightRules.relationshipWeights) as RelationshipType[]).map((k) => (
-            <div key={k} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground truncate">{RELATIONSHIP_LABELS[k]}</span>
-              <Input
-                type="number"
-                step={0.05}
-                value={weightRules.relationshipWeights[k]}
-                onChange={(e) => updateWeightRules({
-                  relationshipWeights: { ...weightRules.relationshipWeights, [k]: parseFloat(e.target.value) || 0 },
-                })}
-                className="h-7 text-xs w-16 text-right"
-              />
-            </div>
-          ))}
-        </div>
-      </WeightSection>
-
-      <WeightSection
-        title="Nærhetsvekter"
-        expanded={expanded === 'nærhet'}
-        onToggle={() => toggleSection('nærhet')}
-      >
-        <div className="space-y-1.5">
-          {(Object.keys(weightRules.closenessWeights) as ClosenessLevel[]).map((k) => (
-            <div key={k} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">{CLOSENESS_LABELS[k]}</span>
-              <Input
-                type="number"
-                step={0.05}
-                value={weightRules.closenessWeights[k]}
-                onChange={(e) => updateWeightRules({
-                  closenessWeights: { ...weightRules.closenessWeights, [k]: parseFloat(e.target.value) || 0 },
-                })}
-                className="h-7 text-xs w-16 text-right"
-              />
-            </div>
-          ))}
-        </div>
-      </WeightSection>
-
-      <WeightSection
-        title="Livsfasevekter"
-        expanded={expanded === 'livsfase'}
-        onToggle={() => toggleSection('livsfase')}
-      >
-        <div className="space-y-1.5">
-          {(Object.keys(weightRules.lifePhaseWeights) as LifePhase[]).map((k) => (
-            <div key={k} className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">{LIFE_PHASE_LABELS[k]}</span>
-              <Input
-                type="number"
-                step={0.05}
-                value={weightRules.lifePhaseWeights[k]}
-                onChange={(e) => updateWeightRules({
-                  lifePhaseWeights: { ...weightRules.lifePhaseWeights, [k]: parseFloat(e.target.value) || 0 },
-                })}
-                className="h-7 text-xs w-16 text-right"
-              />
-            </div>
-          ))}
-        </div>
-      </WeightSection>
-
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full text-xs mt-2"
-        onClick={() => updateWeightRules(DEFAULT_WEIGHT_RULES)}
-      >
-        Tilbakestill til standardverdier
-      </Button>
+        <RadixSlider.Track className="bg-border relative grow rounded-full h-1">
+          <RadixSlider.Range className="absolute bg-primary rounded-full h-full" />
+        </RadixSlider.Track>
+        <RadixSlider.Thumb className="block w-3.5 h-3.5 bg-background border-2 border-primary rounded-full shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" />
+      </RadixSlider.Root>
     </div>
   )
 }
@@ -1184,6 +1106,143 @@ function WeightSection({
         {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
       </button>
       {expanded && <div className="px-3 py-3 border-t border-border bg-muted/10">{children}</div>}
+    </div>
+  )
+}
+
+function RatesTab() {
+  const weightRules = useGiftStore((s) => s.weightRules)
+  const updateWeightRules = useGiftStore((s) => s.updateWeightRules)
+
+  const [expanded, setExpanded] = useState<string | null>('anledning')
+
+  function toggleSection(s: string) {
+    setExpanded(expanded === s ? null : s)
+  }
+
+  // Representativt grunnbeløp for å vise "ca. X kr" under relasjonsslidere
+  const repBase = weightRules.occasionBaseAmounts.bursdag ?? 400
+
+  return (
+    <div className="p-4 space-y-2">
+      <p className="text-xs text-muted-foreground mb-3">
+        Dra i sliderne for å justere hva du typisk bruker på gaver.
+      </p>
+
+      {/* Grunnbeløp */}
+      <WeightSection
+        title="Hva bruker du typisk på..."
+        expanded={expanded === 'anledning'}
+        onToggle={() => toggleSection('anledning')}
+      >
+        <div className="space-y-3">
+          {(Object.keys(weightRules.occasionBaseAmounts) as Occasion[]).map((k) => (
+            <SliderRow
+              key={k}
+              label={OCCASION_LABELS[k]}
+              value={weightRules.occasionBaseAmounts[k]}
+              min={0}
+              max={3000}
+              step={50}
+              onChange={(v) => updateWeightRules({
+                occasionBaseAmounts: { ...weightRules.occasionBaseAmounts, [k]: v },
+              })}
+              displayValue={`${weightRules.occasionBaseAmounts[k].toLocaleString('no-NO')} kr`}
+            />
+          ))}
+        </div>
+      </WeightSection>
+
+      {/* Relasjon */}
+      <WeightSection
+        title="Hvem er gaven til?"
+        expanded={expanded === 'relasjon'}
+        onToggle={() => toggleSection('relasjon')}
+      >
+        <p className="text-xs text-muted-foreground mb-3">
+          Juster opp eller ned basert på hvem du normalt bruker mer eller mindre på.
+          Tallene viser et typisk gavebeløp for bursdager.
+        </p>
+        <div className="space-y-3">
+          {(Object.keys(weightRules.relationshipWeights) as RelationshipType[]).map((k) => (
+            <SliderRow
+              key={k}
+              label={RELATIONSHIP_LABELS[k]}
+              value={weightRules.relationshipWeights[k]}
+              min={0.25}
+              max={3.0}
+              step={0.05}
+              onChange={(v) => updateWeightRules({
+                relationshipWeights: { ...weightRules.relationshipWeights, [k]: v },
+              })}
+              displayValue={`ca. ${Math.round(repBase * weightRules.relationshipWeights[k]).toLocaleString('no-NO')} kr`}
+            />
+          ))}
+        </div>
+      </WeightSection>
+
+      {/* Nærhet */}
+      <WeightSection
+        title="Hvor godt kjenner du dem?"
+        expanded={expanded === 'nærhet'}
+        onToggle={() => toggleSection('nærhet')}
+      >
+        <p className="text-xs text-muted-foreground mb-3">
+          Nærhet justerer gavebeløpet opp eller ned uavhengig av relasjon.
+        </p>
+        <div className="space-y-3">
+          {(Object.keys(weightRules.closenessWeights) as ClosenessLevel[]).map((k) => (
+            <SliderRow
+              key={k}
+              label={CLOSENESS_LABELS[k]}
+              value={weightRules.closenessWeights[k]}
+              min={0.25}
+              max={2.0}
+              step={0.05}
+              onChange={(v) => updateWeightRules({
+                closenessWeights: { ...weightRules.closenessWeights, [k]: v },
+              })}
+              displayValue={pctLabel(weightRules.closenessWeights[k])}
+            />
+          ))}
+        </div>
+      </WeightSection>
+
+      {/* Livsfase */}
+      <WeightSection
+        title="Hvilken livsfase er de i?"
+        expanded={expanded === 'livsfase'}
+        onToggle={() => toggleSection('livsfase')}
+      >
+        <p className="text-xs text-muted-foreground mb-3">
+          Noen livsfaser gir litt høyere eller lavere gavebeløp automatisk.
+        </p>
+        <div className="space-y-3">
+          {(Object.keys(weightRules.lifePhaseWeights) as LifePhase[]).map((k) => (
+            <SliderRow
+              key={k}
+              label={LIFE_PHASE_LABELS[k]}
+              value={weightRules.lifePhaseWeights[k]}
+              min={0.5}
+              max={2.0}
+              step={0.05}
+              onChange={(v) => updateWeightRules({
+                lifePhaseWeights: { ...weightRules.lifePhaseWeights, [k]: v },
+              })}
+              displayValue={pctLabel(weightRules.lifePhaseWeights[k])}
+            />
+          ))}
+        </div>
+      </WeightSection>
+
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full text-xs mt-2"
+        onClick={() => updateWeightRules(DEFAULT_WEIGHT_RULES)}
+      >
+        Tilbakestill til standardverdier
+      </Button>
     </div>
   )
 }
