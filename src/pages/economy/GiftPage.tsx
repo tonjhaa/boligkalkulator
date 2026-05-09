@@ -1496,18 +1496,28 @@ function RatesTab() {
           {SLIDER_GROUPS.map(({ label, keys }) => {
             const primaryKey = keys[0]
             const value = weightRules.relationshipBaseAmounts[primaryKey]
-            // Overrides for any key in this group
-            const groupOverrides = keys.flatMap((k) =>
-              Object.entries(weightRules.occasionOverrides?.[k] ?? {}).map(([occ, amt]) => ({
-                rel: k,
-                occasion: occ as Occasion,
-                amount: amt as number,
-              }))
+            const julAmount = weightRules.occasionOverrides?.[primaryKey]?.['jul']
+            const rundDagAmount = weightRules.occasionOverrides?.[primaryKey]?.['rund_dag']
+            // Other overrides (not jul/rund_dag)
+            const otherOverrides = keys.flatMap((k) =>
+              Object.entries(weightRules.occasionOverrides?.[k] ?? {})
+                .filter(([occ]) => occ !== 'jul' && occ !== 'rund_dag')
+                .map(([occ, amt]) => ({ rel: k, occasion: occ as Occasion, amount: amt as number }))
             )
             const isAdding = newOverride?.rel === primaryKey
 
+            function saveQuickOverride(occasion: 'jul' | 'rund_dag', amount: number) {
+              if (isNaN(amount) || amount < 0) return
+              updateWeightRules({
+                occasionOverrides: {
+                  ...weightRules.occasionOverrides,
+                  [primaryKey]: { ...(weightRules.occasionOverrides?.[primaryKey] ?? {}), [occasion]: amount },
+                },
+              })
+            }
+
             return (
-              <div key={primaryKey} className="space-y-1.5">
+              <div key={primaryKey} className="space-y-2 pb-1 border-b border-border/20 last:border-0">
                 <SliderRow
                   label={label}
                   value={value}
@@ -1520,52 +1530,87 @@ function RatesTab() {
                   }}
                   displayValue={fmtNOK(value)}
                 />
-                {/* Existing overrides + add button */}
-                <div className="flex flex-wrap items-center gap-1.5 pl-0.5">
-                  {groupOverrides.map(({ rel, occasion, amount }) => (
-                    <span key={rel + occasion}
-                      className="inline-flex items-center gap-1 text-xs border border-border/40 rounded-full px-2 py-0.5 bg-muted/20"
-                    >
-                      {OCCASION_LABELS[occasion]} {fmtNOK(amount)}
-                      <button
-                        className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400"
-                        onClick={() => removeOverride(rel, occasion)}
-                      >×</button>
-                    </span>
-                  ))}
-                  {!isAdding && (
-                    <button
-                      className="text-xs text-muted-foreground/60 hover:text-muted-foreground border border-dashed border-border/30 rounded-full px-2 py-0.5"
-                      onClick={() => setNewOverride({ rel: primaryKey, occasion: 'jubileum', amount: '' })}
-                    >
-                      + spesiell
-                    </button>
-                  )}
-                  {isAdding && (
-                    <div className="flex items-center gap-1.5 w-full mt-0.5">
-                      <Select
-                        value={newOverride!.occasion}
-                        onValueChange={(v) => setNewOverride({ ...newOverride!, occasion: v as Occasion })}
-                      >
-                        <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((k) => (
-                            <SelectItem key={k} value={k} className="text-xs">{OCCASION_LABELS[k]}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                {/* Jul + Rund dag quick toggles */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 pl-0.5">
+                  {/* Jul */}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={`jul-${primaryKey}`}
+                      checked={julAmount !== undefined}
+                      onCheckedChange={(checked) => {
+                        if (checked) saveQuickOverride('jul', value + 200)
+                        else removeOverride(primaryKey, 'jul')
+                      }}
+                      className="scale-75 origin-left"
+                    />
+                    <label htmlFor={`jul-${primaryKey}`} className="text-xs text-muted-foreground cursor-pointer select-none">Jul</label>
+                    {julAmount !== undefined && (
                       <Input
                         type="number"
-                        placeholder="kr"
-                        value={newOverride!.amount}
-                        onChange={(e) => setNewOverride({ ...newOverride!, amount: e.target.value })}
-                        className="h-7 text-xs w-20"
+                        value={julAmount}
+                        onChange={(e) => saveQuickOverride('jul', parseInt(e.target.value) || 0)}
+                        className="h-6 text-xs w-20 px-2"
                       />
-                      <Button size="sm" className="h-7 text-xs px-2.5" onClick={saveOverride}>Lagre</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setNewOverride(null)}>✕</Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  {/* Rund dag */}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id={`rund-${primaryKey}`}
+                      checked={rundDagAmount !== undefined}
+                      onCheckedChange={(checked) => {
+                        if (checked) saveQuickOverride('rund_dag', value * 2)
+                        else removeOverride(primaryKey, 'rund_dag')
+                      }}
+                      className="scale-75 origin-left"
+                    />
+                    <label htmlFor={`rund-${primaryKey}`} className="text-xs text-muted-foreground cursor-pointer select-none">Rund dag</label>
+                    {rundDagAmount !== undefined && (
+                      <Input
+                        type="number"
+                        value={rundDagAmount}
+                        onChange={(e) => saveQuickOverride('rund_dag', parseInt(e.target.value) || 0)}
+                        className="h-6 text-xs w-20 px-2"
+                      />
+                    )}
+                  </div>
                 </div>
+                {/* Other overrides + add button */}
+                {(otherOverrides.length > 0 || isAdding) && (
+                  <div className="flex flex-wrap items-center gap-1.5 pl-0.5">
+                    {otherOverrides.map(({ rel, occasion, amount }) => (
+                      <span key={rel + occasion}
+                        className="inline-flex items-center gap-1 text-xs border border-border/40 rounded-full px-2 py-0.5 bg-muted/20"
+                      >
+                        {OCCASION_LABELS[occasion]} {fmtNOK(amount)}
+                        <button className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-400" onClick={() => removeOverride(rel, occasion)}>×</button>
+                      </span>
+                    ))}
+                    {isAdding && (
+                      <div className="flex items-center gap-1.5 w-full mt-0.5">
+                        <Select value={newOverride!.occasion} onValueChange={(v) => setNewOverride({ ...newOverride!, occasion: v as Occasion })}>
+                          <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(OCCASION_LABELS) as Occasion[]).filter((k) => k !== 'jul' && k !== 'rund_dag').map((k) => (
+                              <SelectItem key={k} value={k} className="text-xs">{OCCASION_LABELS[k]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input type="number" placeholder="kr" value={newOverride!.amount} onChange={(e) => setNewOverride({ ...newOverride!, amount: e.target.value })} className="h-7 text-xs w-20" />
+                        <Button size="sm" className="h-7 text-xs px-2.5" onClick={saveOverride}>Lagre</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setNewOverride(null)}>✕</Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!isAdding && (
+                  <button
+                    className="text-xs text-muted-foreground/50 hover:text-muted-foreground pl-0.5"
+                    onClick={() => setNewOverride({ rel: primaryKey, occasion: 'jubileum', amount: '' })}
+                  >
+                    + annen anledning
+                  </button>
+                )}
               </div>
             )
           })}
