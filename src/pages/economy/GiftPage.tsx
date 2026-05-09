@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import {
-  Gift, Plus, Trash2, Pencil, AlertTriangle, Info,
+  Gift, Plus, Trash2, Pencil, AlertTriangle,
   Calendar, Users, SlidersHorizontal, TrendingUp, Wallet, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import * as RadixSlider from '@radix-ui/react-slider'
@@ -76,29 +76,59 @@ function OverviewTab() {
   const recipients = useGiftStore((s) => s.recipients)
 
   const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
-  const avp = useMemo(() => calculateActualVsPlanned(events), [events])
 
   const recipientMap = useMemo(
     () => new Map(recipients.map((r) => [r.id, r])),
     [recipients]
   )
 
+  // Neste hendelser med dato, sortert — bursdager fremhevet
   const upcoming = useMemo(() => {
     const today = new Date()
-    const in60 = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000)
+    const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())
     return events
-      .filter((e) => e.status === 'planlagt' && e.date)
-      .filter((e) => { const d = new Date(e.date!); return d >= today && d <= in60 })
-      .sort((a, b) => a.date!.localeCompare(b.date!))
-      .slice(0, 5)
+      .filter((e) => e.status !== 'droppet' && e.date)
+      .map((e) => {
+        const d = new Date(e.date!)
+        // Beregn neste forekomst av datoen (hvis i fortid, bruk neste år for bursdager)
+        let next = new Date(d)
+        if (e.occasion === 'bursdag') {
+          next = new Date(today.getFullYear(), d.getMonth(), d.getDate())
+          if (next < today) next = new Date(today.getFullYear() + 1, d.getMonth(), d.getDate())
+        }
+        return { event: e, nextDate: next }
+      })
+      .filter(({ nextDate }) => nextDate <= nextYear)
+      .sort((a, b) => a.nextDate.getTime() - b.nextDate.getTime())
+      .slice(0, 8)
   }, [events])
 
-  const nameA = settings.memberA.name
-  const nameB = settings.memberB.name
-  const hasIncome = settings.memberA.monthlyNetIncome > 0 || settings.memberB.monthlyNetIncome > 0
+  const nameA = settings.memberA.name || 'Person A'
+  const nameB = settings.memberB.name || 'Person B'
+  const monthlyA = result.personAMonthlySaving
+  const monthlyB = result.personBMonthlySaving
+  const monthlyTotal = monthlyA + monthlyB
+  const hasData = events.filter((e) => e.status !== 'droppet').length > 0
+
+  function daysUntil(d: Date) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  function fmtRelDate(d: Date) {
+    const days = daysUntil(d)
+    if (days === 0) return 'I dag'
+    if (days === 1) return 'I morgen'
+    if (days < 7) return `Om ${days} dager`
+    if (days < 14) return 'Neste uke'
+    if (days < 31) return `Om ${Math.round(days / 7)} uker`
+    const months = Math.round(days / 30)
+    return `Om ${months} mnd`
+  }
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-5 p-4">
       {/* Advarsler */}
       {result.warnings.map((w, i) => (
         <div key={i} className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-400">
@@ -107,53 +137,68 @@ function OverviewTab() {
         </div>
       ))}
 
-      {/* Innsikter */}
-      {result.insights.map((ins, i) => (
-        <div key={i} className="flex items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5 text-xs text-muted-foreground">
-          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-          {ins}
-        </div>
-      ))}
-
-      {/* Nøkkeltall */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <MetricCard label="Årsbudsjett" value={fmtNOK(result.annualTotal)} sub="uten buffer" />
-        <MetricCard label="Med buffer" value={fmtNOK(result.annualTotalWithBuffer)} sub={`${settings.bufferPercent}% ekstra`} />
-        <MetricCard label="Månedlig sparing" value={fmtNOK(result.personAMonthlySaving + result.personBMonthlySaving)} sub="totalt" />
-        <MetricCard label={`${nameA} per mnd`} value={fmtNOK(result.personAMonthlySaving)} colorClass="text-blue-400" />
-        <MetricCard label={`${nameB} per mnd`} value={fmtNOK(result.personBMonthlySaving)} colorClass="text-violet-400" />
-        {avp.planned > 0 && (
-          <MetricCard
-            label="Avvik (kjøpt)"
-            value={fmtNOK(Math.abs(avp.deviation))}
-            sub={avp.deviation > 0 ? 'over plan' : avp.deviation < 0 ? 'under plan' : 'på plan'}
-            colorClass={avp.deviation > 0 ? 'text-red-400' : avp.deviation < 0 ? 'text-green-400' : 'text-foreground'}
-          />
+      {/* Sparepuls */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Sparepuls</p>
+        {hasData ? (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg border border-border bg-muted/10 px-3 py-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Totalt / mnd</p>
+              <p className="text-lg font-semibold font-mono">{fmtNOK(monthlyTotal)}</p>
+            </div>
+            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-3 text-center">
+              <p className="text-xs text-blue-400/70 mb-1">{nameA}</p>
+              <p className="text-lg font-semibold font-mono text-blue-400">{fmtNOK(monthlyA)}</p>
+            </div>
+            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-3 text-center">
+              <p className="text-xs text-violet-400/70 mb-1">{nameB}</p>
+              <p className="text-lg font-semibold font-mono text-violet-400">{fmtNOK(monthlyB)}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/10 px-4 py-6 text-center text-sm text-muted-foreground">
+            <Gift className="h-7 w-7 mx-auto mb-2 opacity-30" />
+            <p>Legg til mottakere og hendelser for å beregne gavebudsjettet.</p>
+          </div>
         )}
       </div>
 
-      {!hasIncome && (
-        <p className="text-xs text-muted-foreground bg-muted/20 rounded px-3 py-2">
-          Tips: Legg inn nettoinntekt under <b>Fordeling</b> for å beregne rettferdig månedlig sparing per person.
-        </p>
-      )}
-
-      {/* Kommende hendelser */}
+      {/* Kommende hendelser / bursdager */}
       {upcoming.length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Kommende (60 dager)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Kommende hendelser</p>
           <div className="space-y-1.5">
-            {upcoming.map((e) => {
+            {upcoming.map(({ event: e, nextDate }) => {
               const rec = recipientMap.get(e.recipientId)
               const amount = e.manualAmount ?? e.calculatedAmount
+              const days = daysUntil(nextDate)
+              const isSoon = days <= 14
               return (
-                <div key={e.id} className="flex items-center justify-between rounded border border-border/40 bg-muted/10 px-3 py-2 text-xs">
-                  <div>
-                    <span className="font-medium">{rec?.name ?? '—'}</span>
-                    <span className="text-muted-foreground ml-2">{OCCASION_LABELS[e.occasion]}</span>
-                    {e.date && <span className="text-muted-foreground ml-2">{e.date}</span>}
+                <div
+                  key={e.id}
+                  className={cn(
+                    'flex items-center justify-between rounded border px-3 py-2 text-xs',
+                    isSoon
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-border/40 bg-muted/10'
+                  )}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{rec?.name ?? '—'}</span>
+                      <span className="text-muted-foreground">{OCCASION_LABELS[e.occasion]}</span>
+                      {isSoon && <span className="text-amber-400">·</span>}
+                    </div>
+                    <p className={cn('mt-0.5', isSoon ? 'text-amber-400' : 'text-muted-foreground')}>
+                      {fmtRelDate(nextDate)}
+                      {e.occasion === 'bursdag' && rec?.birthDate && (
+                        <span className="ml-1 opacity-60">
+                          ({new Date().getFullYear() - parseInt(rec.birthDate.split('-')[0])} år)
+                        </span>
+                      )}
+                    </p>
                   </div>
-                  <span className="font-mono text-foreground">{fmtNOK(amount)}</span>
+                  <span className="font-mono font-medium ml-4 shrink-0">{fmtNOK(amount)}</span>
                 </div>
               )
             })}
@@ -161,26 +206,10 @@ function OverviewTab() {
         </div>
       )}
 
-      {/* Gaveintensive måneder */}
-      {result.monthlyBreakdown.some((m) => m.isHeavy) && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Gaveintensive måneder</p>
-          <div className="flex flex-wrap gap-2">
-            {result.monthlyBreakdown.filter((m) => m.isHeavy).map((m) => (
-              <div key={m.month} className="flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-400">
-                <Gift className="h-3 w-3" />
-                {fmtMonth(m.month)} — {fmtNOK(m.totalCost)}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {events.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          <Gift className="h-8 w-8 mx-auto mb-3 opacity-30" />
-          <p>Legg til mottakere og hendelser for å beregne gavebudsjettet.</p>
-        </div>
+      {hasData && upcoming.length === 0 && (
+        <p className="text-xs text-muted-foreground bg-muted/20 rounded px-3 py-2">
+          Ingen kommende hendelser med dato. Legg til datoer på hendelsene dine.
+        </p>
       )}
     </div>
   )
