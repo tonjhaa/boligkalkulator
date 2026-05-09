@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useGiftStore } from '@/application/useGiftStore'
 import {
   OCCASION_LABELS, RELATIONSHIP_LABELS,
-  LIFE_PHASE_LABELS, STATUS_LABELS, DISTRIBUTION_LABELS,
+  STATUS_LABELS, DISTRIBUTION_LABELS,
   DEFAULT_WEIGHT_RULES,
 } from '@/domain/gifts/defaultWeights'
 import {
@@ -929,34 +929,16 @@ function RecipientModal({
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs flex items-center gap-1.5">
-                Livsfase
-                {birthDate && lifePhaseFromBirthDate(birthDate) === lifePhase && (
-                  <span className="text-xs text-muted-foreground font-normal">(automatisk)</span>
-                )}
-              </Label>
-              <Select value={lifePhase} onValueChange={(v) => setLifePhase(v as LifePhase)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(LIFE_PHASE_LABELS) as LifePhase[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{LIFE_PHASE_LABELS[k]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Eierskap</Label>
-              <Select value={ownership} onValueChange={(v) => setOwnership(v as Ownership)}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(['A', 'B', 'felles'] as Ownership[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{ownershipLabels[k]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Eierskap</Label>
+            <Select value={ownership} onValueChange={(v) => setOwnership(v as Ownership)}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(['A', 'B', 'felles'] as Ownership[]).map((k) => (
+                  <SelectItem key={k} value={k} className="text-xs">{ownershipLabels[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Fødselsdato</Label>
