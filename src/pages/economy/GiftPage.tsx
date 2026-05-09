@@ -95,6 +95,7 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
   const settings = useGiftStore((s) => s.settings)
   const recipients = useGiftStore((s) => s.recipients)
   const addEvent = useGiftStore((s) => s.addEvent)
+  const updateEvent = useGiftStore((s) => s.updateEvent)
   const weightRules = useGiftStore((s) => s.weightRules)
   const [prefill, setPrefill] = useState<{ recipientId: string; occasion: Occasion } | null>(null)
 
@@ -304,41 +305,77 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
               const amount = e.manualAmount ?? e.calculatedAmount
               const days = daysUntil(nextDate)
               const isSoon = days <= 14
+              const isAuto = e.id.startsWith('auto-')
+              const storedStatus = isAuto
+                ? events.find((se) => se.recipientId === e.recipientId && se.occasion === e.occasion)?.status
+                : e.status
+              const status = storedStatus ?? 'planlagt'
+
+              function promoteOrUpdate(newStatus: import('@/types/gifts').EventStatus) {
+                const stored = events.find((se) => se.recipientId === e.recipientId && se.occasion === e.occasion)
+                if (stored) {
+                  updateEvent(stored.id, { status: newStatus })
+                } else {
+                  addEvent({ ...e, id: crypto.randomUUID(), status: newStatus })
+                }
+              }
+
               return (
-                <div
-                  key={e.id}
-                  className={cn(
-                    'flex items-center justify-between rounded border px-3 py-2 text-xs',
-                    isSoon
-                      ? 'border-amber-500/30 bg-amber-500/5'
-                      : 'border-border/40 bg-muted/10'
-                  )}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{rec?.name ?? '—'}</span>
-                      <span className="text-muted-foreground">{OCCASION_LABELS[e.occasion]}</span>
-                      {isSoon && <span className="text-amber-400 font-bold">!</span>}
-                    </div>
-                    <p className={cn('mt-0.5', isSoon ? 'text-amber-400' : 'text-muted-foreground')}>
-                      {fmtRelDate(nextDate)}
-                      <span className="ml-1.5 opacity-50">
-                        {nextDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: nextDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}
-                      </span>
-                      {e.occasion === 'bursdag' && rec?.birthDate && (() => {
-                        const age = nextDate.getFullYear() - parseInt(rec.birthDate.split('-')[0])
-                        const isRound = age % 10 === 0
-                        return (
-                          <span className={cn('ml-1', isRound ? 'text-amber-400 font-medium' : 'opacity-50')}>
-                            · {age} år{isRound ? ' ★' : ''}
+                    <div
+                      key={e.id}
+                      className={cn(
+                        'flex items-center justify-between rounded border px-3 py-2 text-xs',
+                        status === 'kjøpt' ? 'border-green-500/20 bg-green-500/5 opacity-70' :
+                        isSoon ? 'border-amber-500/30 bg-amber-500/5' :
+                        'border-border/40 bg-muted/10'
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={cn('font-medium', status === 'kjøpt' && 'line-through opacity-60')}>{rec?.name ?? '—'}</span>
+                          <span className="text-muted-foreground">{OCCASION_LABELS[e.occasion]}</span>
+                          {isSoon && status === 'planlagt' && <span className="text-amber-400 font-bold">!</span>}
+                          {status === 'kjøpt' && <span className="text-green-400">✓</span>}
+                        </div>
+                        <p className={cn('mt-0.5', isSoon && status === 'planlagt' ? 'text-amber-400' : 'text-muted-foreground')}>
+                          {fmtRelDate(nextDate)}
+                          <span className="ml-1.5 opacity-50">
+                            {nextDate.toLocaleDateString('no-NO', { day: 'numeric', month: 'short', year: nextDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}
                           </span>
-                        )
-                      })()}
-                    </p>
-                  </div>
-                  <span className="font-mono font-medium ml-4 shrink-0">{fmtNOK(amount)}</span>
-                </div>
-              )
+                          {e.occasion === 'bursdag' && rec?.birthDate && (() => {
+                            const age = nextDate.getFullYear() - parseInt(rec.birthDate.split('-')[0])
+                            const isRound = age % 10 === 0
+                            return (
+                              <span className={cn('ml-1', isRound ? 'text-amber-400 font-medium' : 'opacity-50')}>
+                                · {age} år{isRound ? ' ★' : ''}
+                              </span>
+                            )
+                          })()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 ml-3 shrink-0">
+                        <span className="font-mono font-medium">{fmtNOK(amount)}</span>
+                        {status === 'kjøpt' ? (
+                          <button
+                            className="px-1.5 py-0.5 rounded border border-green-500/30 text-green-400 bg-green-500/10 hover:bg-green-500/20"
+                            onClick={() => promoteOrUpdate('planlagt')}
+                            title="Angre kjøpt"
+                          >✓</button>
+                        ) : (
+                          <button
+                            className="px-1.5 py-0.5 rounded border border-border/30 text-muted-foreground/50 hover:border-green-500/40 hover:text-green-400"
+                            onClick={() => promoteOrUpdate('kjøpt')}
+                            title="Merk som kjøpt"
+                          >✓</button>
+                        )}
+                        <button
+                          className="px-1.5 py-0.5 rounded border border-border/20 text-muted-foreground/30 hover:border-red-500/30 hover:text-red-400"
+                          onClick={() => promoteOrUpdate('droppet')}
+                          title="Dropp denne gaven"
+                        >✕</button>
+                      </div>
+                    </div>
+                  )
             })}
           </div>
         </div>
@@ -350,13 +387,46 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
         </p>
       )}
 
-      {/* Gavebelastning per måned — søylediagram */}
+      {/* Gavebelastning per måned */}
       {hasEvents && result.monthlyBreakdown.some((m) => m.totalCost > 0) && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Gavebelastning per måned</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Utgifter per måned</p>
           <MonthLoadChart months={result.monthlyBreakdown} />
         </div>
       )}
+
+      {/* Kostnadsdrivere */}
+      {hasEvents && (() => {
+        const annual = result.annualTotal
+        if (annual === 0) return null
+        const drivers = recipients
+          .map((r) => {
+            const bVal = r.receivesBirthdayGift ? (r.occasionOverrides?.bursdag ?? weightRules.occasionOverrides?.[r.relationshipType]?.bursdag ?? weightRules.relationshipBaseAmounts[r.relationshipType] ?? 0) : 0
+            const jVal = r.receivesChristmasGift ? (r.occasionOverrides?.jul ?? weightRules.occasionOverrides?.[r.relationshipType]?.jul ?? weightRules.relationshipBaseAmounts[r.relationshipType] ?? 0) : 0
+            return { name: r.name, total: bVal + jVal }
+          })
+          .filter((d) => d.total > 0)
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5)
+        const monthly = Math.round(annual / 12)
+        return (
+          <div className="rounded border border-border/30 bg-muted/10 px-3 py-2.5 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Totalt per år</span>
+              <span className="font-mono font-medium">{fmtNOK(annual)} <span className="text-muted-foreground font-normal">→ {fmtNOK(monthly)}/mnd</span></span>
+            </div>
+            <div className="space-y-1">
+              {drivers.map((d) => (
+                <div key={d.name} className="flex items-center justify-between text-muted-foreground">
+                  <span>{d.name}</span>
+                  <span className="font-mono">{fmtNOK(d.total)}/år</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-muted-foreground/50 text-xs">Juster satser i Tilpass, eller dropp gaver i mottakerlisten.</p>
+          </div>
+        )
+      })()}
 
       {/* EventModal for suggestions */}
       {prefill && (
@@ -377,91 +447,35 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
 
 function MonthLoadChart({ months }: { months: import('@/types/gifts').MonthlyBreakdown[] }) {
   const MONTH_SHORT = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
-  const maxCost = Math.max(...months.map((m) => m.totalCost), 1)
+  const active = months.filter((m) => m.totalCost > 0)
+  const maxCost = Math.max(...active.map((m) => m.totalCost), 1)
   const currentMonth = new Date().getMonth() + 1
-  const [hovered, setHovered] = useState<number | null>(null)
+
+  if (active.length === 0) return null
 
   return (
-    <div className="space-y-1">
-      {/* Bars */}
-      <div className="flex items-end gap-0.5 h-20">
-        {months.map((m) => {
-          const pct = m.totalCost / maxCost
-          const isHeavy = m.isHeavy
-          const isCurrent = m.month === currentMonth
-          const isHovered = hovered === m.month
-          return (
-            <div
-              key={m.month}
-              className="flex-1 flex flex-col justify-end cursor-default"
-              onMouseEnter={() => setHovered(m.month)}
-              onMouseLeave={() => setHovered(null)}
-            >
+    <div className="space-y-2">
+      {active.map((m) => {
+        const pct = m.totalCost / maxCost
+        const tags = Object.entries(
+          m.events.reduce<Record<string, number>>((acc, e) => { acc[e.occasion] = (acc[e.occasion] ?? 0) + 1; return acc }, {})
+        ).map(([occ, count]) => (count > 1 ? `${count} × ${OCCASION_LABELS[occ as import('@/types/gifts').Occasion]}` : OCCASION_LABELS[occ as import('@/types/gifts').Occasion]))
+        return (
+          <div key={m.month} className="flex items-center gap-2 text-xs">
+            <span className={cn('w-7 shrink-0 font-medium', m.month === currentMonth ? 'text-primary' : 'text-muted-foreground/70')}>
+              {MONTH_SHORT[m.month - 1]}
+            </span>
+            <div className="flex-1 h-3.5 bg-muted/20 rounded overflow-hidden">
               <div
-                className={cn(
-                  'rounded-t transition-opacity',
-                  isHeavy
-                    ? 'bg-amber-500/70'
-                    : isCurrent
-                    ? 'bg-primary/60'
-                    : 'bg-muted-foreground/30',
-                  isHovered && 'opacity-100',
-                  !isHovered && 'opacity-80'
-                )}
-                style={{ height: m.totalCost > 0 ? `${Math.max(pct * 100, 4)}%` : '2px' }}
+                className={cn('h-full rounded transition-all', m.isHeavy ? 'bg-amber-500/60' : m.month === currentMonth ? 'bg-primary/50' : 'bg-muted-foreground/35')}
+                style={{ width: `${Math.max(pct * 100, 2)}%` }}
               />
             </div>
-          )
-        })}
-      </div>
-
-      {/* Labels */}
-      <div className="flex gap-0.5">
-        {months.map((m) => (
-          <div
-            key={m.month}
-            className={cn(
-              'flex-1 text-center text-xs leading-tight cursor-default',
-              m.month === currentMonth ? 'text-primary' : 'text-muted-foreground/50',
-              m.isHeavy && 'text-amber-400'
-            )}
-            onMouseEnter={() => setHovered(m.month)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            {MONTH_SHORT[m.month - 1]}
-          </div>
-        ))}
-      </div>
-
-      {/* Tooltip for hovered month */}
-      {hovered !== null && (() => {
-        const m = months[hovered - 1]
-        if (!m || m.totalCost === 0) return (
-          <p className="text-xs text-muted-foreground text-center py-1">{fmtMonth(hovered)} — ingen gaver</p>
-        )
-        return (
-          <div className={cn(
-            'rounded border px-3 py-2 text-xs',
-            m.isHeavy ? 'border-amber-500/30 bg-amber-500/5 text-amber-400' : 'border-border bg-muted/10 text-foreground'
-          )}>
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{fmtMonth(hovered)}{m.isHeavy ? ' ⚡ Gaveintensiv' : ''}</span>
-              <span className="font-mono">{fmtNOK(m.totalCost)}</span>
-            </div>
-            {m.events.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {Object.entries(m.events.reduce<Record<string, number>>((acc, e) => {
-                  acc[e.occasion] = (acc[e.occasion] ?? 0) + 1; return acc
-                }, {})).map(([occ, count]) => (
-                  <span key={occ} className="opacity-70 border border-current/20 rounded px-1 py-0.5">
-                    {count > 1 ? `${count} × ` : ''}{OCCASION_LABELS[occ as Occasion]}
-                  </span>
-                ))}
-              </div>
-            )}
+            <span className="font-mono w-16 text-right shrink-0 text-muted-foreground">{fmtNOK(m.totalCost)}</span>
+            <span className="text-muted-foreground/40 text-xs truncate max-w-[120px]">{tags.join(', ')}{m.isHeavy ? ' ⚡' : ''}</span>
           </div>
         )
-      })()}
+      })}
     </div>
   )
 }
