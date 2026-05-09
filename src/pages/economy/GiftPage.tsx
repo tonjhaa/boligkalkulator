@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Gift, Plus, Trash2, Pencil, AlertTriangle, Info,
   Calendar, Users, SlidersHorizontal, TrendingUp, Wallet, ChevronDown, ChevronUp,
@@ -285,25 +285,28 @@ function RecipientModal({
   const [closeness, setCloseness] = useState<ClosenessLevel>(initial?.closeness ?? 'normal')
   const [lifePhase, setLifePhase] = useState<LifePhase>(initial?.lifePhase ?? 'voksen')
   const [ownership, setOwnership] = useState<Ownership>(initial?.ownership ?? 'felles')
-  const [birthYear, setBirthYear] = useState(initial?.birthYear ? String(initial.birthYear) : '')
-  const [birthMonth, setBirthMonth] = useState(initial?.birthMonth ? String(initial.birthMonth) : '')
+  const [birthDate, setBirthDate] = useState(
+    initial?.birthDate ?? (initial?.birthYear
+      ? `${initial.birthYear}-${String(initial.birthMonth ?? 1).padStart(2, '0')}-01`
+      : '')
+  )
   const [birthday, setBirthday] = useState(initial?.receivesBirthdayGift ?? true)
   const [christmas, setChristmas] = useState(initial?.receivesChristmasGift ?? false)
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
-  // Reset when initial changes
-  useState(() => {
+  useEffect(() => {
     setName(initial?.name ?? '')
     setRelType(initial?.relationshipType ?? 'venn')
     setCloseness(initial?.closeness ?? 'normal')
     setLifePhase(initial?.lifePhase ?? 'voksen')
     setOwnership(initial?.ownership ?? 'felles')
-    setBirthYear(initial?.birthYear ? String(initial.birthYear) : '')
-    setBirthMonth(initial?.birthMonth ? String(initial.birthMonth) : '')
+    setBirthDate(initial?.birthDate ?? (initial?.birthYear
+      ? `${initial.birthYear}-${String(initial.birthMonth ?? 1).padStart(2, '0')}-01`
+      : ''))
     setBirthday(initial?.receivesBirthdayGift ?? true)
     setChristmas(initial?.receivesChristmasGift ?? false)
     setNotes(initial?.notes ?? '')
-  })
+  }, [initial])
 
   function handleSave() {
     if (!name.trim()) return
@@ -314,8 +317,9 @@ function RecipientModal({
       closeness,
       lifePhase,
       ownership,
-      birthYear: birthYear ? parseInt(birthYear) : undefined,
-      birthMonth: birthMonth ? parseInt(birthMonth) : undefined,
+      birthDate: birthDate || undefined,
+      birthYear: birthDate ? parseInt(birthDate.split('-')[0]) : undefined,
+      birthMonth: birthDate ? parseInt(birthDate.split('-')[1]) : undefined,
       receivesBirthdayGift: birthday,
       receivesChristmasGift: christmas,
       notes: notes.trim() || undefined,
@@ -382,28 +386,14 @@ function RecipientModal({
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Fødselsår</Label>
-              <Input
-                type="number"
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                placeholder="f.eks. 1955"
-                className="h-8 text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Bursdagsmåned</Label>
-              <Select value={birthMonth} onValueChange={setBirthMonth}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Velg" /></SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{fmtMonth(i + 1)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Fødselsdato</Label>
+            <Input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="h-8 text-xs"
+            />
           </div>
           <div className="flex gap-4 pt-1">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -793,60 +783,67 @@ function DistributionTab() {
 
   return (
     <div className="p-4 space-y-5">
-      {/* Inntekter */}
+      {/* Hvem er dere? */}
       <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nettoinntekt</p>
+        <p className="text-xs font-semibold text-muted-foreground">Hvem er dere?</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <div className="space-y-1">
-              <Label className="text-xs">Navn (Person A)</Label>
+              <Label className="text-xs">Ditt navn</Label>
               <Input value={nameA} onChange={(e) => setNameA(e.target.value)} onBlur={saveMembers} className="h-8 text-xs" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Netto månedslønn</Label>
+              <Label className="text-xs">Netto lønn per måned</Label>
               <Input
                 type="number"
                 value={incomeA}
                 onChange={(e) => setIncomeA(e.target.value)}
                 onBlur={saveMembers}
-                placeholder="f.eks. 38000"
+                placeholder="f.eks. 38 000"
                 className="h-8 text-xs"
               />
             </div>
           </div>
           <div className="space-y-2">
             <div className="space-y-1">
-              <Label className="text-xs">Navn (Person B)</Label>
+              <Label className="text-xs">Partners navn</Label>
               <Input value={nameB} onChange={(e) => setNameB(e.target.value)} onBlur={saveMembers} className="h-8 text-xs" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Netto månedslønn</Label>
+              <Label className="text-xs">Netto lønn per måned</Label>
               <Input
                 type="number"
                 value={incomeB}
                 onChange={(e) => setIncomeB(e.target.value)}
                 onBlur={saveMembers}
-                placeholder="f.eks. 30000"
+                placeholder="f.eks. 30 000"
                 className="h-8 text-xs"
               />
             </div>
           </div>
         </div>
         {totalIncome > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pA}%` }} />
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground">Inntektsfordeling</p>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-blue-400 w-8 text-right tabular-nums">{pA}%</span>
+              <div className="w-40 h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pA}%` }} />
+              </div>
+              <span className="text-[11px] text-violet-400 w-8 tabular-nums">{pB}%</span>
             </div>
-            <span className="text-[11px] text-blue-400">{pA}%</span>
-            <span className="text-[11px] text-muted-foreground">vs</span>
-            <span className="text-[11px] text-violet-400">{pB}%</span>
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-muted-foreground w-8 text-right truncate">{nameA || 'A'}</span>
+              <div className="w-40" />
+              <span className="text-[11px] text-muted-foreground w-8 truncate">{nameB || 'B'}</span>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Fordelingsmodell */}
+      {/* Hvordan deles utgiftene? */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fordelingsmodell</p>
+        <p className="text-xs font-semibold text-muted-foreground">Hvordan deles gaveutgiftene?</p>
         <div className="space-y-2">
           {(Object.keys(DISTRIBUTION_LABELS) as import('@/types/gifts').DistributionModel[]).map((model) => (
             <button
@@ -861,32 +858,32 @@ function DistributionTab() {
             >
               <p className="font-medium">{DISTRIBUTION_LABELS[model]}</p>
               <p className="text-[10px] mt-0.5 text-muted-foreground">
-                {model === '50_50' && 'Alle gaver deles likt uavhengig av relasjon og inntekt.'}
-                {model === 'inntekt' && 'Alle gaver fordeles etter nettoinntektsandel.'}
-                {model === 'eierskap' && 'Eide gaver betales fullt av eieren. Felles gaver etter inntekt.'}
-                {model === 'hybrid' && 'Eide gaver: 80 % eier, 20 % partner. Felles gaver: etter inntekt. Anbefalt.'}
+                {model === '50_50' && 'Dere deler likt på alle gaver, uansett hvem som kjenner mottakeren.'}
+                {model === 'inntekt' && 'Den med høyest inntekt betaler mer. Rettferdig hvis dere tjener ulikt.'}
+                {model === 'eierskap' && 'Du betaler egne familiegaver, partneren sine. Felles gaver deles etter inntekt.'}
+                {model === 'hybrid' && 'Egne gaver: du betaler 80 %, partner 20 %. Felles gaver etter inntekt. Anbefalt.'}
               </p>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Buffer og tak */}
+      {/* Budsjettgrenser */}
       <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Buffer og maks ramme</p>
+        <p className="text-xs font-semibold text-muted-foreground">Budsjettgrenser</p>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Bufferprosent (%)</Label>
+            <Label className="text-xs">Buffer for uforutsette gaver</Label>
             <Input
               type="number"
               value={settings.bufferPercent}
               onChange={(e) => updateSettings({ bufferPercent: parseFloat(e.target.value) || 0 })}
               className="h-8 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground">Standard: 12 %</p>
+            <p className="text-[10px] text-muted-foreground">Anbefalt: 12 %</p>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Maks årsbudsjett (kr)</Label>
+            <Label className="text-xs">Maks å bruke på gaver i år</Label>
             <Input
               type="number"
               value={settings.annualCap ?? ''}
@@ -898,7 +895,7 @@ function DistributionTab() {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs">Avrunding (kr)</Label>
+            <Label className="text-xs">Avrund beløp til nærmeste</Label>
             <Select
               value={String(settings.roundingNearest)}
               onValueChange={(v) => updateSettings({ roundingNearest: parseInt(v) as 50 | 100 })}
@@ -911,7 +908,7 @@ function DistributionTab() {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Eieransvar (hybrid)</Label>
+            <Label className="text-xs">Fordeling ved egne gaver</Label>
             <Select
               value={String(settings.primaryResponsibilityShare)}
               onValueChange={(v) => {
@@ -923,7 +920,7 @@ function DistributionTab() {
               <SelectContent>
                 <SelectItem value="0.6" className="text-xs">60/40</SelectItem>
                 <SelectItem value="0.7" className="text-xs">70/30</SelectItem>
-                <SelectItem value="0.8" className="text-xs">80/20 (standard)</SelectItem>
+                <SelectItem value="0.8" className="text-xs">80/20 (anbefalt)</SelectItem>
                 <SelectItem value="0.9" className="text-xs">90/10</SelectItem>
                 <SelectItem value="1.0" className="text-xs">100/0</SelectItem>
               </SelectContent>
@@ -933,9 +930,8 @@ function DistributionTab() {
       </div>
 
       <div className="rounded bg-muted/20 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
-        <p>Rettferdig fordeling tar hensyn til både inntekt og hvem relasjonen tilhører.</p>
-        <p>Fellesgaver fordeles etter netto lønn. Egne familiehendelser fordeles {Math.round(settings.primaryResponsibilityShare * 100)}/{Math.round(settings.supportShare * 100)}.</p>
-        <p>Du kan alltid overstyre foreslåtte beløp på enkelt-hendelser.</p>
+        <p>Felles gaver deles etter inntekt. Egne familiegaver deles {Math.round(settings.primaryResponsibilityShare * 100)}/{Math.round(settings.supportShare * 100)}.</p>
+        <p>Du kan alltid justere beløpet manuelt på hver enkelt gave.</p>
       </div>
     </div>
   )
