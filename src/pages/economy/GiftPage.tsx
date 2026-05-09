@@ -228,25 +228,37 @@ function OverviewTab({ setTab }: { setTab: (tab: GiftTab) => void }) {
       )}
 
       {/* Sparepuls */}
-      {hasEvents && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Sparepuls</p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-border bg-muted/10 px-3 py-3 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Totalt / mnd</p>
-              <p className="text-lg font-semibold font-mono">{fmtNOK(monthlyTotal)}</p>
-            </div>
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-3 text-center">
-              <p className="text-xs text-blue-400/70 mb-1">{nameA}</p>
-              <p className="text-lg font-semibold font-mono text-blue-400">{fmtNOK(monthlyA)}</p>
-            </div>
-            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-3 text-center">
-              <p className="text-xs text-violet-400/70 mb-1">{nameB}</p>
-              <p className="text-lg font-semibold font-mono text-violet-400">{fmtNOK(monthlyB)}</p>
+      {hasEvents && (() => {
+        const countA = recipients.filter((r) => r.ownership === 'A').length
+        const countB = recipients.filter((r) => r.ownership === 'B').length
+        const countFelles = recipients.filter((r) => r.ownership === 'felles').length
+        return (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Sparepuls</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-lg border border-border bg-muted/10 px-3 py-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Totalt / mnd</p>
+                <p className="text-lg font-semibold font-mono">{fmtNOK(monthlyTotal)}</p>
+                <p className="text-xs text-muted-foreground/60 mt-1">{recipients.length} mottakere</p>
+              </div>
+              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-3 text-center">
+                <p className="text-xs text-blue-400/70 mb-1">{nameA}</p>
+                <p className="text-lg font-semibold font-mono text-blue-400">{fmtNOK(monthlyA)}</p>
+                <p className="text-xs text-blue-400/40 mt-1">
+                  {countA} mottakere{countFelles > 0 ? ` + ${countFelles} felles` : ''}
+                </p>
+              </div>
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-3 text-center">
+                <p className="text-xs text-violet-400/70 mb-1">{nameB}</p>
+                <p className="text-lg font-semibold font-mono text-violet-400">{fmtNOK(monthlyB)}</p>
+                <p className="text-xs text-violet-400/40 mt-1">
+                  {countB} mottakere{countFelles > 0 ? ` + ${countFelles} felles` : ''}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Foreslåtte hendelser */}
       {missingEvents.length > 0 && (
