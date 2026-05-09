@@ -30,11 +30,17 @@ export function calculateGiftAmount(
   recipient: GiftRecipient,
   rules: WeightRules,
 ): number {
+  // 1. Per-person override (høyeste prioritet)
+  if (recipient.occasionOverrides?.[event.occasion] !== undefined) {
+    return recipient.occasionOverrides[event.occasion]!
+  }
+  // 2. Relasjon × anledning override
   const relOverrides = rules.occasionOverrides?.[recipient.relationshipType]
   if (relOverrides) {
     const override = relOverrides[event.occasion]
     if (override !== undefined) return override
   }
+  // 3. Flat grunnbeløp for relasjon
   return rules.relationshipBaseAmounts[recipient.relationshipType] ?? 500
 }
 

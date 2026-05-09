@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useGiftStore } from '@/application/useGiftStore'
 import {
   OCCASION_LABELS, RELATIONSHIP_LABELS,
-  LIFE_PHASE_LABELS, OWNERSHIP_LABELS, STATUS_LABELS, DISTRIBUTION_LABELS,
+  LIFE_PHASE_LABELS, STATUS_LABELS, DISTRIBUTION_LABELS,
   DEFAULT_WEIGHT_RULES,
 } from '@/domain/gifts/defaultWeights'
 import {
@@ -27,6 +27,14 @@ import type {
 } from '@/types/gifts'
 
 // ─── Formattering ───────────────────────────────────────────────
+
+function ownershipLabelsFor(settings: { memberA: { name: string }; memberB: { name: string } }) {
+  return {
+    A: settings.memberA.name || 'Person A',
+    B: settings.memberB.name || 'Person B',
+    felles: 'Felles',
+  } as Record<import('@/types/gifts').Ownership, string>
+}
 
 function fmtNOK(v: number) {
   return Math.round(v).toLocaleString('no-NO') + ' kr'
@@ -468,6 +476,7 @@ function RecipientsTab() {
   const removeRecipient = useGiftStore((s) => s.removeRecipient)
   const settings = useGiftStore((s) => s.settings)
   const weightRules = useGiftStore((s) => s.weightRules)
+  const ownershipLabels = ownershipLabelsFor(settings)
 
   function calcOccasionAmount(r: GiftRecipient, occasion: import('@/types/gifts').Occasion): number {
     const event: import('@/types/gifts').GiftEvent = {
@@ -520,7 +529,7 @@ function RecipientsTab() {
                   r.ownership === 'B' ? 'border-violet-500/40 text-violet-400 bg-violet-500/10' :
                   'border-border text-muted-foreground'
                 )}>
-                  {OWNERSHIP_LABELS[r.ownership]}
+                  {ownershipLabels[r.ownership]}
                 </span>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -577,6 +586,10 @@ function RecipientModal({
   onSave: (r: GiftRecipient) => void
   onClose: () => void
 }) {
+  const settings = useGiftStore((s) => s.settings)
+  const weightRules = useGiftStore((s) => s.weightRules)
+  const ownershipLabels = ownershipLabelsFor(settings)
+
   const [name, setName] = useState(initial?.name ?? '')
   const [relType, setRelType] = useState<RelationshipType>(initial?.relationshipType ?? 'venn')
   const [lifePhase, setLifePhase] = useState<LifePhase>(initial?.lifePhase ?? 'voksen')
@@ -588,6 +601,12 @@ function RecipientModal({
   )
   const [birthday, setBirthday] = useState(initial?.receivesBirthdayGift ?? true)
   const [christmas, setChristmas] = useState(initial?.receivesChristmasGift ?? false)
+  const [birthdayAmt, setBirthdayAmt] = useState(
+    initial?.occasionOverrides?.bursdag !== undefined ? String(initial.occasionOverrides.bursdag) : ''
+  )
+  const [christmasAmt, setChristmasAmt] = useState(
+    initial?.occasionOverrides?.jul !== undefined ? String(initial.occasionOverrides.jul) : ''
+  )
   const [notes, setNotes] = useState(initial?.notes ?? '')
 
   useEffect(() => {
@@ -600,6 +619,8 @@ function RecipientModal({
       : ''))
     setBirthday(initial?.receivesBirthdayGift ?? true)
     setChristmas(initial?.receivesChristmasGift ?? false)
+    setBirthdayAmt(initial?.occasionOverrides?.bursdag !== undefined ? String(initial.occasionOverrides.bursdag) : '')
+    setChristmasAmt(initial?.occasionOverrides?.jul !== undefined ? String(initial.occasionOverrides.jul) : '')
     setNotes(initial?.notes ?? '')
   }, [initial])
 
@@ -608,8 +629,19 @@ function RecipientModal({
     if (auto) setLifePhase(auto)
   }, [birthDate])
 
+  function defaultAmtFor(occasion: 'bursdag' | 'jul'): number {
+    return weightRules.occasionOverrides?.[relType]?.[occasion]
+      ?? weightRules.relationshipBaseAmounts[relType]
+      ?? 500
+  }
+
   function handleSave() {
     if (!name.trim()) return
+    const overrides: Partial<Record<import('@/types/gifts').Occasion, number>> = {}
+    const bAmt = parseInt(birthdayAmt)
+    if (!isNaN(bAmt) && birthdayAmt !== '') overrides.bursdag = bAmt
+    const cAmt = parseInt(christmasAmt)
+    if (!isNaN(cAmt) && christmasAmt !== '') overrides.jul = cAmt
     const r: GiftRecipient = {
       id: initial?.id ?? '',
       name: name.trim(),
@@ -621,6 +653,7 @@ function RecipientModal({
       birthMonth: birthDate ? parseInt(birthDate.split('-')[1]) : undefined,
       receivesBirthdayGift: birthday,
       receivesChristmasGift: christmas,
+      occasionOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
       notes: notes.trim() || undefined,
     }
     onSave(r)
@@ -671,7 +704,7 @@ function RecipientModal({
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(['A', 'B', 'felles'] as Ownership[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{OWNERSHIP_LABELS[k]}</SelectItem>
+                    <SelectItem key={k} value={k} className="text-xs">{ownershipLabels[k]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -686,15 +719,48 @@ function RecipientModal({
               className="h-8 text-xs"
             />
           </div>
-          <div className="flex gap-4 pt-1">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={birthday} onCheckedChange={setBirthday} />
-              Bursdagsgave
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={christmas} onCheckedChange={setChristmas} />
-              Julegave
-            </label>
+          {/* Gave-toggles med beløpsoverride */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer w-32">
+                <Switch checked={birthday} onCheckedChange={setBirthday} />
+                Bursdagsgave
+              </label>
+              {birthday && (
+                <Input
+                  type="number"
+                  value={birthdayAmt}
+                  onChange={(e) => setBirthdayAmt(e.target.value)}
+                  placeholder={String(defaultAmtFor('bursdag'))}
+                  className="h-7 text-xs w-24"
+                />
+              )}
+              {birthday && (
+                <span className="text-xs text-muted-foreground/60">
+                  {birthdayAmt === '' ? `standard: ${fmtNOK(defaultAmtFor('bursdag'))}` : 'kr'}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs cursor-pointer w-32">
+                <Switch checked={christmas} onCheckedChange={setChristmas} />
+                Julegave
+              </label>
+              {christmas && (
+                <Input
+                  type="number"
+                  value={christmasAmt}
+                  onChange={(e) => setChristmasAmt(e.target.value)}
+                  placeholder={String(defaultAmtFor('jul'))}
+                  className="h-7 text-xs w-24"
+                />
+              )}
+              {christmas && (
+                <span className="text-xs text-muted-foreground/60">
+                  {christmasAmt === '' ? `standard: ${fmtNOK(defaultAmtFor('jul'))}` : 'kr'}
+                </span>
+              )}
+            </div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Notater</Label>
@@ -717,6 +783,7 @@ function EventsTab() {
   const recipients = useGiftStore((s) => s.recipients)
   const settings = useGiftStore((s) => s.settings)
   const weightRules = useGiftStore((s) => s.weightRules)
+  const ownershipLabels = ownershipLabelsFor(settings)
   const addEvent = useGiftStore((s) => s.addEvent)
   const updateEvent = useGiftStore((s) => s.updateEvent)
   const removeEvent = useGiftStore((s) => s.removeEvent)
@@ -800,7 +867,7 @@ function EventsTab() {
                       ev.ownership === 'B' ? 'border-violet-500/40 text-violet-400' :
                       'border-border text-muted-foreground'
                     )}>
-                      {OWNERSHIP_LABELS[ev.ownership]}
+                      {ownershipLabels[ev.ownership]}
                     </span>
                     {ev.isLocked && <span className="text-xs text-amber-400 border border-amber-500/30 px-1 rounded">Låst</span>}
                   </div>
@@ -879,6 +946,7 @@ function EventModal({
   onSave: (ev: GiftEvent) => void
   onClose: () => void
 }) {
+  const ownershipLabels = ownershipLabelsFor(settings)
   const [recipientId, setRecipientId] = useState(initial?.recipientId ?? (recipients[0]?.id ?? ''))
   const [occasion, setOccasion] = useState<Occasion>(initial?.occasion ?? 'bursdag')
   const [date, setDate] = useState(initial?.date ?? '')
@@ -982,7 +1050,7 @@ function EventModal({
                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(['A', 'B', 'felles'] as Ownership[]).map((k) => (
-                    <SelectItem key={k} value={k} className="text-xs">{OWNERSHIP_LABELS[k]}</SelectItem>
+                    <SelectItem key={k} value={k} className="text-xs">{ownershipLabels[k]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

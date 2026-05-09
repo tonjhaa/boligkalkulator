@@ -34,6 +34,7 @@ export interface GiftRecipient {
   ownership: Ownership
   receivesBirthdayGift: boolean
   receivesChristmasGift: boolean
+  occasionOverrides?: Partial<Record<Occasion, number>>  // per-person beløpsoverride
   notes?: string
 }
 
