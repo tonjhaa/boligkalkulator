@@ -75,7 +75,7 @@ function OverviewTab() {
   const settings = useGiftStore((s) => s.settings)
   const recipients = useGiftStore((s) => s.recipients)
 
-  const result = useMemo(() => calculateGiftResult(events, settings), [events, settings])
+  const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
   const avp = useMemo(() => calculateActualVsPlanned(events), [events])
 
   const recipientMap = useMemo(
@@ -920,6 +920,7 @@ function DistributionTab() {
                 {model === 'inntekt' && 'Den med høyest inntekt betaler mer. Rettferdig hvis dere tjener ulikt.'}
                 {model === 'eierskap' && 'Du betaler egne familiegaver, partneren sine. Felles gaver deles etter inntekt.'}
                 {model === 'hybrid' && 'Egne gaver: du betaler 80 %, partner 20 %. Felles gaver etter inntekt. Anbefalt.'}
+                {model === 'familie_venn' && 'Familie deles alltid 50/50. Egne venner betaler du selv. Felles venner deles 50/50.'}
               </p>
             </button>
           ))}
@@ -1000,8 +1001,9 @@ function DistributionTab() {
 function SavingsPlanTab() {
   const events = useGiftStore((s) => s.events)
   const settings = useGiftStore((s) => s.settings)
+  const recipients = useGiftStore((s) => s.recipients)
 
-  const result = useMemo(() => calculateGiftResult(events, settings), [events, settings])
+  const result = useMemo(() => calculateGiftResult(events, settings, recipients), [events, settings, recipients])
   const [showAll, setShowAll] = useState(false)
 
   const nameA = settings.memberA.name

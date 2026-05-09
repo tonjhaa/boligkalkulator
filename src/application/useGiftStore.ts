@@ -91,8 +91,8 @@ export const useGiftStore = create<GiftState>()(
 
       // --- Selectors ---
       getResult: () => {
-        const { events, settings } = get()
-        return calculateGiftResult(events, settings)
+        const { events, settings, recipients } = get()
+        return calculateGiftResult(events, settings, recipients)
       },
 
       getActualVsPlanned: () => {

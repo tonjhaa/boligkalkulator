@@ -77,6 +77,7 @@ export const DISTRIBUTION_LABELS: Record<import('@/types/gifts').DistributionMod
   inntekt: 'Nettoinntektsbasert',
   eierskap: 'Eierskapsbasert',
   hybrid: 'Hybridmodell (anbefalt)',
+  familie_venn: 'Familie/venn-modell',
 }
 
 export const DEFAULT_WEIGHT_RULES: WeightRules = {

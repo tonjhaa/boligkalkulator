@@ -84,16 +84,27 @@ export function calculateIncomeShares(settings: GiftSettings): IncomeShares {
   return { pA: nA / total, pB: nB / total, totalIncome: total, fallback50_50: false }
 }
 
+// ── Familie vs venn ───────────────────────────────────────────
+
+// Alle relasjoner som regnes som "familie" i familie_venn-modellen.
+// Svigerforeldre/svigersøsken behandles likt som egne — symmetrisk for et par.
+const FAMILY_RELATIONSHIPS = new Set<import('@/types/gifts').RelationshipType>([
+  'partner', 'foreldre', 'svigerforeldre', 'søsken', 'svigersøsken',
+  'besteforeldre', 'barn', 'stebarn', 'tante_onkel', 'niese_nevø', 'fadderbarn',
+])
+
 // ── Fordeling per hendelse ─────────────────────────────────────
 
 /**
  * Beregner Person A og Person B sin andel av en gavehendelse.
+ * recipient brukes kun for familie_venn-modellen.
  */
 export function calculateEventShare(
   event: GiftEvent,
   amount: number,
   settings: GiftSettings,
   incomeShares: IncomeShares,
+  recipient?: GiftRecipient,
 ): EventShare {
   const model = settings.distributionModel
   const { pA, pB } = incomeShares
@@ -113,6 +124,23 @@ export function calculateEventShare(
     if (event.ownership === 'B') return { personA: 0, personB: amount }
     // Felles: etter inntekt
     return { personA: amount * pA, personB: amount * pB }
+  }
+
+  if (model === 'familie_venn') {
+    const isFamily = recipient ? FAMILY_RELATIONSHIPS.has(recipient.relationshipType) : false
+    if (isFamily) {
+      // Familie → alltid 50/50, uavhengig av eierskap
+      return { personA: amount * 0.5, personB: amount * 0.5 }
+    }
+    if (event.ownership === 'felles') {
+      // Felles venner → 50/50
+      return { personA: amount * 0.5, personB: amount * 0.5 }
+    }
+    // Egne venner → betaler selv
+    if (event.ownership === 'A') return { personA: amount, personB: 0 }
+    if (event.ownership === 'B') return { personA: 0, personB: amount }
+    // Fallback
+    return { personA: amount * 0.5, personB: amount * 0.5 }
   }
 
   // Hybrid (standard)
@@ -186,8 +214,10 @@ export function calculateNormalizedAmounts(
 export function calculateMonthlyBreakdown(
   events: GiftEvent[],
   settings: GiftSettings,
+  recipients: GiftRecipient[] = [],
 ): MonthlyBreakdown[] {
   const incomeShares = calculateIncomeShares(settings)
+  const recipientMap = new Map(recipients.map((r) => [r.id, r]))
   const activeEvents = events.filter((e) => e.status !== 'droppet')
 
   const totalAnnual = activeEvents.reduce((s, e) => {
@@ -210,7 +240,7 @@ export function calculateMonthlyBreakdown(
     if (m === null) continue
     const idx = m - 1
     const amount = event.manualAmount ?? event.calculatedAmount
-    const share = calculateEventShare(event, amount, settings, incomeShares)
+    const share = calculateEventShare(event, amount, settings, incomeShares, recipientMap.get(event.recipientId))
     months[idx].totalCost += amount
     months[idx].personAShare += share.personA
     months[idx].personBShare += share.personB
@@ -231,8 +261,10 @@ export function calculateMonthlyBreakdown(
 export function calculateGiftResult(
   events: GiftEvent[],
   settings: GiftSettings,
+  recipients: GiftRecipient[] = [],
 ): GiftCalculationResult {
   const incomeShares = calculateIncomeShares(settings)
+  const recipientMap = new Map(recipients.map((r) => [r.id, r]))
   const activeEvents = events.filter((e) => e.status !== 'droppet')
 
   let personATotal = 0
@@ -240,7 +272,7 @@ export function calculateGiftResult(
 
   for (const event of activeEvents) {
     const amount = event.manualAmount ?? event.calculatedAmount
-    const share = calculateEventShare(event, amount, settings, incomeShares)
+    const share = calculateEventShare(event, amount, settings, incomeShares, recipientMap.get(event.recipientId))
     personATotal += share.personA
     personBTotal += share.personB
   }
@@ -251,7 +283,7 @@ export function calculateGiftResult(
   const personATotalWithBuffer = personATotal * bufferFactor
   const personBTotalWithBuffer = personBTotal * bufferFactor
 
-  const monthlyBreakdown = calculateMonthlyBreakdown(events, settings)
+  const monthlyBreakdown = calculateMonthlyBreakdown(events, settings, recipients)
 
   const warnings: string[] = []
   const insights: string[] = []

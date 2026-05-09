@@ -23,7 +23,7 @@ export type Occasion =
 
 export type EventStatus = 'planlagt' | 'kjøpt' | 'droppet'
 
-export type DistributionModel = '50_50' | 'inntekt' | 'eierskap' | 'hybrid'
+export type DistributionModel = '50_50' | 'inntekt' | 'eierskap' | 'hybrid' | 'familie_venn'
 
 export interface GiftRecipient {
   id: string
