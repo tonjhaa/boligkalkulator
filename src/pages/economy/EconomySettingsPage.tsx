@@ -261,6 +261,22 @@ function PersonaliaSection() {
               </div>
             </div>
 
+            {/* Gjeld */}
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Gjeld</p>
+              <div className="space-y-1 max-w-[200px]">
+                <Label className="text-xs">Samlet gjeld (studielån, billån osv.)</Label>
+                <Input
+                  type="number"
+                  value={p.debt || ''}
+                  onChange={(e) => updatePartner({ debt: parseFloat(e.target.value) || 0 })}
+                  placeholder="f.eks. 300000"
+                  className="h-8 text-sm"
+                />
+                <p className="text-[10px] text-muted-foreground">Brukes i maks kjøpesum-beregning</p>
+              </div>
+            </div>
+
             {/* Sparekontoer */}
             <div>
               <div className="flex items-center justify-between mb-2">

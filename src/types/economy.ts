@@ -660,6 +660,7 @@ export interface PartnerVeikart {
   bsuBirthYear?: number        // fødselsår — for BSU-aldersgrense
   monthlySavings: number       // legacy — erstattet av accounts
   accounts: PartnerAccount[]   // navngitte sparekontoer
+  debt?: number                // samlet gjeld (studielån, billån osv.)
 }
 
 /** Samlet ikke-BSU sparing for partner (fra accounts, faller tilbake på legacy-felt) */
