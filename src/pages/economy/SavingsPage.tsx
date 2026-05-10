@@ -666,6 +666,8 @@ function MånedsoversiktTable({
 
     // Month-by-month simulation — handles BSU cap correctly
     const runningBals = accMeta.map(a => a.startBalance)
+    // Påløpte renter per konto (nullstilles ved desember-kreditt)
+    const accruedInterest = accMeta.map(() => 0)
     let fondBal = contribOverrides['start-fond'] ?? fondCurrentValue
     let partnerBsuBal = hasPartner ? (partnerVeikart.bsu ?? 0) : 0
 
@@ -687,16 +689,24 @@ function MånedsoversiktTable({
           const room = Math.max(0, BSU_MAX_TOTAL - bal0)
           contrib = Math.min(contrib, room)
           bal = bal0 + contrib
-          interest = 0  // BSU renter legges til ved årets slutt
+          interest = 0
         } else {
-          interest = bal0 * acc.rate / 100 / 12
-          bal = bal0 + interest + contrib
+          // Renter beregnes månedlig, men krediteres kun i desember
+          const monthlyInterest = bal0 * acc.rate / 100 / 12
+          accruedInterest[j] += monthlyInterest
+          interest = monthlyInterest
+          if (month === 12) {
+            bal = bal0 + accruedInterest[j] + contrib
+            accruedInterest[j] = 0
+          } else {
+            bal = bal0 + contrib
+          }
         }
         runningBals[j] = bal
         return { id: acc.id, balance: bal, contribution: contrib, overrideKey, interest }
       })
 
-      // Fond — per-month override
+      // Fond — månedlig compounding (markedsbasert, daglig kursendring)
       const fondKey = `fond-${year}-${month}`
       const effectiveFondMnd = fondKey in contribOverrides ? contribOverrides[fondKey] : fondMonthlyDeposit
       const fondInterest = fondBal * FOND_RATE_TABLE / 100 / 12
