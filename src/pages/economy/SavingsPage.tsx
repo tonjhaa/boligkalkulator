@@ -603,9 +603,9 @@ function MånedsoversiktTable({
   const hasFond = fondCurrentValue > 0 || fondMonthlyDeposit > 0
   const hasPartner = partnerVeikart.enabled
 
-  const annualIncome =
-    ((profile?.baseMonthly ?? 0) + (profile?.fixedAdditions?.reduce((s, a) => s + a.amount, 0) ?? 0)) * 12
-    + (hasPartner ? partnerVeikart.annualIncome : 0)
+  const myAnnualIncome = ((profile?.baseMonthly ?? 0) + (profile?.fixedAdditions?.reduce((s, a) => s + a.amount, 0) ?? 0)) * 12
+  const partnerOnlyAnnualIncome = hasPartner ? partnerVeikart.annualIncome : 0
+  const annualIncome = myAnnualIncome + partnerOnlyAnnualIncome
 
   const { accMeta, partnerAccMeta, monthRows } = useMemo(() => {
     const accMeta = accounts.map(acc => ({
@@ -682,6 +682,10 @@ function MånedsoversiktTable({
         .filter(d => d.status !== 'nedbetalt')
         .reduce((s, d) => s + projectDebtBalance(d, i + 1), 0)
       const maxKjøpesum = annualIncome > 0 ? calcMaxPurchase(totalEK, annualIncome, debtBalance) : 0
+      const myEK = accountBalances.reduce((s, a) => s + a.balance, 0) + (hasFond ? fondBal : 0)
+      const partnerEK = hasPartner ? partnerAccBalances.reduce((s, a) => s + a.balance, 0) + partnerBsuBal : 0
+      const maxKjøpesumMeg = myAnnualIncome > 0 ? calcMaxPurchase(myEK, myAnnualIncome, debtBalance) : 0
+      const maxKjøpesumPartner = partnerOnlyAnnualIncome > 0 ? calcMaxPurchase(partnerEK, partnerOnlyAnnualIncome, debtBalance) : 0
 
       return {
         year, month,
@@ -693,11 +697,13 @@ function MånedsoversiktTable({
         partnerBsuContrib: partnerBsuMnd,
         totalEK,
         maxKjøpesum,
+        maxKjøpesumMeg,
+        maxKjøpesumPartner,
       }
     })
 
     return { accMeta, partnerAccMeta: partnerAccMeta as PartnerAccount[], monthRows }
-  }, [accounts, fondCurrentValue, fondMonthlyDeposit, debts, annualIncome, hasFond, hasPartner, partnerVeikart, now, contribOverrides])
+  }, [accounts, fondCurrentValue, fondMonthlyDeposit, debts, annualIncome, myAnnualIncome, partnerOnlyAnnualIncome, hasFond, hasPartner, partnerVeikart, now, contribOverrides])
 
   const years = [...new Set(monthRows.map(r => r.year))]
 
@@ -755,7 +761,7 @@ function MånedsoversiktTable({
                 Partner
               </th>
             )}
-            <th colSpan={2} />
+            <th colSpan={2 + (myAnnualIncome > 0 ? 1 : 0) + (hasPartner && partnerOnlyAnnualIncome > 0 ? 1 : 0)} />
           </tr>
           {/* Row 2: Account names */}
           <tr className="bg-background border-b border-border">
@@ -791,7 +797,9 @@ function MånedsoversiktTable({
               </th>
             ))}
             <th className="px-3 py-1.5 text-right border-r border-border text-blue-400 font-semibold whitespace-nowrap">Total EK</th>
-            <th className="px-3 py-1.5 text-right text-green-400 font-semibold whitespace-nowrap">Max kjøpesum</th>
+            <th className="px-3 py-1.5 text-right border-r border-border text-green-400 font-semibold whitespace-nowrap">Samlet</th>
+            {myAnnualIncome > 0 && <th className="px-3 py-1.5 text-right border-r border-border text-green-400/70 font-semibold whitespace-nowrap">Meg</th>}
+            {hasPartner && partnerOnlyAnnualIncome > 0 && <th className="px-3 py-1.5 text-right text-violet-400/70 font-semibold whitespace-nowrap">Partner</th>}
           </tr>
           {/* Row 3: Innskudd / Saldo sub-headers */}
           <tr className="bg-background border-b-2 border-border">
@@ -829,7 +837,9 @@ function MånedsoversiktTable({
               </th>
             ))}
             <th className="px-3 py-1 border-r border-border" />
-            <th className="px-3 py-1" />
+            <th className="px-3 py-1 border-r border-border" />
+            {myAnnualIncome > 0 && <th className="px-3 py-1 border-r border-border" />}
+            {hasPartner && partnerOnlyAnnualIncome > 0 && <th className="px-3 py-1" />}
           </tr>
         </thead>
         <tbody>
@@ -837,36 +847,29 @@ function MånedsoversiktTable({
           <tr className="border-b-2 border-border bg-muted/5">
             <td className="sticky left-0 bg-muted/5 px-3 py-1.5 font-medium border-r border-border text-muted-foreground whitespace-nowrap">Startsaldo</td>
             {accMeta.map(acc => (
-              <td key={acc.id} colSpan={2} className="border-r border-border p-0">
-                <div className="flex items-center">
-                  <span className="flex-1 px-3 py-1.5 text-right text-muted-foreground">—</span>
-                  <span className="flex-1 px-3 py-1.5">
-                    <InnskuddCell
-                      value={acc.startBalance}
-                      isOverridden={`start-${acc.id}` in contribOverrides}
-                      onChange={v => setContribOverrides(prev => ({ ...prev, [`start-${acc.id}`]: v }))}
-                    />
-                  </span>
-                </div>
+              <td key={acc.id} colSpan={2} className="border-r border-border px-3 py-1.5 text-right">
+                <InnskuddCell
+                  value={acc.startBalance}
+                  isOverridden={`start-${acc.id}` in contribOverrides}
+                  onChange={v => setContribOverrides(prev => ({ ...prev, [`start-${acc.id}`]: v }))}
+                />
               </td>
             ))}
             {hasFond && (
-              <td colSpan={2} className="border-r border-border p-0">
-                <div className="flex items-center">
-                  <span className="flex-1 px-3 py-1.5 text-right text-muted-foreground">—</span>
-                  <span className="flex-1 px-3 py-1.5">
-                    <InnskuddCell
-                      value={contribOverrides['start-fond'] ?? fondCurrentValue}
-                      isOverridden={'start-fond' in contribOverrides}
-                      onChange={v => setContribOverrides(prev => ({ ...prev, 'start-fond': v }))}
-                    />
-                  </span>
-                </div>
+              <td colSpan={2} className="border-r border-border px-3 py-1.5 text-right">
+                <InnskuddCell
+                  value={contribOverrides['start-fond'] ?? fondCurrentValue}
+                  isOverridden={'start-fond' in contribOverrides}
+                  onChange={v => setContribOverrides(prev => ({ ...prev, 'start-fond': v }))}
+                />
               </td>
             )}
             {hasPartner && hasBsu && <td colSpan={2} className="border-r border-border" />}
             {partnerAccMeta.map(acc => <td key={acc.id} colSpan={2} className="border-r border-border" />)}
-            <td className="border-r border-border" /><td />
+            <td className="border-r border-border" />
+            <td className="border-r border-border" />
+            {myAnnualIncome > 0 && <td className="border-r border-border" />}
+            {hasPartner && partnerOnlyAnnualIncome > 0 && <td />}
           </tr>
           {years.map(year => {
             const yearData = monthRows.filter(r => r.year === year)
@@ -922,7 +925,9 @@ function MånedsoversiktTable({
                     )
                   })}
                   <td className="px-3 py-2 text-right text-blue-400 font-semibold border-r border-border">{fmtNOK(last.totalEK)}</td>
-                  <td className="px-3 py-2 text-right text-green-400 font-semibold">{last.maxKjøpesum > 0 ? fmtNOK(last.maxKjøpesum) : '—'}</td>
+                  <td className="px-3 py-2 text-right text-green-400 font-semibold border-r border-border">{last.maxKjøpesum > 0 ? fmtNOK(last.maxKjøpesum) : '—'}</td>
+                  {myAnnualIncome > 0 && <td className="px-3 py-2 text-right text-green-400/70 font-semibold border-r border-border">{last.maxKjøpesumMeg > 0 ? fmtNOK(last.maxKjøpesumMeg) : '—'}</td>}
+                  {hasPartner && partnerOnlyAnnualIncome > 0 && <td className="px-3 py-2 text-right text-violet-400/70 font-semibold">{last.maxKjøpesumPartner > 0 ? fmtNOK(last.maxKjøpesumPartner) : '—'}</td>}
                 </tr>
                 {/* Monthly rows */}
                 {yearData.map(row => (
@@ -978,7 +983,9 @@ function MånedsoversiktTable({
                       </td>
                     ))}
                     <td className="px-3 py-1 text-right font-mono text-blue-300 border-r border-border">{fmtNOK(row.totalEK)}</td>
-                    <td className="px-3 py-1 text-right text-green-300/60">{row.maxKjøpesum > 0 ? fmtNOK(row.maxKjøpesum) : '—'}</td>
+                    <td className="px-3 py-1 text-right text-green-300/60 border-r border-border">{row.maxKjøpesum > 0 ? fmtNOK(row.maxKjøpesum) : '—'}</td>
+                    {myAnnualIncome > 0 && <td className="px-3 py-1 text-right text-green-300/40 border-r border-border">{row.maxKjøpesumMeg > 0 ? fmtNOK(row.maxKjøpesumMeg) : '—'}</td>}
+                    {hasPartner && partnerOnlyAnnualIncome > 0 && <td className="px-3 py-1 text-right text-violet-300/40">{row.maxKjøpesumPartner > 0 ? fmtNOK(row.maxKjøpesumPartner) : '—'}</td>}
                   </tr>
                 ))}
               </Fragment>
