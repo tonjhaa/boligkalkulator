@@ -552,13 +552,21 @@ export function computeBudgetTable(
   for (const acc of savingsAccounts.filter((a) => a.monthlyContribution > 0 || (a.contributions ?? []).length > 0)) {
     sparingRows.push(mkRow(`sav-${acc.id}`, acc.label, uniform12(
       (m) => {
-        // Respekter fra/til-periode for fast månedssparing
-        if (!monthInDateRange(year, m, acc.monthlyContributionFromDate, acc.monthlyContributionToDate)) return 0
-        return budgetVal(`sav-${acc.id}`, m, -acc.monthlyContribution)
+        // Fast månedssparing (med override-støtte)
+        const monthlyInRange = monthInDateRange(year, m, acc.monthlyContributionFromDate, acc.monthlyContributionToDate)
+        const monthlyAmt = monthlyInRange ? acc.monthlyContribution : 0
+        const overriddenMonthly = monthlyAmt > 0 ? budgetVal(`sav-${acc.id}`, m, -monthlyAmt) : 0
+        // Enkeltinnskudd inngår alltid i budsjettet (de er planlagte)
+        const oneTime = computeMonthContributions(acc, year, m)
+        return overriddenMonthly - oneTime
       },
       (m) => {
-        const actual = computeMonthContributions(acc, year, m)
-        return actual > 0 ? -actual : null
+        const oneTime = computeMonthContributions(acc, year, m)
+        if (oneTime <= 0) return null  // ingen enkeltinnskudd — fall through til budsjett (månedlig)
+        // Inkluder månedlig beløp i aktual-visningen slik at totalen stemmer
+        const monthlyInRange = monthInDateRange(year, m, acc.monthlyContributionFromDate, acc.monthlyContributionToDate)
+        const monthly = monthlyInRange ? acc.monthlyContribution : 0
+        return -(oneTime + monthly)
       },
     )))
   }
