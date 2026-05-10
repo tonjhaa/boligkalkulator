@@ -45,7 +45,7 @@ import { FondPage } from '@/pages/economy/FondPage'
 import { cn } from '@/lib/utils'
 
 function fmtNOK(n: number) {
-  return Math.round(n).toLocaleString('no-NO') + ' kr'
+  return Math.round(n).toLocaleString('no-NO') + '\u00A0kr'
 }
 
 function fmtDate(iso: string) {
@@ -635,6 +635,7 @@ function MånedsoversiktTable({
   const HORIZON = 72
   const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
   const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides, setPartnerVeikart } = useEconomyStore()
+  const [editingRateId, setEditingRateId] = useState<string | null>(null)
 
   function setMonthOverride(accId: string, year: number, month: number, value: number) {
     setSavingsOverride(`${accId}-${year}-${month}`, value)
@@ -898,7 +899,34 @@ function MånedsoversiktTable({
             {accMeta.map(acc => (
               <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border font-semibold whitespace-nowrap">
                 {acc.label}
-                {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
+                {editingRateId === acc.id ? (
+                  <input
+                    autoFocus
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={20}
+                    defaultValue={acc.rate}
+                    className="ml-1 w-12 text-[10px] font-normal rounded border border-border bg-background px-1 outline-none focus:border-primary text-center"
+                    onBlur={(e) => {
+                      const v = parseFloat(e.target.value)
+                      if (!isNaN(v)) setSavingsOverride(`rate-${acc.id}`, v)
+                      setEditingRateId(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      if (e.key === 'Escape') setEditingRateId(null)
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="ml-1 text-[10px] text-muted-foreground font-normal hover:text-primary transition-colors"
+                    onClick={() => setEditingRateId(acc.id)}
+                    title="Klikk for å endre rente"
+                  >
+                    {acc.rate.toFixed(2)}%
+                  </button>
+                )}
               </th>
             ))}
             {hasFond && (
@@ -1029,7 +1057,7 @@ function MånedsoversiktTable({
                       <td key={acc.id} colSpan={2} className="border-r border-border p-0">
                         <div className="flex">
                           <span className="flex-1 px-3 py-2 text-right text-muted-foreground">{Math.round(yearInnskudd).toLocaleString('no-NO')}</span>
-                          <span className="flex-1 px-3 py-2 text-right font-semibold">{fmtNOK(ab.balance)}</span>
+                          <span className="flex-1 px-3 py-2 text-right font-semibold whitespace-nowrap">{fmtNOK(ab.balance)}</span>
                         </div>
                       </td>
                     )
@@ -1040,7 +1068,7 @@ function MånedsoversiktTable({
                         <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
                           {yearData.reduce((s, r) => s + r.fondContrib, 0).toLocaleString('no-NO')}
                         </span>
-                        <span className="flex-1 px-3 py-2 text-right text-teal-400 font-semibold">{fmtNOK(last.fondBalance)}</span>
+                        <span className="flex-1 px-3 py-2 text-right text-teal-400 font-semibold whitespace-nowrap">{fmtNOK(last.fondBalance)}</span>
                       </div>
                     </td>
                   )}
@@ -1050,7 +1078,7 @@ function MånedsoversiktTable({
                         <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
                           {yearData.reduce((s, r) => s + r.partnerBsuContrib, 0).toLocaleString('no-NO')}
                         </span>
-                        <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(last.partnerBsuBalance)}</span>
+                        <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold whitespace-nowrap">{fmtNOK(last.partnerBsuBalance)}</span>
                       </div>
                     </td>
                   )}
@@ -1062,7 +1090,7 @@ function MånedsoversiktTable({
                           <span className="flex-1 px-3 py-2 text-right text-muted-foreground">
                             {yearData.reduce((s, r) => s + (r.partnerAccBalances.find(a => a.id === acc.id)?.contribution ?? 0), 0).toLocaleString('no-NO')}
                           </span>
-                          <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold">{fmtNOK(lastAb?.balance ?? 0)}</span>
+                          <span className="flex-1 px-3 py-2 text-right text-violet-300 font-semibold whitespace-nowrap">{fmtNOK(lastAb?.balance ?? 0)}</span>
                         </div>
                       </td>
                     )
