@@ -82,7 +82,7 @@ export function BudgetPage() {
 
   const now = new Date()
   const [activeYear, setActiveYear] = useState(now.getFullYear())
-  const [selectedView, setSelectedView] = useState<'oversikt' | 'tabell'>('oversikt')
+  const [selectedView, setSelectedView] = useState<'oversikt' | 'tabell'>('tabell')
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLine, setAddingLine] = useState(false)
@@ -108,6 +108,9 @@ export function BudgetPage() {
   }, [trekktabellLoaded, profile?.tabellnummer])
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
   const [hideTemporary, setHideTemporary] = useState(false)
+  const [hoveredCell, setHoveredCell] = useState<{
+    row: BudgetRow; month: number; rect: DOMRect
+  } | null>(null)
 
   const yearOverrides = useMemo(() => {
     const prefix = `${activeYear}:`
@@ -446,6 +449,8 @@ export function BudgetPage() {
                       onDelete={deletableRowMap[row.id]
                         ? () => removeBudgetLine(deletableRowMap[row.id])
                         : undefined}
+                      onCellHover={(month, rect) => setHoveredCell({ row, month, rect })}
+                      onCellLeave={() => setHoveredCell(null)}
                     />
                   ))}
                 </>
@@ -526,6 +531,74 @@ export function BudgetPage() {
           onCancel={() => setAddingTaxLine(false)}
         />
       )}
+
+      {/* ---- Cell hover tooltip ---- */}
+      {hoveredCell && (() => {
+        const { row, month, rect } = hoveredCell
+        const mi = month - 1
+        // Saml faktiske verdier (låste/faktiske måneder) opp til og med hover-måned
+        const actualMonths = metas
+          .filter((m) => m.month <= month && (m.hasSlip || m.isLocked))
+          .map((m) => {
+            const cell = row.cells[m.month - 1]
+            return { month: m.month, val: cell.actual ?? cell.budget }
+          })
+          .filter((x) => x.val !== 0)
+        const thisCell = row.cells[mi]
+        const thisMeta = metas[mi]
+        const thisVal = thisMeta
+          ? (thisMeta.hasSlip || thisMeta.isLocked)
+            ? (thisCell?.actual ?? thisCell?.budget ?? 0)
+            : (thisCell?.budget ?? 0)
+          : 0
+        const ytdSum = actualMonths.reduce((s, x) => s + x.val, 0)
+        const ytdAvg = actualMonths.length > 0 ? ytdSum / actualMonths.length : null
+        const projAnnual = ytdAvg !== null ? ytdAvg * 12 : null
+        // Posisjon: under cellen, men ikke utenfor vinduet
+        const tooltipH = 130
+        const top = rect.bottom + 6 + tooltipH > window.innerHeight
+          ? rect.top - tooltipH - 6
+          : rect.bottom + 6
+        const left = Math.min(rect.left, window.innerWidth - 200)
+        const monthName = MONTH_SHORT[month]
+        return (
+          <div
+            style={{ position: 'fixed', top, left, zIndex: 9999, width: 196 }}
+            className="pointer-events-none bg-popover border border-border rounded-lg shadow-xl px-3 py-2.5 text-xs space-y-1.5"
+          >
+            <p className="font-semibold text-foreground truncate">{row.label}</p>
+            <div className="flex justify-between text-muted-foreground">
+              <span>{monthName}</span>
+              <span className={cn('font-mono font-medium', thisVal < 0 ? 'text-red-400' : 'text-foreground')}>
+                {fmtNOK(thisVal)}
+              </span>
+            </div>
+            {ytdAvg !== null && (
+              <>
+                <div className="border-t border-border/40 pt-1.5 space-y-1">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Snitt jan–{monthName}</span>
+                    <span className="font-mono">{fmtNOK(ytdAvg)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>YTD sum</span>
+                    <span className="font-mono">{fmtNOK(ytdSum)}</span>
+                  </div>
+                  {projAnnual !== null && (
+                    <div className="flex justify-between text-muted-foreground/60">
+                      <span>Årsanslag</span>
+                      <span className="font-mono">{fmtNOK(projAnnual)}</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground/40">
+                  Basert på {actualMonths.length} faktisk{actualMonths.length !== 1 ? 'e' : ''} mnd
+                </p>
+              </>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -888,6 +961,8 @@ function DataRow({
   temporaryInfo,
   onEdit,
   onDelete,
+  onCellHover,
+  onCellLeave,
 }: {
   row: BudgetRow
   metas: MonthMeta[]
@@ -899,6 +974,8 @@ function DataRow({
   temporaryInfo?: { isTemporary: boolean; onToggle: () => void }
   onEdit?: () => void
   onDelete?: () => void
+  onCellHover?: (month: number, rect: DOMRect) => void
+  onCellLeave?: () => void
 }) {
   const [editingMonth, setEditingMonth] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -952,7 +1029,11 @@ function DataRow({
           const hl = highlightedMonth === meta.month
           if (meta.hasSlip) {
             return (
-              <td key={`${meta.month}-a`} colSpan={2} className={cn('px-2 py-1.5 text-right border-r border-border/40 tabular-nums text-xs font-medium', hl && 'bg-sky-500/15')}>
+              <td key={`${meta.month}-a`} colSpan={2}
+                className={cn('px-2 py-1.5 text-right border-r border-border/40 tabular-nums text-xs font-medium', hl && 'bg-sky-500/15')}
+                onMouseEnter={(e) => onCellHover?.(meta.month, e.currentTarget.getBoundingClientRect())}
+                onMouseLeave={() => onCellLeave?.()}
+              >
                 {fmtNOK(cell.actual ?? cell.budget)}
               </td>
             )
@@ -962,6 +1043,8 @@ function DataRow({
               key={`${meta.month}-p`}
               colSpan={2}
               className={cn('px-2 py-1.5 text-right border-r border-border/40 tabular-nums text-xs italic text-muted-foreground', hl && 'bg-sky-500/15')}
+              onMouseEnter={(e) => onCellHover?.(meta.month, e.currentTarget.getBoundingClientRect())}
+              onMouseLeave={() => onCellLeave?.()}
             >
               {fmtNOK(cell.budget)}
             </td>
@@ -1065,6 +1148,8 @@ function DataRow({
                 hl && 'bg-sky-500/15',
               )}
               onClick={() => isEditable && startEdit(meta.month, displayVal)}
+              onMouseEnter={(e) => onCellHover?.(meta.month, e.currentTarget.getBoundingClientRect())}
+              onMouseLeave={() => onCellLeave?.()}
             >
               {fmtNOK(displayVal)}
             </td>
@@ -1086,6 +1171,8 @@ function DataRow({
                 hl && 'bg-sky-500/15',
               )}
               title={deviation !== null ? `Avvik: ${Math.round(deviation).toLocaleString('no-NO')}` : undefined}
+              onMouseEnter={(e) => onCellHover?.(meta.month, e.currentTarget.getBoundingClientRect())}
+              onMouseLeave={() => onCellLeave?.()}
             >
               {fmtNOK(actual)}
             </td>
@@ -1128,6 +1215,8 @@ function DataRow({
               hl && 'bg-sky-500/15',
             )}
             onClick={() => isEditable && !meta.isLocked && startEdit(meta.month, displayVal)}
+            onMouseEnter={(e) => onCellHover?.(meta.month, e.currentTarget.getBoundingClientRect())}
+            onMouseLeave={() => onCellLeave?.()}
           >
             <span className="flex items-center justify-end gap-1">
               {fmtNOK(displayVal)}
