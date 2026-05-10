@@ -657,6 +657,17 @@ export interface PartnerDebt {
   monthlyPayment: number
 }
 
+export type PartnerBudgetCategory =
+  | 'bolig' | 'transport' | 'mat' | 'helse' | 'abonnement'
+  | 'forsikring' | 'klær' | 'fritid' | 'annet'
+
+export interface PartnerBudgetLine {
+  id: string
+  label: string
+  category: PartnerBudgetCategory
+  amount: number   // månedlig beløp (positiv = utgift)
+}
+
 /** Partners tall brukt i Veikart og Dashboard */
 export interface PartnerVeikart {
   enabled: boolean
@@ -670,6 +681,13 @@ export interface PartnerVeikart {
   accounts: PartnerAccount[]   // navngitte sparekontoer
   debt?: number                // legacy — samlet gjeld, erstattet av debts
   debts?: PartnerDebt[]        // gjeldsposter med beløp, rente og terminbeløp
+  // Lønn / profil
+  employer?: string
+  taxWithholding?: number      // månedlig skattetrekk (kr)
+  pensionPercent?: number      // pensjonsprosent (f.eks. 2)
+  unionFee?: number            // fagforeningskontingent (kr/mnd)
+  // Budsjett — månedlige utgiftsposter
+  budgetLines?: PartnerBudgetLine[]
 }
 
 /** Samlet ikke-BSU sparing for partner (fra accounts, faller tilbake på legacy-felt) */
