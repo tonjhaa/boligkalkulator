@@ -20,6 +20,7 @@ import {
   Settings,
   Map,
   Gift,
+  Users,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -68,6 +69,9 @@ const VeikartPage = lazy(() =>
 const GiftPage = lazy(() =>
   import('./GiftPage').then((m) => ({ default: m.GiftPage }))
 )
+const PartnerPage = lazy(() =>
+  import('./PartnerPage').then((m) => ({ default: m.PartnerPage }))
+)
 
 interface NavItem {
   page: EconomySubPage
@@ -90,6 +94,7 @@ const NAV_ITEMS: NavItem[] = [
   { page: 'vacation', label: 'Ferie', Icon: Umbrella },
   { page: 'veikart', label: 'Veikart', Icon: Map },
   { page: 'gaver', label: 'Gaver', Icon: Gift },
+  { page: 'partner', label: 'Partner', Icon: Users },
   { page: 'settings', label: 'Innstillinger', Icon: Settings },
 ]
 
@@ -191,6 +196,7 @@ export function EconomyPage() {
           {currentPage === 'vacation' && <VacationPage />}
           {currentPage === 'veikart' && <VeikartPage />}
           {currentPage === 'gaver' && <GiftPage />}
+          {currentPage === 'partner' && <PartnerPage />}
           {currentPage === 'settings' && <EconomySettingsPage />}
         </Suspense>
         </PageErrorBoundary>

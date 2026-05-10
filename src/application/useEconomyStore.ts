@@ -31,6 +31,7 @@ import type {
   LonnsoppgjorRecord,
   PartnerVeikart,
   PartnerAccount,
+  PartnerDebt,
 } from '@/types/economy'
 import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 
@@ -90,6 +91,9 @@ interface EconomyState {
   addPartnerAccount: (account: PartnerAccount) => void
   updatePartnerAccount: (id: string, updates: Partial<PartnerAccount>) => void
   removePartnerAccount: (id: string) => void
+  addPartnerDebt: (debt: PartnerDebt) => void
+  updatePartnerDebt: (id: string, updates: Partial<PartnerDebt>) => void
+  removePartnerDebt: (id: string) => void
 
   // Spareplan
   savingsPlanTarget: number
@@ -274,6 +278,21 @@ export const useEconomyStore = create<EconomyState>()(
         partnerVeikart: {
           ...state.partnerVeikart,
           accounts: state.partnerVeikart.accounts.filter((a) => a.id !== id),
+        },
+      })),
+      addPartnerDebt: (debt) => set((state) => ({
+        partnerVeikart: { ...state.partnerVeikart, debts: [...(state.partnerVeikart.debts ?? []), debt] },
+      })),
+      updatePartnerDebt: (id, updates) => set((state) => ({
+        partnerVeikart: {
+          ...state.partnerVeikart,
+          debts: (state.partnerVeikart.debts ?? []).map((d) => d.id === id ? { ...d, ...updates } : d),
+        },
+      })),
+      removePartnerDebt: (id) => set((state) => ({
+        partnerVeikart: {
+          ...state.partnerVeikart,
+          debts: (state.partnerVeikart.debts ?? []).filter((d) => d.id !== id),
         },
       })),
 
@@ -959,7 +978,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 12,
+      version: 13,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -1054,6 +1073,14 @@ export const useEconomyStore = create<EconomyState>()(
         // v11 → v12: initialiser sparings-overrides
         if (fromVersion < 12) {
           if (!state.savingsOverrides) state.savingsOverrides = {}
+        }
+        if (fromVersion < 13) {
+          const pv = state.partnerVeikart as Record<string, unknown>
+          if (!pv.debts) pv.debts = []
+          const prefs = state.userPreferences as { enabledTabs?: string[] }
+          if (Array.isArray(prefs?.enabledTabs) && !prefs.enabledTabs.includes('partner')) {
+            prefs.enabledTabs = [...prefs.enabledTabs, 'partner']
+          }
         }
         // v10 → v11: legg til 'gaver' i enabledTabs for eksisterende brukere
         if (fromVersion < 11 && state.userPreferences) {

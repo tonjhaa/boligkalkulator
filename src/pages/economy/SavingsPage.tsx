@@ -599,7 +599,7 @@ function InnskuddCell({ value, onChange, isOverridden, onFillDown }: {
     )
   }
   return (
-    <span className="flex items-center group/cell gap-0.5">
+    <span className="flex items-center group/cell gap-0.5 w-full">
       <button
         onClick={() => { setTmp(String(rounded)); setEditing(true) }}
         title="Klikk for å endre. Hold inne ↓ for å fyll ned."
@@ -634,7 +634,7 @@ function MånedsoversiktTable({
 }) {
   const HORIZON = 72
   const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
-  const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides, setPartnerVeikart } = useEconomyStore()
+  const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides } = useEconomyStore()
   const [editingRateId, setEditingRateId] = useState<string | null>(null)
 
   function setMonthOverride(accId: string, year: number, month: number, value: number) {
@@ -764,7 +764,12 @@ function MånedsoversiktTable({
         (hasFond ? fondBal : 0) +
         (hasPartner ? partnerAccBalances.reduce((s, a) => s + a.balance, 0) + partnerBsuBal : 0)
 
-      const partnerDebt = hasPartner ? (contribOverrides['partner-debt'] ?? partnerVeikart.debt ?? 0) : 0
+      const partnerDebtBase = hasPartner
+        ? ((partnerVeikart.debts ?? []).length > 0
+            ? (partnerVeikart.debts ?? []).reduce((s, d) => s + d.currentBalance, 0)
+            : partnerVeikart.debt ?? 0)
+        : 0
+      const partnerDebt = 'partner-debt' in contribOverrides ? contribOverrides['partner-debt'] : partnerDebtBase
       const debtBalance = debts
         .filter(d => d.status !== 'nedbetalt')
         .reduce((s, d) => s + projectDebtBalance(d, i + 1), 0) + partnerDebt
@@ -849,24 +854,28 @@ function MånedsoversiktTable({
             />
             <span>%/år</span>
           </span>
-          {hasPartner && (
-            <span className="flex items-center gap-1 text-violet-400/80">
-              <span>Partner gjeld:</span>
-              <input
-                type="number"
-                min={0}
-                step={10000}
-                value={contribOverrides['partner-debt'] ?? (partnerVeikart.debt ?? 0)}
-                onChange={e => {
-                  const val = parseFloat(e.target.value) || 0
-                  setSavingsOverride('partner-debt', val)
-                  setPartnerVeikart({ ...partnerVeikart, debt: val })
-                }}
-                className="w-20 bg-muted/30 text-right rounded px-1 py-0.5 text-xs outline-none border border-border focus:border-primary text-violet-300"
-              />
-              <span>kr</span>
-            </span>
-          )}
+          {hasPartner && (() => {
+            const debtBase = (partnerVeikart.debts ?? []).length > 0
+              ? (partnerVeikart.debts ?? []).reduce((s, d) => s + d.currentBalance, 0)
+              : partnerVeikart.debt ?? 0
+            return (
+              <span className="flex items-center gap-1 text-violet-400/80">
+                <span>Partner gjeld:</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={10000}
+                  value={contribOverrides['partner-debt'] ?? debtBase}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value) || 0
+                    setSavingsOverride('partner-debt', val)
+                  }}
+                  className="w-20 bg-muted/30 text-right rounded px-1 py-0.5 text-xs outline-none border border-border focus:border-primary text-violet-300"
+                />
+                <span>kr</span>
+              </span>
+            )
+          })()}
         </span>
         {Object.keys(contribOverrides).length > 0 && (
           <button

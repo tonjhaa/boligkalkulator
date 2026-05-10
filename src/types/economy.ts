@@ -628,7 +628,7 @@ export interface JuneForecast {
 export type EconomyTab =
   | 'dashboard' | 'budget' | 'salary' | 'atf' | 'feriepenger'
   | 'savings' | 'fond' | 'debt' | 'absence' | 'tax'
-  | 'subscriptions' | 'ivf' | 'vacation' | 'settings' | 'veikart' | 'gaver'
+  | 'subscriptions' | 'ivf' | 'vacation' | 'settings' | 'veikart' | 'gaver' | 'partner'
 
 export interface UserPreferences {
   onboardingCompleted: boolean
@@ -649,6 +649,14 @@ export interface PartnerAccount {
   toDate?: string     // ISO "YYYY-MM-DD" — innskudd slutter etter denne måneden
 }
 
+export interface PartnerDebt {
+  id: string
+  label: string
+  currentBalance: number
+  interestRate: number    // % per år
+  monthlyPayment: number
+}
+
 /** Partners tall brukt i Veikart og Dashboard */
 export interface PartnerVeikart {
   enabled: boolean
@@ -660,7 +668,8 @@ export interface PartnerVeikart {
   bsuBirthYear?: number        // fødselsår — for BSU-aldersgrense
   monthlySavings: number       // legacy — erstattet av accounts
   accounts: PartnerAccount[]   // navngitte sparekontoer
-  debt?: number                // samlet gjeld (studielån, billån osv.)
+  debt?: number                // legacy — samlet gjeld, erstattet av debts
+  debts?: PartnerDebt[]        // gjeldsposter med beløp, rente og terminbeløp
 }
 
 /** Samlet ikke-BSU sparing for partner (fra accounts, faller tilbake på legacy-felt) */
