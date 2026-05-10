@@ -27,6 +27,10 @@ const TaxCalculatorPage = lazy(() =>
   }))
 )
 
+const PartnerPage = lazy(() =>
+  import('@/pages/economy/PartnerPage').then((m) => ({ default: m.PartnerPage }))
+)
+
 function PageFallback() {
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -56,6 +60,11 @@ function AppContent() {
         {currentView === 'veikart' && (
           <Suspense fallback={<PageFallback />}>
             <VeikartPage />
+          </Suspense>
+        )}
+        {currentView === 'partner' && (
+          <Suspense fallback={<PageFallback />}>
+            <PartnerPage />
           </Suspense>
         )}
       </div>

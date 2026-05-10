@@ -9,7 +9,7 @@ import type {
 } from '@/types'
 import { defaultConfig } from '@/config/default.config'
 
-export type AppView = 'calculator' | 'comparison' | 'settings' | 'economy' | 'skattekalkulator' | 'veikart'
+export type AppView = 'calculator' | 'comparison' | 'settings' | 'economy' | 'skattekalkulator' | 'veikart' | 'partner'
 export type EconomySubPage = 'dashboard' | 'budget' | 'salary' | 'atf' | 'savings' | 'debt' | 'absence' | 'tax' | 'subscriptions' | 'feriepenger' | 'fond' | 'ivf' | 'vacation' | 'settings' | 'veikart' | 'gaver' | 'partner'
 
 interface AppState {
