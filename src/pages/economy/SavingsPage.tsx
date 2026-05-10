@@ -612,7 +612,7 @@ function MånedsoversiktTable({
       id: acc.id,
       label: acc.label,
       type: acc.type,
-      startBalance: computeEffectiveBalance(acc, now),
+      startBalance: contribOverrides[`start-${acc.id}`] ?? computeEffectiveBalance(acc, now),
       monthlyBase: Math.round(acc.monthlyContribution ?? 0),
       rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
       fromDate: acc.monthlyContributionFromDate,
@@ -626,7 +626,7 @@ function MånedsoversiktTable({
 
     // Month-by-month simulation — handles BSU cap correctly
     const runningBals = accMeta.map(a => a.startBalance)
-    let fondBal = fondCurrentValue
+    let fondBal = contribOverrides['start-fond'] ?? fondCurrentValue
     let partnerBsuBal = hasPartner ? (partnerVeikart.bsu ?? 0) : 0
 
     const monthRows = Array.from({ length: HORIZON }, (_, i) => {
@@ -833,6 +833,41 @@ function MånedsoversiktTable({
           </tr>
         </thead>
         <tbody>
+          {/* Startsaldo-rad */}
+          <tr className="border-b-2 border-border bg-muted/5">
+            <td className="sticky left-0 bg-muted/5 px-3 py-1.5 font-medium border-r border-border text-muted-foreground whitespace-nowrap">Startsaldo</td>
+            {accMeta.map(acc => (
+              <td key={acc.id} colSpan={2} className="border-r border-border p-0">
+                <div className="flex items-center">
+                  <span className="flex-1 px-3 py-1.5 text-right text-muted-foreground">—</span>
+                  <span className="flex-1 px-3 py-1.5">
+                    <InnskuddCell
+                      value={acc.startBalance}
+                      isOverridden={`start-${acc.id}` in contribOverrides}
+                      onChange={v => setContribOverrides(prev => ({ ...prev, [`start-${acc.id}`]: v }))}
+                    />
+                  </span>
+                </div>
+              </td>
+            ))}
+            {hasFond && (
+              <td colSpan={2} className="border-r border-border p-0">
+                <div className="flex items-center">
+                  <span className="flex-1 px-3 py-1.5 text-right text-muted-foreground">—</span>
+                  <span className="flex-1 px-3 py-1.5">
+                    <InnskuddCell
+                      value={contribOverrides['start-fond'] ?? fondCurrentValue}
+                      isOverridden={'start-fond' in contribOverrides}
+                      onChange={v => setContribOverrides(prev => ({ ...prev, 'start-fond': v }))}
+                    />
+                  </span>
+                </div>
+              </td>
+            )}
+            {hasPartner && hasBsu && <td colSpan={2} className="border-r border-border" />}
+            {partnerAccMeta.map(acc => <td key={acc.id} colSpan={2} className="border-r border-border" />)}
+            <td className="border-r border-border" /><td />
+          </tr>
           {years.map(year => {
             const yearData = monthRows.filter(r => r.year === year)
             const last = yearData[yearData.length - 1]
