@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react'
-import { Plus, Trash2, Pencil, Check, X, Upload, TrendingUp } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Upload } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
-import { useAppStore } from '@/store/useAppStore'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -692,28 +691,11 @@ const TABS: { key: Tab; label: string }[] = [
 export function PartnerPage() {
   const partnerVeikart = useEconomyStore((s) => s.partnerVeikart)
   const setPartnerVeikart = useEconomyStore((s) => s.setPartnerVeikart)
-  const setCurrentEconomyPage = useAppStore((s) => s.setCurrentEconomyPage)
   const [tab, setTab] = useState<Tab>('oversikt')
 
+  // Aktiver automatisk første gang siden åpnes
   if (!partnerVeikart.enabled) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
-        <TrendingUp className="h-10 w-10 text-muted-foreground/30" />
-        <div>
-          <p className="text-sm font-medium">Partner er ikke aktivert</p>
-          <p className="text-xs text-muted-foreground mt-1">Aktiver for å legge inn partnerens økonomi.</p>
-        </div>
-        <Button size="sm" onClick={() => setPartnerVeikart({ ...partnerVeikart, enabled: true })}>
-          Aktiver partner
-        </Button>
-        <button
-          className="text-xs text-muted-foreground underline hover:text-foreground"
-          onClick={() => setCurrentEconomyPage('settings')}
-        >
-          Eller aktiver i Innstillinger →
-        </button>
-      </div>
-    )
+    setPartnerVeikart({ ...partnerVeikart, enabled: true })
   }
 
   return (
