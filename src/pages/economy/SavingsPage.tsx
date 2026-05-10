@@ -682,21 +682,25 @@ function MånedsoversiktTable({
         const baseContrib = active ? acc.monthlyBase : 0
         let contrib = overrideKey in contribOverrides ? contribOverrides[overrideKey] : baseContrib
         let bal: number
+        let interest: number
         if (acc.type === 'BSU') {
           const room = Math.max(0, BSU_MAX_TOTAL - bal0)
           contrib = Math.min(contrib, room)
           bal = bal0 + contrib
+          interest = 0  // BSU renter legges til ved årets slutt
         } else {
-          bal = bal0 * (1 + acc.rate / 100 / 12) + contrib
+          interest = bal0 * acc.rate / 100 / 12
+          bal = bal0 + interest + contrib
         }
         runningBals[j] = bal
-        return { id: acc.id, balance: bal, contribution: contrib, overrideKey }
+        return { id: acc.id, balance: bal, contribution: contrib, overrideKey, interest }
       })
 
       // Fond — per-month override
       const fondKey = `fond-${year}-${month}`
       const effectiveFondMnd = fondKey in contribOverrides ? contribOverrides[fondKey] : fondMonthlyDeposit
-      fondBal = fondBal * (1 + FOND_RATE_TABLE / 100 / 12) + effectiveFondMnd
+      const fondInterest = fondBal * FOND_RATE_TABLE / 100 / 12
+      fondBal = fondBal + fondInterest + effectiveFondMnd
 
       // Partner accounts — each with own rate and optional period
       const partnerAccBalances = partnerAccMeta.map(acc => {
@@ -732,6 +736,7 @@ function MånedsoversiktTable({
         accountBalances,
         fondBalance: fondBal,
         fondContrib: Math.round(effectiveFondMnd),
+        fondInterest: Math.round(fondInterest),
         partnerAccBalances,
         partnerBsuBalance: partnerBsuBal,
         partnerBsuContrib: partnerBsuMnd,
@@ -988,7 +993,10 @@ function MånedsoversiktTable({
                                 onFillDown={v => fillDown(acc.id, row.year, row.month, v)}
                               />
                             </span>
-                            <span className="flex-1 px-3 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
+                            <span className="flex-1 px-3 py-1 text-right">
+                              <span className="block font-mono">{fmtNOK(ab.balance)}</span>
+                              {ab.interest > 0 && <span className="block text-[10px] text-green-400/60">+{Math.round(ab.interest).toLocaleString('no-NO')} renter</span>}
+                            </span>
                           </div>
                         </td>
                       )
@@ -1004,7 +1012,10 @@ function MånedsoversiktTable({
                               onFillDown={v => fillDown('fond', row.year, row.month, v)}
                             />
                           </span>
-                          <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
+                          <span className="flex-1 px-3 py-1 text-right">
+                            <span className="block font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
+                            {row.fondInterest > 0 && <span className="block text-[10px] text-green-400/60">+{row.fondInterest.toLocaleString('no-NO')} renter</span>}
+                          </span>
                         </div>
                       </td>
                     )}
