@@ -1012,11 +1012,16 @@ function DataRow({
         const cell = row.cells[meta.month - 1]
         const overrideKey = `${meta.month}:${row.id}`
         const hasOverride = yearOverrides && overrideKey in yearOverrides
+        if (dualColumn) {
+          // Dual-column: actual alltid prioritert (som i celle-visningen)
+          if (meta.hasSlip || cell.actual !== null) return s + (cell.actual ?? 0)
+          if (hasOverride) return s + yearOverrides![overrideKey]
+          if (meta.isLocked) return s + (cell.actual ?? cell.budget)
+          return s + cell.budget
+        }
+        // Enkelt-kolonne: override vinner, så budsjett
         if (hasOverride) return s + yearOverrides![overrideKey]
-        if (meta.hasSlip) return s + (cell.actual ?? 0)
-        if (meta.isLocked) return s + (cell.actual ?? cell.budget)
-        // Bruk faktisk beløp hvis tilgjengelig (f.eks. BSU-innskudd uten slipp)
-        return s + (cell.actual ?? cell.budget)
+        return s + cell.budget
       }, 0)
 
   // Kumulative rader (YTD): alltid positiv farge, uten avviksmarkering

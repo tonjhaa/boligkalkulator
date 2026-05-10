@@ -541,7 +541,11 @@ function isActiveMonth(year: number, month: number, fromDate?: string, toDate?: 
   return ym >= from && ym <= to
 }
 
-function InnskuddCell({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function InnskuddCell({ value, onChange, isOverridden }: {
+  value: number
+  onChange: (v: number) => void
+  isOverridden?: boolean
+}) {
   const [editing, setEditing] = useState(false)
   const [tmp, setTmp] = useState('')
   const rounded = Math.round(value)
@@ -564,8 +568,11 @@ function InnskuddCell({ value, onChange }: { value: number; onChange: (v: number
   return (
     <button
       onClick={() => { setTmp(String(rounded)); setEditing(true) }}
-      title="Klikk for å endre planlagt innskudd"
-      className="w-full text-right text-muted-foreground hover:text-foreground hover:underline decoration-dashed underline-offset-2 transition-colors"
+      title="Klikk for å endre planlagt innskudd denne måneden"
+      className={cn(
+        'w-full text-right hover:text-foreground hover:underline decoration-dashed underline-offset-2 transition-colors',
+        isOverridden ? 'text-amber-400' : 'text-muted-foreground',
+      )}
     >
       {rounded.toLocaleString('no-NO')}
     </button>
@@ -586,8 +593,12 @@ function MånedsoversiktTable({
   const HORIZON = 72
   const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
 
+  // Per-måned overrides — nøkkel: `${accId}-${year}-${month}` eller `fond-${year}-${month}`
   const [contribOverrides, setContribOverrides] = useState<Record<string, number>>({})
-  const [fondOverride, setFondOverride] = useState<number | null>(null)
+
+  function setMonthOverride(accId: string, year: number, month: number, value: number) {
+    setContribOverrides(prev => ({ ...prev, [`${accId}-${year}-${month}`]: value }))
+  }
 
   const hasFond = fondCurrentValue > 0 || fondMonthlyDeposit > 0
   const hasPartner = partnerVeikart.enabled
@@ -597,14 +608,12 @@ function MånedsoversiktTable({
     + (hasPartner ? partnerVeikart.annualIncome : 0)
 
   const { accMeta, partnerAccMeta, monthRows } = useMemo(() => {
-    const effectiveFondMnd = fondOverride ?? fondMonthlyDeposit
-
     const accMeta = accounts.map(acc => ({
       id: acc.id,
       label: acc.label,
       type: acc.type,
       startBalance: computeEffectiveBalance(acc, now),
-      monthly: Math.round(contribOverrides[acc.id] ?? acc.monthlyContribution ?? 0),
+      monthlyBase: Math.round(acc.monthlyContribution ?? 0),
       rate: [...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0,
       fromDate: acc.monthlyContributionFromDate,
       toDate: acc.monthlyContributionToDate,
@@ -625,11 +634,13 @@ function MånedsoversiktTable({
       const year = date.getFullYear()
       const month = date.getMonth() + 1
 
-      // User accounts
+      // User accounts — per-month override lookup
       const accountBalances = accMeta.map((acc, j) => {
         const bal0 = runningBals[j]
         const active = isActiveMonth(year, month, acc.fromDate, acc.toDate)
-        let contrib = active ? acc.monthly : 0
+        const overrideKey = `${acc.id}-${year}-${month}`
+        const baseContrib = active ? acc.monthlyBase : 0
+        let contrib = overrideKey in contribOverrides ? contribOverrides[overrideKey] : baseContrib
         let bal: number
         if (acc.type === 'BSU') {
           const room = Math.max(0, BSU_MAX_TOTAL - bal0)
@@ -639,10 +650,12 @@ function MånedsoversiktTable({
           bal = bal0 * (1 + acc.rate / 100 / 12) + contrib
         }
         runningBals[j] = bal
-        return { id: acc.id, balance: bal, contribution: contrib }
+        return { id: acc.id, balance: bal, contribution: contrib, overrideKey }
       })
 
-      // Fond — compound at FOND_RATE_TABLE
+      // Fond — per-month override
+      const fondKey = `fond-${year}-${month}`
+      const effectiveFondMnd = fondKey in contribOverrides ? contribOverrides[fondKey] : fondMonthlyDeposit
       fondBal = fondBal * (1 + FOND_RATE_TABLE / 100 / 12) + effectiveFondMnd
 
       // Partner accounts — each with own rate and optional period
@@ -684,7 +697,7 @@ function MånedsoversiktTable({
     })
 
     return { accMeta, partnerAccMeta: partnerAccMeta as PartnerAccount[], monthRows }
-  }, [accounts, fondCurrentValue, fondMonthlyDeposit, fondOverride, debts, annualIncome, hasFond, hasPartner, partnerVeikart, now, contribOverrides])
+  }, [accounts, fondCurrentValue, fondMonthlyDeposit, debts, annualIncome, hasFond, hasPartner, partnerVeikart, now, contribOverrides])
 
   const years = [...new Set(monthRows.map(r => r.year))]
 
@@ -882,7 +895,8 @@ function MånedsoversiktTable({
                             <span className="flex-1 px-3 py-1">
                               <InnskuddCell
                                 value={ab.contribution}
-                                onChange={v => setContribOverrides(prev => ({ ...prev, [acc.id]: v }))}
+                                isOverridden={ab.overrideKey in contribOverrides}
+                                onChange={v => setMonthOverride(acc.id, row.year, row.month, v)}
                               />
                             </span>
                             <span className="flex-1 px-3 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
@@ -896,7 +910,8 @@ function MånedsoversiktTable({
                           <span className="flex-1 px-3 py-1">
                             <InnskuddCell
                               value={row.fondContrib}
-                              onChange={v => setFondOverride(v)}
+                              isOverridden={`fond-${row.year}-${row.month}` in contribOverrides}
+                              onChange={v => setMonthOverride('fond', row.year, row.month, v)}
                             />
                           </span>
                           <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
