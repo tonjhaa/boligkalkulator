@@ -2,7 +2,8 @@ import { AlertTriangle, Zap, Home } from 'lucide-react'
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
+import type { EconomyState } from '@/application/useEconomyStore'
 import { calculateGoalProgress, computeEffectiveBalance, checkBSULimits } from '@/domain/economy/savingsCalculator'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { getDaysUsedLast12Months, getDaysUsedFromEvents, getAbsenceStatus, getAbsenceStatusFromEvents, getStatusColor } from '@/domain/economy/absenceCalculator'
@@ -94,7 +95,7 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
     ivfTransactions,
     userPreferences,
     partnerVeikart,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const now = useMemo(() => new Date(), [])
   const currentYear = now.getFullYear()
@@ -552,8 +553,8 @@ function PengePulsCard({ chips }: { chips: { icon: string; text: string; accent?
 function SpareMaalCard({
   goals, accounts, fondVerdi, fondMonthlyDeposit, onNavigate,
 }: {
-  goals: ReturnType<typeof useEconomyStore.getState>['savingsGoals']
-  accounts: ReturnType<typeof useEconomyStore.getState>['savingsAccounts']
+  goals: EconomyState['savingsGoals']
+  accounts: EconomyState['savingsAccounts']
   fondVerdi: number
   fondMonthlyDeposit: number
   onNavigate: (page: string) => void
@@ -599,7 +600,7 @@ function SpareMaalCard({
 function ATFCard({
   entries, sum, year, onNavigate,
 }: {
-  entries: ReturnType<typeof useEconomyStore.getState>['atfEntries']
+  entries: EconomyState['atfEntries']
   sum: number
   year: number
   onNavigate: (page: string) => void
@@ -641,7 +642,7 @@ function ATFCard({
 function GjeldCard({
   debts, onNavigate,
 }: {
-  debts: ReturnType<typeof useEconomyStore.getState>['debts']
+  debts: EconomyState['debts']
   onNavigate: (page: string) => void
 }) {
   const total = debts.filter(d => d.status !== 'nedbetalt').reduce((s, d) => s + d.currentBalance, 0)

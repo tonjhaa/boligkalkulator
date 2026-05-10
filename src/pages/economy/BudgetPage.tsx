@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import { computeBudgetTable } from '@/domain/economy/budgetTableComputer'
 import type { BudgetRow, MonthMeta } from '@/domain/economy/budgetTableComputer'
@@ -78,7 +78,7 @@ export function BudgetPage() {
     budgetOverrides,
     setBudgetOverride,
     clearBudgetOverride,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const now = new Date()
   const [activeYear, setActiveYear] = useState(now.getFullYear())

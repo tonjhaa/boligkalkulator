@@ -9,7 +9,7 @@ import { NumberInput } from '@/components/ui/number-input'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import { analyzeTaxSettlements } from '@/domain/economy/taxSettlementCalc'
 import { calcNorwegianTax } from '@/domain/economy/norwegianTaxRules'
 import type { NorwegianTaxBreakdown } from '@/domain/economy/norwegianTaxRules'
@@ -42,7 +42,7 @@ export function TaxSettlementPage() {
     temporaryPayEntries,
     budgetOverrides,
     fondPortfolio,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [importing, setImporting] = useState(false)

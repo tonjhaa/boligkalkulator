@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import {
   forecastAllJunes,
   calculateAccruedHolidayBase,
@@ -91,7 +91,7 @@ function buildHistoricalRows(
 }
 
 export function FeriepengePage() {
-  const { profile, monthHistory, atfEntries, temporaryPayEntries } = useEconomyStore()
+  const { profile, monthHistory, atfEntries, temporaryPayEntries } = useActiveEconomyStore()
   const [modalYear, setModalYear] = useState<number | null>(null)
 
   if (!profile) {

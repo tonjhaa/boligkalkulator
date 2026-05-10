@@ -39,7 +39,7 @@ import { POLICY_RATE_HISTORY } from '@/config/economy.config'
 // STATE INTERFACE
 // ------------------------------------------------------------
 
-interface EconomyState {
+export interface EconomyState {
   storeVersion: number
 
   // Kjerne

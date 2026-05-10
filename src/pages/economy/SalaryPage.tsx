@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 
 import { PayslipImporter } from '@/features/payslip/PayslipImporter'
 import type { EmploymentProfile, MonthRecord, TemporaryPayEntry, LonnsoppgjorRecord } from '@/types/economy'
@@ -115,7 +115,7 @@ export function SalaryPage() {
     updateLonnsoppgjor,
     removeLonnsoppgjor,
     deriveLonnsoppgjorFromSlips,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const [editingProfile, setEditingProfile] = useState(false)
   const [storageKB, setStorageKB] = useState(0)

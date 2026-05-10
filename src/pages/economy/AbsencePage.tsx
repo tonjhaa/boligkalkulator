@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import {
   getDaysUsedFromEvents,
   getAbsenceStatusFromEvents,
@@ -42,7 +42,7 @@ export function AbsencePage() {
     absenceEvents, addAbsenceEvent, removeAbsenceEvent,
     absenceHireDate, setAbsenceHireDate, clearAbsenceData,
     replaceImportedAbsenceEvents,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)

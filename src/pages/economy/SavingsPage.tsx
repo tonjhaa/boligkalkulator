@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import { BSU_MAX_YEARLY } from '@/config/economy.config'
 import {
   checkBSULimits,
@@ -88,7 +88,7 @@ export function SavingsPage() {
     debts,
     savingsPlanTarget,
     setSavingsPlanTarget,
-  } = useEconomyStore()
+  } = useActiveEconomyStore()
 
   const { savingsTab: tab, setSavingsTab: setTab } = useAppStore()
 
@@ -634,7 +634,7 @@ function MånedsoversiktTable({
 }) {
   const HORIZON = 72
   const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
-  const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides } = useEconomyStore()
+  const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides } = useActiveEconomyStore()
   const [editingRateId, setEditingRateId] = useState<string | null>(null)
 
   function setMonthOverride(accId: string, year: number, month: number, value: number) {

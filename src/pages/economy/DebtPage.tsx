@@ -10,7 +10,7 @@ import {
   AreaChart, Area,
 } from 'recharts'
 import { Progress } from '@/components/ui/progress'
-import { useEconomyStore } from '@/application/useEconomyStore'
+import { useActiveEconomyStore } from '@/contexts/EconomyStoreContext'
 import {
   buildRepaymentPlan,
   calculateTotalMonthlyDebtCost,
@@ -31,7 +31,7 @@ const DEBT_TYPE_LABELS: Record<DebtAccount['type'], string> = {
 }
 
 export function DebtPage() {
-  const { debts, addDebt, removeDebt, updateDebtRate, markDebtPaid } = useEconomyStore()
+  const { debts, addDebt, removeDebt, updateDebtRate, markDebtPaid } = useActiveEconomyStore()
   const [showAddForm, setShowAddForm] = useState(false)
   const [updatingRateFor, setUpdatingRateFor] = useState<string | null>(null)
   const [showAmortFor, setShowAmortFor] = useState<string | null>(null)
