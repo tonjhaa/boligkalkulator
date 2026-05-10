@@ -37,6 +37,7 @@ import type {
   DebtAccount,
   BudgetTemplate,
   PartnerAccount,
+  ContributionPeriod,
 } from '@/types/economy'
 import { partnerNonBsuEquity } from '@/types/economy'
 import { SavingsImporter } from '@/features/savings/SavingsImporter'
@@ -533,6 +534,21 @@ const SAVINGS_RATE_TABLE = 3.5
 const FULL_MONTH_NAMES = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember']
 
 /** Sjekker om et gitt år/måned faller innenfor en valgfri from/to-periode */
+function getBaseContribForMonth(acc: SavingsAccount, year: number, month: number): number {
+  const periods = acc.contributionPeriods
+  if (periods && periods.length > 0) {
+    const ym = `${year}-${String(month).padStart(2, '0')}`
+    const period = periods.find(p => {
+      const from = p.fromDate ? p.fromDate.slice(0, 7) : '0000-00'
+      const to = p.toDate ? p.toDate.slice(0, 7) : '9999-99'
+      return ym >= from && ym <= to
+    })
+    return period ? Math.round(period.amount) : 0
+  }
+  const active = isActiveMonth(year, month, acc.monthlyContributionFromDate, acc.monthlyContributionToDate)
+  return active ? Math.round(acc.monthlyContribution ?? 0) : 0
+}
+
 function isActiveMonth(year: number, month: number, fromDate?: string, toDate?: string): boolean {
   if (!fromDate && !toDate) return true
   const ym = year * 100 + month
@@ -654,10 +670,8 @@ function MånedsoversiktTable({
       label: acc.label,
       type: acc.type,
       startBalance: contribOverrides[`start-${acc.id}`] ?? computeEffectiveBalance(acc, now),
-      monthlyBase: Math.round(acc.monthlyContribution ?? 0),
       rate: contribOverrides[`rate-${acc.id}`] ?? ([...acc.rateHistory].sort((a, b) => b.fromDate.localeCompare(a.fromDate))[0]?.rate ?? 0),
-      fromDate: acc.monthlyContributionFromDate,
-      toDate: acc.monthlyContributionToDate,
+      getBase: (year: number, month: number) => getBaseContribForMonth(acc, year, month),
     }))
 
     // Partner accounts meta — startBalance from overrides
@@ -686,9 +700,8 @@ function MånedsoversiktTable({
       // User accounts — per-month override lookup
       const accountBalances = accMeta.map((acc, j) => {
         const bal0 = runningBals[j]
-        const active = isActiveMonth(year, month, acc.fromDate, acc.toDate)
         const overrideKey = `${acc.id}-${year}-${month}`
-        const baseContrib = active ? acc.monthlyBase : 0
+        const baseContrib = acc.getBase(year, month)
         let contrib = overrideKey in contribOverrides ? contribOverrides[overrideKey] : baseContrib
         let bal: number
         let interest: number
@@ -867,11 +880,6 @@ function MånedsoversiktTable({
               <th key={acc.id} colSpan={2} className="px-3 py-1.5 text-center border-r border-border font-semibold whitespace-nowrap">
                 {acc.label}
                 {acc.rate > 0 && <span className="ml-1 text-[10px] text-muted-foreground font-normal">{acc.rate}%</span>}
-                {(acc.fromDate || acc.toDate) && (
-                  <span className="ml-1 text-[10px] text-amber-400 font-normal">
-                    {acc.fromDate ? acc.fromDate.slice(0, 7) : '…'}–{acc.toDate ? acc.toDate.slice(0, 7) : '…'}
-                  </span>
-                )}
               </th>
             ))}
             {hasFond && (
@@ -1325,6 +1333,10 @@ function AccountCard({
   const [editingAccount, setEditingAccount] = useState(false)
   const [editingMonthlySaving, setEditingMonthlySaving] = useState(false)
   const [monthlySavingInput, setMonthlySavingInput] = useState('')
+  const [addingPeriod, setAddingPeriod] = useState(false)
+  const [periodAmount, setPeriodAmount] = useState('')
+  const [periodFrom, setPeriodFrom] = useState('')
+  const [periodTo, setPeriodTo] = useState('')
   const [bsuPickYear, setBsuPickYear] = useState<string>(String(now.getFullYear() + 2))
   const [bsuPickMonth, setBsuPickMonth] = useState<number>(now.getMonth() + 1)
   const [bsuPostRate, setBsuPostRate] = useState(3.0)
@@ -1440,49 +1452,102 @@ function AccountCard({
           )}
         </div>
 
-        {/* Fast sparebeløp med periode */}
+        {/* Spareplaner */}
         <div className="border-t border-border/30 pt-2 space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Repeat2 className="h-3 w-3" />
-              <span>Fast sparebeløp/mnd</span>
+              <span>Spareplaner</span>
             </div>
-            {!editingMonthlySaving && (
-              <button
-                className="flex items-center gap-1.5 hover:text-foreground text-muted-foreground transition-colors group"
-                onClick={() => {
-                  setMonthlySavingInput(String(Math.round(account.monthlyContribution) || ''))
-                  setEditingMonthlySaving(true)
-                }}
-              >
-                <span className={account.monthlyContribution > 0 ? 'text-foreground font-mono' : 'italic'}>
-                  {account.monthlyContribution > 0
-                    ? `${account.monthlyContribution.toLocaleString('no-NO', { maximumFractionDigits: 0 })} kr`
-                    : 'Ikke satt'}
-                </span>
-                <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
-              </button>
-            )}
+            <button
+              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { setAddingPeriod(true); setPeriodAmount(''); setPeriodFrom(''); setPeriodTo('') }}
+            >
+              <Plus className="h-3 w-3" />
+              <span>Legg til periode</span>
+            </button>
           </div>
 
-          {/* Periode-visning (når ikke redigerer) */}
-          {!editingMonthlySaving && (account.monthlyContributionFromDate || account.monthlyContributionToDate) && (
-            <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-4">
-              <span>
-                {account.monthlyContributionFromDate
-                  ? `Fra ${new Date(account.monthlyContributionFromDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}`
-                  : 'Alltid'}
-                {account.monthlyContributionToDate
-                  ? ` → ${new Date(account.monthlyContributionToDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })}`
-                  : ' → ingen sluttdato'}
-              </span>
+          {/* Eksisterende perioder */}
+          {(account.contributionPeriods ?? []).length > 0 && (
+            <div className="space-y-1">
+              {(account.contributionPeriods ?? []).map((p) => (
+                <div key={p.id} className="flex items-center justify-between rounded border border-border/40 bg-muted/10 px-2.5 py-1.5 text-xs">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-mono font-medium">{Math.round(p.amount).toLocaleString('no-NO')} kr/mnd</span>
+                    <span className="text-muted-foreground text-[10px]">
+                      {p.fromDate
+                        ? new Date(p.fromDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })
+                        : 'Start'}
+                      {' → '}
+                      {p.toDate
+                        ? new Date(p.toDate).toLocaleDateString('no-NO', { month: 'short', year: 'numeric' })
+                        : 'Ingen slutt'}
+                    </span>
+                  </div>
+                  <button
+                    className="text-muted-foreground hover:text-red-400 transition-colors p-1"
+                    onClick={() => onUpdate({
+                      contributionPeriods: (account.contributionPeriods ?? []).filter((x) => x.id !== p.id),
+                    })}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Redigering */}
-          {editingMonthlySaving && (
+          {/* Fallback: vis gammel fast spareplan hvis ingen perioder */}
+          {(account.contributionPeriods ?? []).length === 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground text-[10px]">Standard beløp</span>
+              {!editingMonthlySaving ? (
+                <button
+                  className="flex items-center gap-1.5 hover:text-foreground text-muted-foreground transition-colors group"
+                  onClick={() => {
+                    setMonthlySavingInput(String(Math.round(account.monthlyContribution) || ''))
+                    setEditingMonthlySaving(true)
+                  }}
+                >
+                  <span className={account.monthlyContribution > 0 ? 'text-foreground font-mono' : 'italic'}>
+                    {account.monthlyContribution > 0
+                      ? `${account.monthlyContribution.toLocaleString('no-NO', { maximumFractionDigits: 0 })} kr`
+                      : 'Ikke satt'}
+                  </span>
+                  <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    type="number"
+                    min={0}
+                    step={100}
+                    placeholder="f.eks. 2292"
+                    className="h-6 w-24 rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
+                    value={monthlySavingInput}
+                    onChange={(e) => setMonthlySavingInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0); setEditingMonthlySaving(false) }
+                      if (e.key === 'Escape') setEditingMonthlySaving(false)
+                    }}
+                  />
+                  <button onClick={() => { onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0); setEditingMonthlySaving(false) }}>
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  </button>
+                  <button onClick={() => setEditingMonthlySaving(false)}>
+                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Legg til periode-skjema */}
+          {addingPeriod && (
             <div className="rounded-lg border border-border bg-muted/10 p-3 space-y-2.5">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Rediger fast spareplan</p>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Ny spareperiode</p>
               <div>
                 <label className="text-[10px] text-muted-foreground block mb-1">Beløp per måned (kr)</label>
                 <input
@@ -1490,42 +1555,49 @@ function AccountCard({
                   type="number"
                   min={0}
                   step={100}
-                  placeholder="f.eks. 2292"
+                  placeholder="f.eks. 3000"
                   className="h-7 w-full rounded border border-border bg-background px-2 text-xs font-mono outline-none focus:border-primary"
-                  value={monthlySavingInput}
-                  onChange={(e) => setMonthlySavingInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Escape') setEditingMonthlySaving(false) }}
+                  value={periodAmount}
+                  onChange={(e) => setPeriodAmount(e.target.value)}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-muted-foreground block mb-1">Fra dato (valgfri)</label>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Fra (valgfri)</label>
                   <input
                     type="month"
                     className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-                    value={account.monthlyContributionFromDate?.slice(0, 7) ?? ''}
-                    onChange={(e) => onUpdate({ monthlyContributionFromDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                    value={periodFrom}
+                    onChange={(e) => setPeriodFrom(e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground block mb-1">Til dato (valgfri)</label>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Til (valgfri)</label>
                   <input
                     type="month"
                     className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-                    value={account.monthlyContributionToDate?.slice(0, 7) ?? ''}
-                    onChange={(e) => onUpdate({ monthlyContributionToDate: e.target.value ? `${e.target.value}-01` : undefined })}
+                    value={periodTo}
+                    onChange={(e) => setPeriodTo(e.target.value)}
                   />
                 </div>
               </div>
               <div className="flex gap-1.5 justify-end">
                 <button
-                  onClick={() => setEditingMonthlySaving(false)}
+                  onClick={() => setAddingPeriod(false)}
                   className="px-3 py-1 rounded text-xs border border-border text-muted-foreground hover:text-foreground transition-colors"
                 >Avbryt</button>
                 <button
                   onClick={() => {
-                    onUpdateMonthlyContribution(parseFloat(monthlySavingInput) || 0)
-                    setEditingMonthlySaving(false)
+                    const amt = parseFloat(periodAmount)
+                    if (!amt) return
+                    const newPeriod: ContributionPeriod = {
+                      id: crypto.randomUUID(),
+                      amount: amt,
+                      fromDate: periodFrom ? `${periodFrom}-01` : undefined,
+                      toDate: periodTo ? `${periodTo}-01` : undefined,
+                    }
+                    onUpdate({ contributionPeriods: [...(account.contributionPeriods ?? []), newPeriod] })
+                    setAddingPeriod(false)
                   }}
                   className="px-3 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 >Lagre</button>

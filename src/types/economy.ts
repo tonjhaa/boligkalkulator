@@ -305,6 +305,15 @@ export interface SavingsAccount {
   monthlyContributionFromDate?: string
   /** Sluttdato for fast månedssparing (ISO "YYYY-MM-DD"). Ingen dato = ingen sluttdato. */
   monthlyContributionToDate?: string
+  /** Fleksible spareperioder — overskriver monthlyContribution når tilstede */
+  contributionPeriods?: ContributionPeriod[]
+}
+
+export interface ContributionPeriod {
+  id: string
+  amount: number         // kr/mnd
+  fromDate?: string      // YYYY-MM-DD, ingen = alltid fra start
+  toDate?: string        // YYYY-MM-DD, ingen = ingen sluttdato
 }
 
 export interface SavingsGoal {
