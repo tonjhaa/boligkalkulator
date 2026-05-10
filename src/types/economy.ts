@@ -668,6 +668,22 @@ export interface PartnerBudgetLine {
   amount: number   // månedlig beløp (positiv = utgift)
 }
 
+export interface PartnerAbsenceRecord {
+  id: string
+  type: 'syk' | 'egenmelding' | 'permisjon' | 'ferie' | 'annet'
+  fromDate: string   // YYYY-MM-DD
+  toDate: string     // YYYY-MM-DD
+  days?: number
+  notes?: string
+}
+
+export interface PartnerTaxSettlement {
+  id: string
+  year: number
+  amount: number   // positiv = til gode, negativ = restskatt
+  paidDate?: string
+}
+
 /** Partners tall brukt i Veikart og Dashboard */
 export interface PartnerVeikart {
   enabled: boolean
@@ -686,8 +702,15 @@ export interface PartnerVeikart {
   taxWithholding?: number      // månedlig skattetrekk (kr)
   pensionPercent?: number      // pensjonsprosent (f.eks. 2)
   unionFee?: number            // fagforeningskontingent (kr/mnd)
+  // Feriepenger
+  feriepengerGrunnlag?: number // brutto lønn forrige år
+  feriepengerRate?: number     // sats, f.eks. 10.2 eller 12
   // Budsjett — månedlige utgiftsposter
   budgetLines?: PartnerBudgetLine[]
+  // Fravær
+  absenceRecords?: PartnerAbsenceRecord[]
+  // Skatt
+  taxSettlements?: PartnerTaxSettlement[]
 }
 
 /** Samlet ikke-BSU sparing for partner (fra accounts, faller tilbake på legacy-felt) */

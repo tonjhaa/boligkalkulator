@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Upload, Trash2, Smartphone, User, Users, Plus } from 'lucide-react'
+import { Download, Upload, Trash2, Smartphone, User } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -61,11 +61,6 @@ function HousingToggle({ value, onChange }: { value: 'leier' | 'eier' | undefine
 function PersonaliaSection() {
   const userPreferences = useEconomyStore((s) => s.userPreferences)
   const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
-  const partnerVeikart = useEconomyStore((s) => s.partnerVeikart)
-  const setPartnerVeikart = useEconomyStore((s) => s.setPartnerVeikart)
-  const addPartnerAccount = useEconomyStore((s) => s.addPartnerAccount)
-  const updatePartnerAccount = useEconomyStore((s) => s.updatePartnerAccount)
-  const removePartnerAccount = useEconomyStore((s) => s.removePartnerAccount)
 
   const [birthYearInput, setBirthYearInput] = useState(
     userPreferences?.birthYear ? String(userPreferences.birthYear) : ''
@@ -99,18 +94,10 @@ function PersonaliaSection() {
     })
   }
 
-  const p = partnerVeikart
-
-  function updatePartner(updates: Partial<typeof p>) {
-    setPartnerVeikart({ ...p, ...updates })
-  }
-
-  const bsuAgeOk = !p.bsuBirthYear || (new Date().getFullYear() - p.bsuBirthYear) <= 33
   const myBsuAgeOk = !userPreferences?.birthYear || (new Date().getFullYear() - userPreferences.birthYear) <= 33
 
   return (
-    <Section title="Personalia" description="Grunnoppsett for deg og eventuell partner. Brukes av Boligveikart og andre beregninger på tvers av verktøyet.">
-      {/* Deg */}
+    <Section title="Personalia" description="Grunnoppsett for deg. Brukes av Boligveikart og andre beregninger på tvers av verktøyet.">
       <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           <User className="h-3.5 w-3.5" />
@@ -148,215 +135,6 @@ function PersonaliaSection() {
             <HousingToggle value={userPreferences?.housingStatus} onChange={setHousingStatus} />
           </div>
         </div>
-      </div>
-
-      {/* Partner */}
-      <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            <Users className="h-3.5 w-3.5" />
-            Partner
-          </div>
-          <button
-            onClick={() => updatePartner({ enabled: !p.enabled })}
-            className={cn(
-              'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border transition-colors',
-              p.enabled
-                ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
-                : 'border-border text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {p.enabled ? 'Aktivert' : 'Ikke aktivert'}
-          </button>
-        </div>
-
-        {!p.enabled && (
-          <p className="text-xs text-muted-foreground italic">
-            Aktiver partner for å legge inn deres tall. Brukes i Boligveikart og Dashboard.
-          </p>
-        )}
-
-        {p.enabled && (
-          <div className="space-y-4">
-            {/* Personalia */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Fødselsår</Label>
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="number"
-                    value={p.bsuBirthYear ?? ''}
-                    onChange={(e) => updatePartner({ bsuBirthYear: parseInt(e.target.value) || undefined })}
-                    placeholder="f.eks. 1996"
-                    className="h-8 text-sm w-28"
-                  />
-                  {p.bsuBirthYear && (
-                    <span className={cn(
-                      'text-[11px]',
-                      bsuAgeOk ? 'text-blue-400' : 'text-muted-foreground',
-                    )}>
-                      {bsuAgeOk
-                        ? `BSU OK (${new Date().getFullYear() - p.bsuBirthYear} år)`
-                        : `Over BSU-alder`}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Inntekt */}
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Inntekt</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Årslønn brutto</Label>
-                  <Input
-                    type="number"
-                    value={p.annualIncome || ''}
-                    onChange={(e) => updatePartner({ annualIncome: parseFloat(e.target.value) || 0 })}
-                    placeholder="f.eks. 600000"
-                    className="h-8 text-sm"
-                  />
-                  <p className="text-[10px] text-muted-foreground">Brukes til låneevne</p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Årslønn netto</Label>
-                  <Input
-                    type="number"
-                    value={p.annualNetIncome || ''}
-                    onChange={(e) => updatePartner({ annualNetIncome: parseFloat(e.target.value) || 0 })}
-                    placeholder={p.annualIncome ? String(Math.round(p.annualIncome * 0.67)) : 'f.eks. 420000'}
-                    className="h-8 text-sm"
-                  />
-                  <p className="text-[10px] text-muted-foreground">Brukes til sparekraft</p>
-                </div>
-              </div>
-            </div>
-
-            {/* BSU */}
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">BSU</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">BSU-saldo</Label>
-                  <Input
-                    type="number"
-                    value={p.bsu || ''}
-                    onChange={(e) => updatePartner({ bsu: parseFloat(e.target.value) || 0 })}
-                    placeholder="0"
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">BSU-innskudd per mnd</Label>
-                  <Input
-                    type="number"
-                    value={p.bsuMonthlyContribution || ''}
-                    onChange={(e) => updatePartner({ bsuMonthlyContribution: parseFloat(e.target.value) || 0 })}
-                    placeholder={bsuAgeOk ? 'maks 2 292' : '0 (over alder)'}
-                    disabled={!bsuAgeOk}
-                    className="h-8 text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Gjeld */}
-            <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Gjeld</p>
-              <div className="space-y-1 max-w-[200px]">
-                <Label className="text-xs">Samlet gjeld (studielån, billån osv.)</Label>
-                <Input
-                  type="number"
-                  value={p.debt || ''}
-                  onChange={(e) => updatePartner({ debt: parseFloat(e.target.value) || 0 })}
-                  placeholder="f.eks. 300000"
-                  className="h-8 text-sm"
-                />
-                <p className="text-[10px] text-muted-foreground">Brukes i maks kjøpesum-beregning</p>
-              </div>
-            </div>
-
-            {/* Sparekontoer */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Sparekontoer</p>
-                <button
-                  onClick={() => addPartnerAccount({ id: crypto.randomUUID(), label: 'Ny konto', balance: 0, monthlyContribution: 0, rate: 3.5 })}
-                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-border hover:bg-muted/40 transition-colors"
-                >
-                  <Plus className="h-3 w-3" /> Ny konto
-                </button>
-              </div>
-              {p.accounts.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">Ingen kontoer. Klikk «Ny konto» for å legge til.</p>
-              ) : (
-                <div className="space-y-2">
-                  {p.accounts.map((acc) => (
-                    <div key={acc.id} className="rounded border border-border bg-background p-2 space-y-2">
-                      <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
-                        <div className="space-y-0.5">
-                          <Label className="text-[10px]">Navn</Label>
-                          <Input
-                            value={acc.label}
-                            onChange={(e) => updatePartnerAccount(acc.id, { label: e.target.value })}
-                            className="h-7 text-xs"
-                          />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label className="text-[10px]">Saldo (kr)</Label>
-                          <Input
-                            type="number"
-                            value={acc.balance || ''}
-                            onChange={(e) => updatePartnerAccount(acc.id, { balance: parseFloat(e.target.value) || 0 })}
-                            placeholder="0"
-                            className="h-7 text-xs"
-                          />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label className="text-[10px]">Mnd. innskudd (kr)</Label>
-                          <Input
-                            type="number"
-                            value={acc.monthlyContribution || ''}
-                            onChange={(e) => updatePartnerAccount(acc.id, { monthlyContribution: parseFloat(e.target.value) || 0 })}
-                            placeholder="0"
-                            className="h-7 text-xs"
-                          />
-                        </div>
-                        <button
-                          onClick={() => removePartnerAccount(acc.id)}
-                          className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-0.5">
-                          <Label className="text-[10px] text-muted-foreground">Innskudd fra (valgfritt)</Label>
-                          <input
-                            type="month"
-                            value={acc.fromDate?.slice(0, 7) ?? ''}
-                            onChange={(e) => updatePartnerAccount(acc.id, { fromDate: e.target.value ? `${e.target.value}-01` : undefined })}
-                            className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-                          />
-                        </div>
-                        <div className="space-y-0.5">
-                          <Label className="text-[10px] text-muted-foreground">Innskudd til (valgfritt)</Label>
-                          <input
-                            type="month"
-                            value={acc.toDate?.slice(0, 7) ?? ''}
-                            onChange={(e) => updatePartnerAccount(acc.id, { toDate: e.target.value ? `${e.target.value}-01` : undefined })}
-                            className="h-7 w-full rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </Section>
   )
