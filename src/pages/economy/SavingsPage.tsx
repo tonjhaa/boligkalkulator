@@ -732,6 +732,14 @@ function MånedsoversiktTable({
         {!partnerVeikart.enabled && (
           <span className="text-muted-foreground italic ml-1">Partner ikke aktivert — aktiver i Innstillinger</span>
         )}
+        {Object.keys(contribOverrides).length > 0 && (
+          <button
+            onClick={() => setContribOverrides({})}
+            className="ml-auto flex items-center gap-1 px-2 py-1 rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors"
+          >
+            ↺ Tilbakestill ({Object.keys(contribOverrides).length})
+          </button>
+        )}
       </div>
       <div className="overflow-auto flex-1 text-xs">
       <table className="border-collapse w-full min-w-max">
