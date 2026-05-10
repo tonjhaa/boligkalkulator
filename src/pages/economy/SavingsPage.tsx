@@ -993,7 +993,7 @@ function MånedsoversiktTable({
                                 onFillDown={v => fillDown(acc.id, row.year, row.month, v)}
                               />
                             </span>
-                            <span className="flex-1 px-3 py-1 text-right font-mono">
+                            <span className="flex-1 px-3 py-1 text-right font-mono whitespace-nowrap">
                               {fmtNOK(ab.balance)}
                               {ab.interest > 0 && <span className="text-[10px] text-green-400/60 ml-1">(+{Math.round(ab.interest).toLocaleString('no-NO')})</span>}
                             </span>
@@ -1012,7 +1012,7 @@ function MånedsoversiktTable({
                               onFillDown={v => fillDown('fond', row.year, row.month, v)}
                             />
                           </span>
-                          <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400">
+                          <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400 whitespace-nowrap">
                             {fmtNOK(row.fondBalance)}
                             {row.fondInterest > 0 && <span className="text-[10px] text-green-400/60 ml-1">(+{row.fondInterest.toLocaleString('no-NO')})</span>}
                           </span>
