@@ -180,6 +180,10 @@ interface EconomyState {
   setBudgetOverride: (year: number, month: number, rowId: string, value: number) => void
   clearBudgetOverride: (year: number, month: number, rowId: string) => void
 
+  savingsOverrides: Record<string, number>  // key: "${accId}-${year}-${month}" | "start-${accId}" | "fond-${year}-${month}" | "start-fond"
+  setSavingsOverride: (key: string, value: number | null) => void
+  clearAllSavingsOverrides: () => void
+
   userPreferences: UserPreferences | null
   setUserPreferences: (prefs: UserPreferences) => void
 
@@ -876,6 +880,19 @@ export const useEconomyStore = create<EconomyState>()(
           return { budgetOverrides: next }
         }),
 
+      // --- Sparings-overrides (Månedsoversikt) ---
+      savingsOverrides: {},
+      setSavingsOverride: (key, value) =>
+        set((s) => {
+          if (value === null) {
+            const next = { ...s.savingsOverrides }
+            delete next[key]
+            return { savingsOverrides: next }
+          }
+          return { savingsOverrides: { ...s.savingsOverrides, [key]: value } }
+        }),
+      clearAllSavingsOverrides: () => set({ savingsOverrides: {} }),
+
       // --- Eksport / Import ---
       exportData: () => JSON.stringify(get(), null, 2),
 
@@ -942,7 +959,7 @@ export const useEconomyStore = create<EconomyState>()(
     }),
     {
       name: 'min-okonomi-v1',
-      version: 11,
+      version: 12,
       migrate: (persistedState: unknown, fromVersion: number) => {
         const state = persistedState as Record<string, unknown>
         // v1 → v2: inkluder artskode 1501 (husleiekompensasjon) i fixedAdditions
@@ -1034,6 +1051,10 @@ export const useEconomyStore = create<EconomyState>()(
           if (p.bsuMonthlyContribution === undefined) p.bsuMonthlyContribution = 0
           state.partnerVeikart = p
         }
+        // v11 → v12: initialiser sparings-overrides
+        if (fromVersion < 12) {
+          if (!state.savingsOverrides) state.savingsOverrides = {}
+        }
         // v10 → v11: legg til 'gaver' i enabledTabs for eksisterende brukere
         if (fromVersion < 11 && state.userPreferences) {
           const prefs = state.userPreferences as { enabledTabs?: string[] }
@@ -1068,6 +1089,7 @@ export const useEconomyStore = create<EconomyState>()(
         ivfSettings: state.ivfSettings,
         fondPortfolio: state.fondPortfolio,
         budgetOverrides: state.budgetOverrides,
+        savingsOverrides: state.savingsOverrides,
         partnerVeikart: state.partnerVeikart,
         savingsPlanTarget: state.savingsPlanTarget,
         savingsPlanHorizon: state.savingsPlanHorizon,

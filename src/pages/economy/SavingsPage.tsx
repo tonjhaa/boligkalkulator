@@ -541,41 +541,67 @@ function isActiveMonth(year: number, month: number, fromDate?: string, toDate?: 
   return ym >= from && ym <= to
 }
 
-function InnskuddCell({ value, onChange, isOverridden }: {
+function InnskuddCell({ value, onChange, isOverridden, onFillDown }: {
   value: number
   onChange: (v: number) => void
   isOverridden?: boolean
+  onFillDown?: (v: number) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [tmp, setTmp] = useState('')
   const rounded = Math.round(value)
+
+  function commit() {
+    const v = parseFloat(tmp) || 0
+    onChange(v)
+    setEditing(false)
+  }
+
   if (editing) {
     return (
-      <input
-        autoFocus
-        type="number"
-        value={tmp}
-        onChange={e => setTmp(e.target.value)}
-        onBlur={() => { onChange(parseFloat(tmp) || 0); setEditing(false) }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') { onChange(parseFloat(tmp) || 0); setEditing(false) }
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        className="w-full text-right bg-primary/10 border border-primary rounded px-1 py-0.5 text-xs font-mono outline-none"
-      />
+      <span className="flex items-center gap-0.5">
+        <input
+          autoFocus
+          type="number"
+          value={tmp}
+          onChange={e => setTmp(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          className="w-full text-right bg-primary/10 border border-primary rounded px-1 py-0.5 text-xs font-mono outline-none"
+        />
+        {onFillDown && (
+          <button
+            onMouseDown={e => { e.preventDefault(); const v = parseFloat(tmp) || 0; onChange(v); onFillDown(v); setEditing(false) }}
+            title="Fyll ned til slutten av året"
+            className="shrink-0 px-1 text-muted-foreground hover:text-amber-400 transition-colors"
+          >↓</button>
+        )}
+      </span>
     )
   }
   return (
-    <button
-      onClick={() => { setTmp(String(rounded)); setEditing(true) }}
-      title="Klikk for å endre planlagt innskudd denne måneden"
-      className={cn(
-        'w-full text-right hover:text-foreground hover:underline decoration-dashed underline-offset-2 transition-colors',
-        isOverridden ? 'text-amber-400' : 'text-muted-foreground',
+    <span className="flex items-center group/cell gap-0.5">
+      <button
+        onClick={() => { setTmp(String(rounded)); setEditing(true) }}
+        title="Klikk for å endre. Hold inne ↓ for å fyll ned."
+        className={cn(
+          'flex-1 text-right hover:text-foreground hover:underline decoration-dashed underline-offset-2 transition-colors',
+          isOverridden ? 'text-amber-400' : 'text-muted-foreground',
+        )}
+      >
+        {rounded.toLocaleString('no-NO')}
+      </button>
+      {onFillDown && (
+        <button
+          onClick={() => onFillDown(rounded)}
+          title="Fyll ned til slutten av året med dette beløpet"
+          className="shrink-0 opacity-0 group-hover/cell:opacity-100 px-0.5 text-muted-foreground hover:text-amber-400 transition-colors text-[10px]"
+        >↓</button>
       )}
-    >
-      {rounded.toLocaleString('no-NO')}
-    </button>
+    </span>
   )
 }
 
@@ -592,12 +618,26 @@ function MånedsoversiktTable({
 }) {
   const HORIZON = 72
   const { setSavingsTab, setCurrentEconomyPage } = useAppStore()
-
-  // Per-måned overrides — nøkkel: `${accId}-${year}-${month}` eller `fond-${year}-${month}`
-  const [contribOverrides, setContribOverrides] = useState<Record<string, number>>({})
+  const { savingsOverrides: contribOverrides, setSavingsOverride, clearAllSavingsOverrides } = useEconomyStore()
 
   function setMonthOverride(accId: string, year: number, month: number, value: number) {
-    setContribOverrides(prev => ({ ...prev, [`${accId}-${year}-${month}`]: value }))
+    setSavingsOverride(`${accId}-${year}-${month}`, value)
+  }
+
+  function setContribOverrides(updater: (prev: Record<string, number>) => Record<string, number>) {
+    // Brukes kun for startsaldo-overrides
+    const next = updater(contribOverrides)
+    Object.entries(next).forEach(([k, v]) => {
+      if (!(k in contribOverrides) || contribOverrides[k] !== v) setSavingsOverride(k, v)
+    })
+    Object.keys(contribOverrides).forEach(k => { if (!(k in next)) setSavingsOverride(k, null) })
+  }
+
+  // Fyll ned: sett samme beløp for alle måneder fra (year, month) til slutten av året
+  function fillDown(accId: string, fromYear: number, fromMonth: number, value: number) {
+    for (let m = fromMonth; m <= 12; m++) {
+      setSavingsOverride(`${accId}-${fromYear}-${m}`, value)
+    }
   }
 
   const hasFond = fondCurrentValue > 0 || fondMonthlyDeposit > 0
@@ -740,7 +780,7 @@ function MånedsoversiktTable({
         )}
         {Object.keys(contribOverrides).length > 0 && (
           <button
-            onClick={() => setContribOverrides({})}
+            onClick={() => clearAllSavingsOverrides()}
             className="ml-auto flex items-center gap-1 px-2 py-1 rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors"
           >
             ↺ Tilbakestill ({Object.keys(contribOverrides).length})
@@ -945,6 +985,7 @@ function MånedsoversiktTable({
                                 value={ab.contribution}
                                 isOverridden={ab.overrideKey in contribOverrides}
                                 onChange={v => setMonthOverride(acc.id, row.year, row.month, v)}
+                                onFillDown={v => fillDown(acc.id, row.year, row.month, v)}
                               />
                             </span>
                             <span className="flex-1 px-3 py-1 text-right font-mono">{fmtNOK(ab.balance)}</span>
@@ -960,6 +1001,7 @@ function MånedsoversiktTable({
                               value={row.fondContrib}
                               isOverridden={`fond-${row.year}-${row.month}` in contribOverrides}
                               onChange={v => setMonthOverride('fond', row.year, row.month, v)}
+                              onFillDown={v => fillDown('fond', row.year, row.month, v)}
                             />
                           </span>
                           <span className="flex-1 px-3 py-1 text-right font-mono text-teal-400">{fmtNOK(row.fondBalance)}</span>
