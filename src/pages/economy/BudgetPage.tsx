@@ -536,12 +536,13 @@ export function BudgetPage() {
       {hoveredCell && (() => {
         const { row, month, rect } = hoveredCell
         const mi = month - 1
-        // Saml faktiske verdier (låste/faktiske måneder) opp til og med hover-måned
-        const actualMonths = metas
-          .filter((m) => m.month <= month && (m.hasSlip || m.isLocked))
+        // Alle måneder opp til og med hover-måned — faktiske verdier der de finnes, ellers prognose
+        const ytdMonths = metas
+          .filter((m) => m.month <= month)
           .map((m) => {
             const cell = row.cells[m.month - 1]
-            return { month: m.month, val: cell.actual ?? cell.budget }
+            const isActual = m.hasSlip || m.isLocked
+            return { month: m.month, val: isActual ? (cell.actual ?? cell.budget) : cell.budget, isActual }
           })
           .filter((x) => x.val !== 0)
         const thisCell = row.cells[mi]
@@ -551,9 +552,10 @@ export function BudgetPage() {
             ? (thisCell?.actual ?? thisCell?.budget ?? 0)
             : (thisCell?.budget ?? 0)
           : 0
-        const ytdSum = actualMonths.reduce((s, x) => s + x.val, 0)
-        const ytdAvg = actualMonths.length > 0 ? ytdSum / actualMonths.length : null
+        const ytdSum = ytdMonths.reduce((s, x) => s + x.val, 0)
+        const ytdAvg = ytdMonths.length > 0 ? ytdSum / ytdMonths.length : null
         const projAnnual = ytdAvg !== null ? ytdAvg * 12 : null
+        const actualCount = ytdMonths.filter((x) => x.isActual).length
         // Posisjon: under cellen, men ikke utenfor vinduet
         const tooltipH = 130
         const top = rect.bottom + 6 + tooltipH > window.innerHeight
@@ -592,7 +594,7 @@ export function BudgetPage() {
                   )}
                 </div>
                 <p className="text-[10px] text-muted-foreground/40">
-                  Basert på {actualMonths.length} faktisk{actualMonths.length !== 1 ? 'e' : ''} mnd
+                  {actualCount > 0 ? `${actualCount} faktisk${actualCount !== 1 ? 'e' : ''} + ` : ''}{ytdMonths.length - actualCount > 0 ? `${ytdMonths.length - actualCount} prog.` : ''}
                 </p>
               </>
             )}
