@@ -436,12 +436,14 @@ export function EconomyDashboard({ onNavigate }: { onNavigate: (page: string) =>
           fondMonthlyDeposit={fondPortfolio?.monthlyDeposit ?? 0}
           onNavigate={onNavigate}
         />
-        <ATFCard
-          entries={yearATF}
-          sum={atfSum}
-          year={currentYear}
-          onNavigate={onNavigate}
-        />
+        {(profile?.atfEnabled || atfEntries.length > 0) && (
+          <ATFCard
+            entries={yearATF}
+            sum={atfSum}
+            year={currentYear}
+            onNavigate={onNavigate}
+          />
+        )}
         <GjeldCard debts={debts} onNavigate={onNavigate} />
         <AbsenceAndTaxCard
           absenceDays={absenceDays}
