@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { MODULES } from './OnboardingWizard'
 import { cn } from '@/lib/utils'
 import type { EconomyTab } from '@/types/economy'
+import { PartnerLinkSection } from '@/components/PartnerLinkSection'
 
 const LAST_EXPORT_KEY = 'min-okonomi-last-export'
 
@@ -672,6 +673,11 @@ export function EconomySettingsPage() {
 
       <Separator />
       <SikkerhetskopiBSection />
+
+      <Separator />
+      <Section title="Kobling til partner" description="Koble deg til partneren din for å dele økonomidata i sanntid.">
+        <PartnerLinkSection />
+      </Section>
 
       <Separator />
       <DataSection />

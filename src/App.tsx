@@ -5,6 +5,7 @@ import { CalculatorPage } from '@/pages/CalculatorPage'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { usePartnershipStore } from '@/store/usePartnershipStore'
 import { LoginPage } from '@/pages/LoginPage'
 import { loadFromSupabase, startAutoSync } from '@/lib/syncEconomyData'
 import { useEconomyStore } from '@/application/useEconomyStore'
@@ -93,6 +94,23 @@ function App() {
     loadFromSupabase().finally(() => setSyncing(false))
 
     const stopSync = startAutoSync()
+
+    // Initialiser partnerskap og håndter eventuelle invite-lenker
+    const initPartnership = async () => {
+      const params = new URLSearchParams(window.location.search)
+      const inviteId = params.get('invite')
+      if (inviteId) {
+        await usePartnershipStore.getState().accept(inviteId)
+        // Fjern ?invite= fra URL uten reload
+        const url = new URL(window.location.href)
+        url.searchParams.delete('invite')
+        window.history.replaceState({}, '', url.toString())
+      } else {
+        await usePartnershipStore.getState().initialize()
+      }
+    }
+    initPartnership()
+
     return stopSync
   }, [user])
 
