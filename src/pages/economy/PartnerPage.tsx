@@ -1,10 +1,12 @@
 import { lazy, Suspense, useState } from 'react'
 import {
   LayoutDashboard, Receipt, Palmtree, Clipboard,
-  PiggyBank, CreditCard, FileText, TrendingUp,
+  PiggyBank, CreditCard, FileText, TrendingUp, Users,
 } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { EconomyStoreProvider } from '@/contexts/EconomyStoreContext'
+import { usePartnershipStore } from '@/store/usePartnershipStore'
+import { PartnerLinkSection } from '@/components/PartnerLinkSection'
 import { cn } from '@/lib/utils'
 
 // Reuse the exact same page components as the user's own Economy tabs
@@ -58,10 +60,35 @@ export function PartnerPage() {
   const partnerVeikart = useEconomyStore((s) => s.partnerVeikart)
   const setPartnerVeikart = useEconomyStore((s) => s.setPartnerVeikart)
   const [tab, setTab] = useState<Tab>('dashbord')
+  const status = usePartnershipStore((s) => s.status)
 
   // Auto-aktiver første gang
   if (!partnerVeikart.enabled) {
     setPartnerVeikart({ ...partnerVeikart, enabled: true })
+  }
+
+  // Ikke koblet — vis invitasjonsskjerm
+  if (status !== 'connected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-16 px-6">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="h-12 w-12 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+              <Users className="h-5 w-5 text-violet-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Koble til partner</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                Del økonomidata med partneren din og se hverandres tall i sanntid.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-card p-4">
+            <PartnerLinkSection />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
