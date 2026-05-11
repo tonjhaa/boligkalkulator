@@ -85,8 +85,7 @@ export function BudgetPage() {
   const [selectedView, setSelectedView] = useState<'oversikt' | 'tabell'>('tabell')
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
-  const [addingLine, setAddingLine] = useState(false)
-  const [addingTaxLine, setAddingTaxLine] = useState(false)
+  const [addingLinePrefill, setAddingLinePrefill] = useState<Partial<BudgetLine> | null>(null)
   const [editingLine, setEditingLine] = useState<BudgetLine | null>(null)
   const [trekktabellLoaded, setTrekktabellLoaded] = useState(false)
 
@@ -294,7 +293,7 @@ export function BudgetPage() {
           variant="outline"
           size="sm"
           className="text-xs h-7 gap-1"
-          onClick={() => setAddingLine(true)}
+          onClick={() => setAddingLinePrefill({})}
         >
           <Plus className="h-3 w-3" /> Ny linje
         </Button>
@@ -405,6 +404,14 @@ export function BudgetPage() {
           <tbody>
             {sections.map((section) => {
               const isReadOnly = section.key === 'NETTO' || section.key === 'BUNN' || section.key === 'OPPSUMMERING'
+              const SECTION_ADD_PREFILL: Record<string, Partial<BudgetLine>> = {
+                INNTEKTER:     { category: 'annen_inntekt' },
+                SKATTEOPPGJOR: { category: 'skatteoppgjor', isRecurring: false, label: `Skattetilgode ${activeYear - 1}` },
+                FASTE:         { category: 'annet_forbruk', isVariable: false },
+                VARIABLE:      { category: 'annet_forbruk', isVariable: true },
+                GJELD:         { category: 'annen_gjeld' },
+                SPARING:       { category: 'annen_sparing' },
+              }
               return (
                 <>
                   {/* Seksjonsoverskrift — tynn skillelinje */}
@@ -416,16 +423,21 @@ export function BudgetPage() {
                       )}
                     >
                       <span className="flex items-center gap-2">
-                        {section.label}
-                        {section.key === 'SKATTEOPPGJOR' && (
-                          <button
-                            onClick={() => setAddingTaxLine(true)}
-                            className="text-[9px] px-1.5 py-0.5 rounded border border-current opacity-60 hover:opacity-100 transition-opacity leading-none"
-                            title="Legg til skattetilgode / restskatt"
-                          >
-                            + Legg til
-                          </button>
+                        {!isReadOnly && (
+                          <>
+                            <button
+                              onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
+                              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                              title={`Legg til rad i ${section.label}`}
+                            ><Plus className="h-3 w-3" /></button>
+                            <button
+                              onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
+                              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                              title={`Rediger rader i ${section.label}`}
+                            ><Pencil className="h-3 w-3" /></button>
+                          </>
                         )}
+                        {section.label}
                       </span>
                     </td>
                     <td colSpan={TOTAL_COLS - 2} />
@@ -514,21 +526,12 @@ export function BudgetPage() {
       )}
 
       {/* ---- Add budget line modal ---- */}
-      {addingLine && (
+      {addingLinePrefill !== null && (
         <AddBudgetLineModal
           activeYear={activeYear}
-          onSave={(line) => { addBudgetLine(line); setAddingLine(false) }}
-          onCancel={() => setAddingLine(false)}
-        />
-      )}
-
-      {/* ---- Add skatteoppgjør line modal ---- */}
-      {addingTaxLine && (
-        <AddBudgetLineModal
-          activeYear={activeYear}
-          prefill={{ category: 'skatteoppgjor', isRecurring: false, label: `Skattetilgode ${activeYear - 1}` }}
-          onSave={(line) => { addBudgetLine(line); setAddingTaxLine(false) }}
-          onCancel={() => setAddingTaxLine(false)}
+          prefill={addingLinePrefill}
+          onSave={(line) => { addBudgetLine(line); setAddingLinePrefill(null) }}
+          onCancel={() => setAddingLinePrefill(null)}
         />
       )}
 
@@ -1105,14 +1108,14 @@ function DataRow({
           {onEdit && (
             <button
               onClick={(e) => { e.stopPropagation(); onEdit() }}
-              className="shrink-0 opacity-0 group-hover/row:opacity-100 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-foreground transition-colors"
+              className="shrink-0 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-foreground transition-colors"
               title="Rediger linje"
             ><Pencil className="h-2.5 w-2.5 inline" /></button>
           )}
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="shrink-0 opacity-0 group-hover/row:opacity-100 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-red-400 transition-colors"
+              className="shrink-0 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-red-400 transition-colors"
               title="Fjern rad"
             >✕</button>
           )}
