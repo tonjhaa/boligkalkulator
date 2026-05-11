@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Link2, Link2Off, Mail, Copy, Check, Clock, UserCheck } from 'lucide-react'
+import { Link2Off, Mail, Copy, Check, Clock, UserCheck, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { usePartnershipStore } from '@/store/usePartnershipStore'
-import { buildMailtoLink } from '@/lib/partnerSync'
-import { cn } from '@/lib/utils'
+import { sendInviteEmail } from '@/lib/partnerSync'
 
 export function PartnerLinkSection() {
   const { partnership, status, inviteLink, loading, error, invite, disconnect, clearError } =
@@ -13,6 +12,8 @@ export function PartnerLinkSection() {
 
   const [email, setEmail] = useState('')
   const [copied, setCopied] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resent, setResent] = useState(false)
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -60,43 +61,50 @@ export function PartnerLinkSection() {
 
   // ---- Venter på aksept ----
   if (status === 'pending_sent' && partnership && inviteLink) {
+    async function handleResend() {
+      if (!partnership || !inviteLink) return
+      setResending(true)
+      await sendInviteEmail(partnership.invitee_email, inviteLink)
+      setResending(false)
+      setResent(true)
+      setTimeout(() => setResent(false), 3000)
+    }
+
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
           <Clock className="h-4 w-4 text-amber-400 shrink-0" />
           <div className="min-w-0">
-            <p className="text-xs font-medium text-amber-400">Venter på aksept</p>
-            <p className="text-xs text-muted-foreground truncate">{partnership.invitee_email}</p>
+            <p className="text-xs font-medium text-amber-400">Invitasjon sendt</p>
+            <p className="text-xs text-muted-foreground truncate">
+              E-post er sendt til {partnership.invitee_email}
+            </p>
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label className="text-xs">Del denne lenken med partneren din</Label>
-          <div className="flex gap-2">
-            <Input
-              readOnly
-              value={inviteLink}
-              className="text-xs font-mono bg-muted/30"
-              onClick={(e) => (e.target as HTMLInputElement).select()}
-            />
-            <Button variant="outline" size="sm" onClick={handleCopy} className="shrink-0">
-              {copied
-                ? <Check className="h-3.5 w-3.5 text-green-400" />
-                : <Copy className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Partneren din får en e-post med en lenke for å akseptere. Siden er klar når hun logger inn og klikker lenken.
+        </p>
 
-        <a
-          href={buildMailtoLink(partnership.invitee_email, inviteLink)}
-          className={cn(
-            'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-border',
-            'hover:bg-muted/20 transition-colors',
-          )}
-        >
-          <Mail className="h-3.5 w-3.5" />
-          Åpne i e-postklient
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            onClick={handleResend}
+            disabled={resending || resent}
+          >
+            {resent
+              ? <><Check className="h-3.5 w-3.5 mr-1.5 text-green-400" />Sendt!</>
+              : <><Mail className="h-3.5 w-3.5 mr-1.5" />{resending ? 'Sender…' : 'Send på nytt'}</>}
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={handleCopy} className="text-xs">
+            {copied
+              ? <><Check className="h-3.5 w-3.5 mr-1.5 text-green-400" />Kopiert</>
+              : <><Copy className="h-3.5 w-3.5 mr-1.5" />Kopier lenke</>}
+          </Button>
+        </div>
 
         <Button
           variant="ghost"
@@ -153,8 +161,7 @@ export function PartnerLinkSection() {
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Inviter partneren din til Lommeboka. Når hun aksepterer, kan dere se
-        hverandres økonomidata i sanntid.
+        Skriv inn partnerens e-postadresse. Vi sender en invitasjon direkte — hun trenger bare å klikke lenken i e-posten.
       </p>
 
       <form onSubmit={handleInvite} className="space-y-2">
@@ -163,14 +170,14 @@ export function PartnerLinkSection() {
           <Input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); clearError() }}
             placeholder="ane@eksempel.no"
             className="text-xs"
             disabled={loading}
           />
           <Button type="submit" size="sm" disabled={loading || !email.trim()} className="shrink-0">
             <Mail className="h-3.5 w-3.5 mr-1.5" />
-            Send
+            {loading ? 'Sender…' : 'Send invitasjon'}
           </Button>
         </div>
         {error && (

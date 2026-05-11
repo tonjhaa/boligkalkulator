@@ -158,11 +158,15 @@ export function buildInviteLink(partnershipId: string): string {
   return `${base}?invite=${partnershipId}`
 }
 
-/** Bygger forhåndsutfylt mailto-link for å sende invitasjon. */
-export function buildMailtoLink(toEmail: string, inviteLink: string): string {
-  const subject = encodeURIComponent('Invitasjon til Lommeboka')
-  const body = encodeURIComponent(
-    `Hei!\n\nJeg har invitert deg til å koble oss på Lommeboka, så vi kan se hverandres økonomi.\n\nKlikk på lenken under for å akseptere:\n${inviteLink}\n\nHilsen`,
-  )
-  return `mailto:${toEmail}?subject=${subject}&body=${body}`
+/** Sender invitasjonse-post direkte fra appen via Supabase Edge Function + Resend. */
+export async function sendInviteEmail(toEmail: string, inviteLink: string): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return 'Ikke innlogget'
+
+  const { error } = await supabase.functions.invoke('send-partner-invite', {
+    body: { to: toEmail, inviteLink },
+  })
+
+  if (error) return error.message ?? 'Kunne ikke sende e-post'
+  return null
 }

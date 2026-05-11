@@ -9,6 +9,7 @@ import {
   importPartnerDataToStore,
   subscribeToPartnerData,
   buildInviteLink,
+  sendInviteEmail,
   type Partnership,
 } from '@/lib/partnerSync'
 
@@ -87,12 +88,10 @@ export const usePartnershipStore = create<PartnershipState>((set, get) => ({
       set({ loading: false, error: error ?? 'Ukjent feil' })
       return
     }
-    set({
-      partnership,
-      status: 'pending_sent',
-      inviteLink: buildInviteLink(partnership.id),
-      loading: false,
-    })
+    const inviteLink = buildInviteLink(partnership.id)
+    set({ partnership, status: 'pending_sent', inviteLink, loading: false })
+    // Send e-post direkte fra appen — feil her er ikke kritisk (lenken kan kopieres manuelt)
+    sendInviteEmail(email, inviteLink)
   },
 
   accept: async (partnershipId: string) => {
