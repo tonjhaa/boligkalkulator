@@ -267,6 +267,11 @@ export function SubscriptionsPage() {
                               </span>
                             )}
                           </div>
+                          {yearlyAmt > 0 && (
+                            <div className="text-xs text-muted-foreground font-normal">
+                              {fmtNOK(Math.round(yearlyAmt / 12))}/mnd
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex gap-1">

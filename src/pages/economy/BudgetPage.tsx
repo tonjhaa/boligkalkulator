@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2, Pencil } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2, Pencil, Undo2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -79,6 +79,8 @@ export function BudgetPage() {
     budgetOverrides,
     setBudgetOverride,
     clearBudgetOverride,
+    _budgetUndoStack,
+    undoBudget,
   } = useActiveEconomyStore()
 
   const now = new Date()
@@ -107,6 +109,23 @@ export function BudgetPage() {
     if (!trekktabellLoaded || !tabellnummer) return undefined
     return (grunnlag: number) => slaaOppTrekkSync(tabellnummer, grunnlag, 1) ?? undefined
   }, [trekktabellLoaded, profile?.tabellnummer])
+
+  const canUndo = _budgetUndoStack.length > 0
+
+  const handleUndo = useCallback(() => {
+    if (canUndo) undoBudget()
+  }, [canUndo, undoBudget])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleUndo])
   const [highlightedMonth, setHighlightedMonth] = useState<number | null>(null)
   const [hideTemporary, setHideTemporary] = useState(false)
   const [hoveredCell, setHoveredCell] = useState<{
@@ -291,6 +310,17 @@ export function BudgetPage() {
             </Button>
           </>
         )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-7 gap-1"
+          onClick={handleUndo}
+          disabled={!canUndo}
+          title="Angre (⌘Z)"
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+          Angre
+        </Button>
         <Button
           variant="outline"
           size="sm"

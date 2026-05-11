@@ -156,6 +156,9 @@ export const usePartnerStore = create<EconomyState>()(
           return { budgetOverrides: next }
         }),
 
+      _budgetUndoStack: [],
+      undoBudget: () => {},
+
       // ── ATF — stubs ────────────────────────────────────────────────────────
       atfEntries: [],
       addATFEntry: () => {},

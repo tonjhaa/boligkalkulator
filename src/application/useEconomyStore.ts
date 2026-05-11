@@ -184,6 +184,9 @@ export interface EconomyState {
   setBudgetOverride: (year: number, month: number, rowId: string, value: number) => void
   clearBudgetOverride: (year: number, month: number, rowId: string) => void
 
+  _budgetUndoStack: Array<{ lines: BudgetLine[]; budgetOverrides: Record<string, number> }>
+  undoBudget: () => void
+
   savingsOverrides: Record<string, number>  // key: "${accId}-${year}-${month}" | "start-${accId}" | "fond-${year}-${month}" | "start-fond"
   setSavingsOverride: (key: string, value: number | null) => void
   clearAllSavingsOverrides: () => void
@@ -236,6 +239,7 @@ export const useEconomyStore = create<EconomyState>()(
       userPreferences: null,
       budgetTemplate: DEFAULT_TEMPLATE,
       budgetOverrides: {},
+      _budgetUndoStack: [],
       monthHistory: [],
       atfEntries: [],
       savingsAccounts: [],
@@ -820,30 +824,39 @@ export const useEconomyStore = create<EconomyState>()(
             lastUpdated: new Date().toISOString().split('T')[0],
           },
         })),
-      addBudgetLine: (line) =>
+      addBudgetLine: (line) => {
+        const { budgetTemplate, budgetOverrides, _budgetUndoStack } = get()
         set((s) => ({
+          _budgetUndoStack: [..._budgetUndoStack, { lines: budgetTemplate.lines, budgetOverrides }].slice(-20),
           budgetTemplate: {
             ...s.budgetTemplate,
             lines: [...s.budgetTemplate.lines, line],
             lastUpdated: new Date().toISOString().split('T')[0],
           },
-        })),
-      updateBudgetLine: (id, updates) =>
+        }))
+      },
+      updateBudgetLine: (id, updates) => {
+        const { budgetTemplate, budgetOverrides, _budgetUndoStack } = get()
         set((s) => ({
+          _budgetUndoStack: [..._budgetUndoStack, { lines: budgetTemplate.lines, budgetOverrides }].slice(-20),
           budgetTemplate: {
             ...s.budgetTemplate,
             lines: s.budgetTemplate.lines.map((l) => l.id === id ? { ...l, ...updates } : l),
             lastUpdated: new Date().toISOString().split('T')[0],
           },
-        })),
-      removeBudgetLine: (id) =>
+        }))
+      },
+      removeBudgetLine: (id) => {
+        const { budgetTemplate, budgetOverrides, _budgetUndoStack } = get()
         set((s) => ({
+          _budgetUndoStack: [..._budgetUndoStack, { lines: budgetTemplate.lines, budgetOverrides }].slice(-20),
           budgetTemplate: {
             ...s.budgetTemplate,
             lines: s.budgetTemplate.lines.filter((l) => l.id !== id),
             lastUpdated: new Date().toISOString().split('T')[0],
           },
-        })),
+        }))
+      },
 
       // --- Migrering: gjenoppbygg profil fra eksisterende slipper hvis profil mangler ---
       restoreProfileFromSlips: () => {
@@ -890,14 +903,34 @@ export const useEconomyStore = create<EconomyState>()(
       },
 
       // --- Budsjett-overrides ---
-      setBudgetOverride: (year, month, rowId, value) =>
-        set((s) => ({ budgetOverrides: { ...s.budgetOverrides, [`${year}:${month}:${rowId}`]: value } })),
-      clearBudgetOverride: (year, month, rowId) =>
+      setBudgetOverride: (year, month, rowId, value) => {
+        const { budgetTemplate, budgetOverrides, _budgetUndoStack } = get()
+        set((s) => ({
+          _budgetUndoStack: [..._budgetUndoStack, { lines: budgetTemplate.lines, budgetOverrides }].slice(-20),
+          budgetOverrides: { ...s.budgetOverrides, [`${year}:${month}:${rowId}`]: value },
+        }))
+      },
+      clearBudgetOverride: (year, month, rowId) => {
+        const { budgetTemplate, budgetOverrides, _budgetUndoStack } = get()
         set((s) => {
           const next = { ...s.budgetOverrides }
           delete next[`${year}:${month}:${rowId}`]
-          return { budgetOverrides: next }
-        }),
+          return {
+            _budgetUndoStack: [..._budgetUndoStack, { lines: budgetTemplate.lines, budgetOverrides }].slice(-20),
+            budgetOverrides: next,
+          }
+        })
+      },
+      undoBudget: () => {
+        const { _budgetUndoStack, budgetTemplate } = get()
+        if (_budgetUndoStack.length === 0) return
+        const snapshot = _budgetUndoStack[_budgetUndoStack.length - 1]
+        set({
+          _budgetUndoStack: _budgetUndoStack.slice(0, -1),
+          budgetTemplate: { ...budgetTemplate, lines: snapshot.lines, lastUpdated: new Date().toISOString().split('T')[0] },
+          budgetOverrides: snapshot.budgetOverrides,
+        })
+      },
 
       // --- Sparings-overrides (Månedsoversikt) ---
       savingsOverrides: {},
