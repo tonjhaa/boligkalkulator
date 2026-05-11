@@ -25,7 +25,8 @@ const CATEGORY_GROUPS: { label: string; categories: BudgetCategory[] }[] = [
   { label: 'Trekk', categories: ['skatt', 'pensjon', 'fagforening', 'husleietrekk'] },
   { label: 'Skatteoppgjør', categories: ['skatteoppgjor'] },
   { label: 'Gjeld', categories: ['studielaan', 'billaan', 'kredittkort', 'annen_gjeld'] },
-  { label: 'Faste utgifter', categories: ['bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk'] },
+  { label: 'Faste utgifter', categories: ['bolig', 'forsikring', 'abonnement'] },
+  { label: 'Variable utgifter', categories: ['mat', 'transport', 'helse', 'klær', 'fritid', 'annet_forbruk'] },
   { label: 'Sparing', categories: ['bsu', 'fond', 'krypto', 'buffer', 'annen_sparing'] },
 ]
 
@@ -87,6 +88,7 @@ export function BudgetPage() {
   const [showSlipFor, setShowSlipFor] = useState<number | null>(null)
   const [addingLinePrefill, setAddingLinePrefill] = useState<Partial<BudgetLine> | null>(null)
   const [editingLine, setEditingLine] = useState<BudgetLine | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState<{ lineId: string; label: string } | null>(null)
   const [trekktabellLoaded, setTrekktabellLoaded] = useState(false)
 
   // Last trekktabelldata for brukerens tabellnummer inn i minne-cachen
@@ -424,18 +426,11 @@ export function BudgetPage() {
                     >
                       <span className="flex items-center gap-2">
                         {!isReadOnly && (
-                          <>
-                            <button
-                              onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
-                              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                              title={`Legg til rad i ${section.label}`}
-                            ><Plus className="h-3 w-3" /></button>
-                            <button
-                              onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
-                              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                              title={`Rediger rader i ${section.label}`}
-                            ><Pencil className="h-3 w-3" /></button>
-                          </>
+                          <button
+                            onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
+                            className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                            title={`Legg til rad i ${section.label}`}
+                          ><Plus className="h-3 w-3" /></button>
                         )}
                         {section.label}
                       </span>
@@ -453,13 +448,16 @@ export function BudgetPage() {
                       isEditable={!isReadOnly && !row.isBold}
                       yearOverrides={yearOverrides}
                       onOverride={(month, value) => handleOverride(row.id, month, value)}
+                      onCopyForward={(fromMonth, value) => {
+                        for (let m = fromMonth; m <= 12; m++) handleOverride(row.id, m, value)
+                      }}
                       highlightedMonth={highlightedMonth}
                       temporaryInfo={temporaryMap[row.id]}
                       onEdit={editableRowMap[row.id]
                         ? () => setEditingLine(editableRowMap[row.id])
                         : undefined}
                       onDelete={deletableRowMap[row.id]
-                        ? () => removeBudgetLine(deletableRowMap[row.id])
+                        ? () => setConfirmingDelete({ lineId: deletableRowMap[row.id], label: row.label })
                         : undefined}
                       onCellHover={(month, rect) => setHoveredCell({ row, month, rect })}
                       onCellLeave={() => setHoveredCell(null)}
@@ -518,6 +516,7 @@ export function BudgetPage() {
               temporaryToDate: saved.temporaryToDate,
               specificMonth: saved.specificMonth,
               specificYear: saved.specificYear,
+              periodOverride: saved.periodOverride,
             })
             setEditingLine(null)
           }}
@@ -533,6 +532,27 @@ export function BudgetPage() {
           onSave={(line) => { addBudgetLine(line); setAddingLinePrefill(null) }}
           onCancel={() => setAddingLinePrefill(null)}
         />
+      )}
+
+      {/* ---- Bekreft sletting ---- */}
+      {confirmingDelete && (
+        <Dialog open onOpenChange={(open) => { if (!open) setConfirmingDelete(null) }}>
+          <DialogContent className="max-w-xs">
+            <DialogHeader>
+              <DialogTitle>Fjern rad</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Er du sikker på at du vil fjerne <span className="font-medium text-foreground">«{confirmingDelete.label}»</span>?
+            </p>
+            <div className="flex gap-2 justify-end pt-1">
+              <Button variant="outline" size="sm" onClick={() => setConfirmingDelete(null)}>Avbryt</Button>
+              <Button variant="destructive" size="sm" onClick={() => {
+                removeBudgetLine(confirmingDelete.lineId)
+                setConfirmingDelete(null)
+              }}>Fjern</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* ---- Cell hover tooltip ---- */}
@@ -966,6 +986,7 @@ function DataRow({
   temporaryInfo,
   onEdit,
   onDelete,
+  onCopyForward,
   onCellHover,
   onCellLeave,
 }: {
@@ -979,6 +1000,7 @@ function DataRow({
   temporaryInfo?: { isTemporary: boolean; onToggle: () => void }
   onEdit?: () => void
   onDelete?: () => void
+  onCopyForward?: (fromMonth: number, value: number) => void
   onCellHover?: (month: number, rect: DOMRect) => void
   onCellLeave?: () => void
 }) {
@@ -1130,15 +1152,29 @@ function DataRow({
           if (editingMonth === meta.month && isEditable) {
             return (
               <td key={`${meta.month}-edit`} colSpan={2} className={cn('px-1 py-0.5 border-r border-border/40', hl && 'bg-sky-500/15')}>
-                <input
-                  type="number"
-                  value={editValue}
-                  onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit() }}
-                  autoFocus
-                  className="w-full bg-muted/30 text-right text-xs px-1 py-0.5 rounded outline-none tabular-nums"
-                />
+                <div className="flex items-center gap-0.5">
+                  <input
+                    type="number"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onBlur={commitEdit}
+                    onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit() }}
+                    autoFocus
+                    className="flex-1 min-w-0 bg-muted/30 text-right text-xs px-1 py-0.5 rounded outline-none tabular-nums"
+                  />
+                  {onCopyForward && meta.month < 12 && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        const v = parseFloat(editValue)
+                        if (!isNaN(v)) { onCopyForward(meta.month, v); cancelEdit() }
+                      }}
+                      className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground hover:text-foreground leading-none transition-colors"
+                      title={`Kopier ${editValue} til alle måneder fra og med ${MONTH_SHORT[meta.month]}`}
+                    >→</button>
+                  )}
+                </div>
               </td>
             )
           }
@@ -1288,6 +1324,10 @@ function AddBudgetLineModal({
   const [temporaryToDate, setTemporaryToDate] = useState(prefill?.temporaryToDate ?? '')
   const [specificMonth, setSpecificMonth] = useState<number>(prefill?.specificMonth ?? now.getMonth() + 1)
   const [specificYear, setSpecificYear] = useState<number>(prefill?.specificYear ?? activeYear)
+  const [hasPeriodOverride, setHasPeriodOverride] = useState(!!prefill?.periodOverride)
+  const [periodAmount, setPeriodAmount] = useState(prefill?.periodOverride ? String(prefill.periodOverride.amount) : '')
+  const [periodFrom, setPeriodFrom] = useState(prefill?.periodOverride?.from ?? '')
+  const [periodTo, setPeriodTo] = useState(prefill?.periodOverride?.to ?? '')
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
@@ -1418,6 +1458,49 @@ function AddBudgetLineModal({
           )}
         </div>
 
+        {/* ---- Midlertidig beløpsendring ---- */}
+        {isRecurring && (
+          <div className="border-t border-border/40 pt-3 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasPeriodOverride}
+                onChange={(e) => setHasPeriodOverride(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-xs font-medium">Midlertidig beløpsendring</span>
+            </label>
+            {hasPeriodOverride && (
+              <div className="space-y-2 pl-5">
+                <div className="space-y-1">
+                  <Label className="text-xs">Beløp i perioden</Label>
+                  <Input
+                    type="number"
+                    value={periodAmount}
+                    onChange={(e) => setPeriodAmount(e.target.value)}
+                    placeholder={amount || '-1000'}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Fra (måned)</Label>
+                    <Input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Til (måned)</Label>
+                    <Input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
+                  </div>
+                </div>
+                {amount && periodAmount && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Etter perioden fortsetter det opprinnelige beløpet ({amount} kr/mnd).
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 justify-end mt-4">
           <Button variant="outline" size="sm" onClick={onCancel}>Avbryt</Button>
           <Button
@@ -1438,6 +1521,9 @@ function AddBudgetLineModal({
                 temporaryToDate: isRecurring && isTemporary && temporaryToDate ? temporaryToDate : undefined,
                 specificMonth: !isRecurring ? specificMonth : undefined,
                 specificYear: !isRecurring ? specificYear : undefined,
+                periodOverride: isRecurring && hasPeriodOverride && periodAmount && periodFrom && periodTo
+                  ? { amount: parseFloat(periodAmount) || 0, from: periodFrom, to: periodTo }
+                  : undefined,
               })
             }
           >

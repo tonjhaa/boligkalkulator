@@ -97,6 +97,15 @@ function insMonthAmount(ins: InsuranceEntry, year: number): number {
 // Helpers
 // ----------------------------------------------------------------
 
+/** Returnerer effektivt beløp for en budsjettlinje i en gitt måned.
+ *  Bruker periodOverride.amount hvis måneden er innenfor perioden, ellers line.amount. */
+function lineAmt(line: { amount: number; periodOverride?: { amount: number; from: string; to: string } }, year: number, m: number): number {
+  const po = line.periodOverride
+  if (!po) return line.amount
+  const key = `${year}-${String(m).padStart(2, '0')}`
+  return key >= po.from && key <= po.to ? po.amount : line.amount
+}
+
 /** Sjekker om en gitt måned (1–12) i et gitt år faller innenfor en valgfri datoavgrensing. */
 function monthInDateRange(year: number, month: number, fromDate?: string, toDate?: string): boolean {
   if (!fromDate && !toDate) return true
@@ -294,7 +303,7 @@ export function computeBudgetTable(
       (m) => {
         if (!line.isRecurring && m !== line.specificMonth) return 0
         if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
-        return budgetVal(rowId, m, line.amount)
+        return budgetVal(rowId, m, lineAmt(line, year, m))
       },
       () => null,
     )))
@@ -468,7 +477,7 @@ export function computeBudgetTable(
     skatteoppgjorRows.push(mkRow(rowId, line.label, uniform12(
       (m) => {
         if (!line.isRecurring && m !== line.specificMonth) return 0
-        return budgetVal(rowId, m, line.amount)
+        return budgetVal(rowId, m, lineAmt(line, year, m))
       },
       () => null,
     )))
@@ -491,7 +500,7 @@ export function computeBudgetTable(
       (m) => {
         if (!line.isRecurring && m !== line.specificMonth) return 0
         if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
-        return budgetVal(rowId, m, line.amount)
+        return budgetVal(rowId, m, lineAmt(line, year, m))
       },
       () => null,
     )))
@@ -526,7 +535,7 @@ export function computeBudgetTable(
       (m) => {
         if (!line.isRecurring && m !== line.specificMonth) return 0
         if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
-        return budgetVal(rowId, m, line.amount)
+        return budgetVal(rowId, m, lineAmt(line, year, m))
       },
       () => null,
     )))
@@ -600,7 +609,7 @@ export function computeBudgetTable(
       (m) => {
         if (!line.isRecurring && m !== line.specificMonth) return 0
         if (!monthInDateRange(year, m, line.temporaryFromDate, line.temporaryToDate)) return 0
-        return budgetVal(rowId, m, line.amount)
+        return budgetVal(rowId, m, lineAmt(line, year, m))
       },
       () => null,
     )))

@@ -41,6 +41,8 @@ export interface BudgetLine {
   specificMonth?: number
   /** Engangshendelse: kun synlig dette året. Brukes sammen med specificMonth. */
   specificYear?: number
+  /** Midlertidig beløpsendring: i perioden (YYYY-MM) brukes periodAmount; ellers gjelder amount. */
+  periodOverride?: { amount: number; from: string; to: string }
 }
 
 export interface BudgetTemplate {
