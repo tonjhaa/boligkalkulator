@@ -489,10 +489,16 @@ export function computeBudgetTable(
   const EXPENSE_CATS = new Set([
     'bolig', 'transport', 'mat', 'helse', 'abonnement', 'forsikring', 'klær', 'fritid', 'annet_forbruk',
   ])
+  // Faste kategorier: alltid gjentakende poster (husleie, forsikring, abonnement, bolig)
+  const FIXED_CATS = new Set(['bolig', 'forsikring', 'abonnement'])
+  // En linje er "variabel" hvis: eksplisitt markert, ELLER det er en engangskostnad, ELLER kategorien er ikke fast
+  const isVarLine = (l: { isVariable?: boolean; isRecurring?: boolean; category: string }) =>
+    l.isVariable || !l.isRecurring || !FIXED_CATS.has(l.category)
+
   const fasteRows: BudgetRow[] = []
 
   for (const line of budgetTemplate.lines.filter((l) =>
-    EXPENSE_CATS.has(l.category) && !l.isVariable && !(hideTemporary && l.isTemporary) &&
+    EXPENSE_CATS.has(l.category) && !isVarLine(l) && !(hideTemporary && l.isTemporary) &&
     (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
   )) {
     const rowId = `exp-${line.id}`
@@ -527,7 +533,7 @@ export function computeBudgetTable(
   // ================================================================
   const variableRows: BudgetRow[] = []
   for (const line of budgetTemplate.lines.filter((l) =>
-    EXPENSE_CATS.has(l.category) && l.isVariable && !(hideTemporary && l.isTemporary) &&
+    EXPENSE_CATS.has(l.category) && isVarLine(l) && !(hideTemporary && l.isTemporary) &&
     (l.isRecurring || (l.specificMonth != null && (!l.specificYear || l.specificYear === year)))
   )) {
     const rowId = `var-${line.id}`
@@ -699,15 +705,11 @@ export function computeBudgetTable(
 
   sections.push({ key: 'NETTO', label: 'Netto utbetalt', colorClass: 'text-foreground', dualColumn: true, rows: [mkRow('netto', 'NETTO', nettoCells, true)] })
 
-  if (skatteoppgjorRows.length > 0) {
-    sections.push({ key: 'SKATTEOPPGJOR', label: 'Skatteoppgjør', colorClass: 'text-yellow-400', dualColumn: false, rows: skatteoppgjorRows })
-  }
-
   if (fasteRows.length > 0) {
     sections.push({ key: 'FASTE', label: 'Faste utgifter', colorClass: 'text-blue-400', dualColumn: false, rows: fasteRows })
   }
-  if (variableRows.length > 0) {
-    sections.push({ key: 'VARIABLE', label: 'Variable utgifter', colorClass: 'text-yellow-400', dualColumn: false, rows: variableRows })
+  if (variableRows.length > 0 || skatteoppgjorRows.length > 0) {
+    sections.push({ key: 'VARIABLE', label: 'Variable utgifter', colorClass: 'text-yellow-400', dualColumn: false, rows: [...variableRows, ...skatteoppgjorRows] })
   }
   if (gjeldRows.length > 0) {
     sections.push({ key: 'GJELD', label: 'Gjeld', colorClass: 'text-orange-400', dualColumn: false, rows: gjeldRows })

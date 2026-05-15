@@ -167,7 +167,7 @@ export function BudgetPage() {
 
   const { metas, sections } = tableData
 
-  const COLLAPSIBLE_SECTIONS = new Set(['INNTEKTER', 'TREKK', 'FASTE', 'VARIABLE', 'GJELD', 'SPARING', 'SKATTEOPPGJØR'])
+  const COLLAPSIBLE_SECTIONS = new Set(['INNTEKTER', 'TREKK', 'FASTE', 'VARIABLE', 'GJELD', 'SPARING'])
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
   function toggleSection(key: string) {
@@ -495,7 +495,7 @@ export function BudgetPage() {
               }
               const isCollapsible = COLLAPSIBLE_SECTIONS.has(section.key)
               const isCollapsed = collapsedSections.has(section.key)
-              const hideHeader = section.key === 'SKATTEOPPGJOR'
+              const hideHeader = false
 
               return (
                 <>
