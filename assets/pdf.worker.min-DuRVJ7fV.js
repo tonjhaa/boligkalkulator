@@ -1,0 +1,1 @@
+const r="/assets/pdf.worker.min-B_fnEKel.mjs";export{r as w};
