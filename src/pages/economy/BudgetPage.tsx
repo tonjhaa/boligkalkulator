@@ -1170,44 +1170,48 @@ function DataRow({
         row.isBold ? 'font-bold bg-muted/20 text-[11px] uppercase tracking-wide' : '',
         isGrunnlag && 'text-muted-foreground italic',
       )}>
-        <span className={cn('flex items-center gap-1', isHidden && 'line-through')}>
-          <span title={row.label}>{row.label}</span>
-          {isGrunnlag && (
-            <span
-              className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground cursor-help leading-none"
-              title={
-                row.id === 'brutto-inntekt'
-                  ? 'Referanserad — sum av alle inntektsposter. Inngår ikke i Netto.'
-                  : 'Referanserad — skattepliktig grunnlag brukt for skatteberegning. Inngår ikke i Netto.'
-              }
-            >i</span>
-          )}
-          {temporaryInfo && !isHidden && (
-            <button
-              onClick={(e) => { e.stopPropagation(); temporaryInfo.onToggle() }}
-              className={cn(
-                'shrink-0 text-[9px] px-1 py-0.5 rounded leading-none transition-colors',
-                temporaryInfo.isTemporary
-                  ? 'bg-amber-500/20 text-amber-400 hover:bg-red-500/20 hover:text-red-400'
-                  : 'opacity-0 group-hover/row:opacity-100 bg-muted/40 text-muted-foreground hover:text-amber-400',
-              )}
-              title={temporaryInfo.isTemporary ? 'Fjern tidsbegrenset-merke' : 'Merk som tidsbegrenset'}
-            >T</button>
-          )}
-          {onEdit && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit() }}
-              className="shrink-0 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-foreground transition-colors"
-              title="Rediger linje"
-            ><Pencil className="h-2.5 w-2.5 inline" /></button>
-          )}
-          {onDelete && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete() }}
-              className="shrink-0 text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-red-400 transition-colors"
-              title="Fjern rad"
-            >✕</button>
-          )}
+        <span className="flex items-center justify-between gap-1">
+          <span className={cn('flex items-center gap-1', isHidden && 'line-through')}>
+            <span title={row.label}>{row.label}</span>
+            {isGrunnlag && (
+              <span
+                className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground cursor-help leading-none"
+                title={
+                  row.id === 'brutto-inntekt'
+                    ? 'Referanserad — sum av alle inntektsposter. Inngår ikke i Netto.'
+                    : 'Referanserad — skattepliktig grunnlag brukt for skatteberegning. Inngår ikke i Netto.'
+                }
+              >i</span>
+            )}
+          </span>
+          <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            {temporaryInfo && !isHidden && (
+              <button
+                onClick={(e) => { e.stopPropagation(); temporaryInfo.onToggle() }}
+                className={cn(
+                  'text-[9px] px-1 py-0.5 rounded leading-none transition-colors',
+                  temporaryInfo.isTemporary
+                    ? 'bg-amber-500/20 text-amber-400 hover:bg-red-500/20 hover:text-red-400 !opacity-100'
+                    : 'bg-muted/40 text-muted-foreground hover:text-amber-400',
+                )}
+                title={temporaryInfo.isTemporary ? 'Fjern tidsbegrenset-merke' : 'Merk som tidsbegrenset'}
+              >T</button>
+            )}
+            {onEdit && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit() }}
+                className="text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-foreground transition-colors"
+                title="Rediger linje"
+              ><Pencil className="h-2.5 w-2.5 inline" /></button>
+            )}
+            {onDelete && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete() }}
+                className="text-[9px] px-1 py-0.5 rounded leading-none text-muted-foreground hover:text-red-400 transition-colors"
+                title="Fjern rad"
+              >✕</button>
+            )}
+          </span>
         </span>
       </td>
 
