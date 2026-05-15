@@ -1,0 +1,1 @@
+import{j as u,r,u as m,an as x}from"./index-sxkkbvnT.js";const n=r.createContext("economy");function i({store:t,children:o}){return u.jsx(n.Provider,{value:t,children:o})}function y(t){const o=r.useContext(n),e=(a=>a),s=m(e),c=x(e);return o==="partner"?c:s}export{i as E,y as u};
