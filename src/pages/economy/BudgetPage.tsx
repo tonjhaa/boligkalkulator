@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2, Pencil, Undo2 } from 'lucide-react'
+import { Lock, LockOpen, Upload, Plus, LayoutDashboard, Table2, Pencil, Undo2, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -166,6 +166,18 @@ export function BudgetPage() {
   )
 
   const { metas, sections } = tableData
+
+  const COLLAPSIBLE_SECTIONS = new Set(['INNTEKTER', 'TREKK', 'FASTE', 'VARIABLE', 'GJELD', 'SPARING', 'SKATTEOPPGJØR'])
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+
+  function toggleSection(key: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   // T-merking for manuelle budsjettlinjer (ikke tillegg/husleie — de er auto-styrt av toggle)
   const EXPENSE_CATS_SET = new Set([
@@ -481,32 +493,79 @@ export function BudgetPage() {
                 GJELD:         { category: 'annen_gjeld' },
                 SPARING:       { category: 'annen_sparing' },
               }
+              const isCollapsible = COLLAPSIBLE_SECTIONS.has(section.key)
+              const isCollapsed = collapsedSections.has(section.key)
+
               return (
                 <>
-                  {/* Seksjonsoverskrift — tynn skillelinje */}
+                  {/* Seksjonsoverskrift */}
                   <tr key={`sh-${section.key}`} className="border-t-2 border-border/60 bg-muted/15">
                     <td
                       className={cn(
                         'sticky left-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest border-r border-border bg-muted/20',
                         section.colorClass,
+                        isCollapsible && 'cursor-pointer select-none hover:bg-muted/30',
                       )}
+                      onClick={isCollapsible ? () => toggleSection(section.key) : undefined}
                     >
                       <span className="flex items-center gap-2">
-                        {!isReadOnly && (
+                        {isCollapsible && (
+                          isCollapsed
+                            ? <ChevronRight className="h-3 w-3 shrink-0" />
+                            : <ChevronDown className="h-3 w-3 shrink-0" />
+                        )}
+                        {!isCollapsible && !isReadOnly && (
                           <button
-                            onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
+                            onClick={(e) => { e.stopPropagation(); setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {}) }}
                             className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
                             title={`Legg til rad i ${section.label}`}
                           ><Plus className="h-3 w-3" /></button>
                         )}
                         {section.label}
+                        {isCollapsed && (
+                          <span className="ml-1 text-muted-foreground font-normal normal-case tracking-normal">
+                            ({section.rows.length} rader)
+                          </span>
+                        )}
                       </span>
                     </td>
-                    <td colSpan={TOTAL_COLS - 2} />
+                    {/* Vis månedssummer når kollapsert */}
+                    {isCollapsed
+                      ? metas.map((meta) => {
+                          const sum = section.rows.reduce((acc, row) => {
+                            const cell = row.cells[meta.month - 1]
+                            const val = cell?.actual ?? cell?.budget ?? 0
+                            return acc + val
+                          }, 0)
+                          const colSpan = section.dualColumn ? 2 : 2
+                          return (
+                            <td
+                              key={meta.month}
+                              colSpan={colSpan}
+                              className={cn(
+                                'px-2 py-1 text-right text-xs tabular-nums border-r border-border/40',
+                                sum < 0 ? 'text-red-400' : sum > 0 ? 'text-green-400' : 'text-muted-foreground/40',
+                                highlightedMonth === meta.month && 'bg-sky-500/15',
+                              )}
+                            >
+                              {sum !== 0 ? sum.toLocaleString('no-NO') : '—'}
+                            </td>
+                          )
+                        })
+                      : <td colSpan={TOTAL_COLS - 2} />
+                    }
+                    {isCollapsed && (
+                      <td className="px-3 py-1 text-right text-xs tabular-nums border-l border-border/40 text-muted-foreground">
+                        {section.rows.reduce((acc, row) => {
+                          const annual = row.cells.reduce((s, cell) => s + (cell?.actual ?? cell?.budget ?? 0), 0)
+                          return acc + annual
+                        }, 0).toLocaleString('no-NO')}
+                      </td>
+                    )}
                   </tr>
 
-                  {/* Datarader */}
-                  {section.rows.map((row) => (
+                  {/* Datarader — skjules når kollapsert */}
+                  {!isCollapsed && section.rows.map((row) => (
                     <DataRow
                       key={row.id}
                       row={row}
@@ -530,6 +589,21 @@ export function BudgetPage() {
                       onCellLeave={() => setHoveredCell(null)}
                     />
                   ))}
+
+                  {/* "+ Legg til"-knapp under seksjonen når utvidet */}
+                  {!isCollapsed && !isReadOnly && isCollapsible && (
+                    <tr className="border-b border-border/10">
+                      <td className="sticky left-0 z-10 bg-background border-r border-border px-3 py-0.5">
+                        <button
+                          onClick={() => setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {})}
+                          className="flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        >
+                          <Plus className="h-2.5 w-2.5" /> Legg til
+                        </button>
+                      </td>
+                      <td colSpan={TOTAL_COLS - 2} />
+                    </tr>
+                  )}
                 </>
               )
             })}
