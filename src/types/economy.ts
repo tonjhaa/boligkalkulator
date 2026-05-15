@@ -638,8 +638,6 @@ export interface UserPreferences {
   payDay?: number       // dag i måneden lønn utbetales (1-28), standard 12
   birthYear?: number    // fødselsår — brukes til BSU-aldersgrense og andre beregninger
   housingStatus?: 'leier' | 'eier'  // nåværende boligsituasjon
-  /** Brukerens egen Anthropic API-nøkkel for AI-parsing av lønnsslipper (valgfri) */
-  anthropicApiKey?: string
 }
 
 /** Enkel sparekonto for partner — ingen full transaksjonshistorikk */

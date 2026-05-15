@@ -49,15 +49,11 @@ function fmtNOK(n: number): string {
   return n.toLocaleString('no-NO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' kr'
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-
 export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
   const [state, setState] = useState<State>({ stage: 'idle' })
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const importSlip = useEconomyStore((s) => s.importSlip)
-  const anthropicApiKey = useEconomyStore((s) => s.userPreferences?.anthropicApiKey)
 
   async function processFiles(files: File[], useAI = false) {
     const pdfs = files.filter((f) => f.name.endsWith('.pdf') || f.type === 'application/pdf')
@@ -71,8 +67,8 @@ export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
       setState({ stage: 'processing', current: i + 1, total: pdfs.length })
       try {
         let slip: import('@/types/economy').ParsetLonnsslipp
-        if (useAI && anthropicApiKey) {
-          slip = await parseSlipFromPDFWithAI(pdfs[i], anthropicApiKey, SUPABASE_URL, SUPABASE_ANON_KEY)
+        if (useAI) {
+          slip = await parseSlipFromPDFWithAI(pdfs[i])
         } else {
           slip = await parseSlipFromPDF(pdfs[i])
         }
@@ -165,7 +161,7 @@ export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
             <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
             {results.length === 1 ? 'Lagre' : `Lagre alle (${results.filter(r => r.slip).length})`}
           </Button>
-          {anthropicApiKey && results.some((r) => r.slip && isPartialParse(r.slip)) && (
+          {results.some((r) => r.slip && isPartialParse(r.slip)) && (
             <Button
               size="sm"
               variant="outline"

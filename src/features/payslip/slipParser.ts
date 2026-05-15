@@ -51,25 +51,27 @@ export async function parseSlipFromPDF(file: File): Promise<ParsetLonnsslipp> {
 
 /**
  * Parser lønnsslipp med AI via Supabase Edge Function.
- * Krever at bruker har lagt inn sin egen Anthropic API-nøkkel i Innstillinger.
+ * Bruker utviklerens Anthropic-nøkkel (Supabase secret) — ingen kostnad for bruker.
+ * Rate-begrenset til 20 slipper per bruker per dag.
  */
-export async function parseSlipFromPDFWithAI(
-  file: File,
-  anthropicApiKey: string,
-  supabaseUrl: string,
-  supabaseAnonKey: string,
-): Promise<ParsetLonnsslipp> {
+export async function parseSlipFromPDFWithAI(file: File): Promise<ParsetLonnsslipp> {
+  const { supabase } = await import('@/lib/supabase')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Ikke innlogget')
+
   const fullText = await extractTextFromPDF(file)
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/parse-payslip`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseAnonKey}`,
-      'X-Anthropic-Key': anthropicApiKey,
-    },
-    body: JSON.stringify({ text: fullText }),
-  })
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-payslip`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ text: fullText }),
+    }
+  )
 
   if (!response.ok) {
     const err = await response.text().catch(() => 'Ukjent feil')
