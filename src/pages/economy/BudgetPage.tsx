@@ -212,6 +212,33 @@ export function BudgetPage() {
     else setBudgetOverride(activeYear, month, rowId, value)
   }
 
+  const hasUnsavedOverrides = Object.keys(yearOverrides).length > 0
+
+  function handleSaveBudget() {
+    // Baker overrides inn i malen: oppdaterer linjenes basisverdi og fjerner yellow-merket
+    const lineUpdates = new Map<string, number>()
+    const toClear: [number, string][] = []
+
+    for (const [key, value] of Object.entries(yearOverrides)) {
+      const colonIdx = key.indexOf(':')
+      const month = parseInt(key.slice(0, colonIdx))
+      const rowId = key.slice(colonIdx + 1)
+      const line = editableRowMap[rowId]
+      // Bruk første måneds verdi som ny basisverdi for linjen
+      if (line && !lineUpdates.has(line.id)) {
+        lineUpdates.set(line.id, value)
+      }
+      toClear.push([month, rowId])
+    }
+
+    for (const [lineId, amount] of lineUpdates) {
+      updateBudgetLine(lineId, { amount })
+    }
+    for (const [month, rowId] of toClear) {
+      clearBudgetOverride(activeYear, month, rowId)
+    }
+  }
+
   const minYear = monthHistory.length > 0
     ? Math.min(...monthHistory.map((m) => m.year))
     : now.getFullYear()
@@ -309,6 +336,16 @@ export function BudgetPage() {
               {hideTemporary ? 'Uten tillegg' : 'Med tillegg'}
             </Button>
           </>
+        )}
+        {hasUnsavedOverrides && (
+          <Button
+            size="sm"
+            className="text-xs h-7 gap-1 bg-amber-500/15 text-amber-400 border border-amber-500/40 hover:bg-amber-500/25 hover:text-amber-300"
+            onClick={handleSaveBudget}
+            title="Bekreft endringer og fjern gul markering"
+          >
+            Lagre endringer
+          </Button>
         )}
         <Button
           variant="outline"
