@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Upload, FileText, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { parseSlipFromPDF } from './slipParser'
+import { parseSlipFromPDF, parseSlipFromPDFWithAI } from './slipParser'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import type { ParsetLonnsslipp } from '@/types/economy'
 import { cn } from '@/lib/utils'
@@ -49,13 +49,17 @@ function fmtNOK(n: number): string {
   return n.toLocaleString('no-NO', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' kr'
 }
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
 export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
   const [state, setState] = useState<State>({ stage: 'idle' })
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const importSlip = useEconomyStore((s) => s.importSlip)
+  const anthropicApiKey = useEconomyStore((s) => s.userPreferences?.anthropicApiKey)
 
-  async function processFiles(files: File[]) {
+  async function processFiles(files: File[], useAI = false) {
     const pdfs = files.filter((f) => f.name.endsWith('.pdf') || f.type === 'application/pdf')
     if (pdfs.length === 0) {
       setState({ stage: 'idle' })
@@ -66,7 +70,12 @@ export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
     for (let i = 0; i < pdfs.length; i++) {
       setState({ stage: 'processing', current: i + 1, total: pdfs.length })
       try {
-        const slip = await parseSlipFromPDF(pdfs[i])
+        let slip: import('@/types/economy').ParsetLonnsslipp
+        if (useAI && anthropicApiKey) {
+          slip = await parseSlipFromPDFWithAI(pdfs[i], anthropicApiKey, SUPABASE_URL, SUPABASE_ANON_KEY)
+        } else {
+          slip = await parseSlipFromPDF(pdfs[i])
+        }
         results.push({ file: pdfs[i], slip })
       } catch (err) {
         results.push({
@@ -147,7 +156,7 @@ export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
             )
           })}
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             size="sm"
             disabled={!hasAny}
@@ -156,6 +165,15 @@ export function PayslipImporter({ onImported, compact }: PayslipImporterProps) {
             <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
             {results.length === 1 ? 'Lagre' : `Lagre alle (${results.filter(r => r.slip).length})`}
           </Button>
+          {anthropicApiKey && results.some((r) => r.slip && isPartialParse(r.slip)) && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => processFiles(results.map((r) => r.file), true)}
+            >
+              ✨ Prøv med AI
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => setState({ stage: 'idle' })}>
             Avbryt
           </Button>

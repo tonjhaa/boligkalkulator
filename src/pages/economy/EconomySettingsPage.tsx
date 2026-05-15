@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Upload, Trash2, Smartphone, User } from 'lucide-react'
+import { Download, Upload, Trash2, Smartphone, User, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { useEconomyStore } from '@/application/useEconomyStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -649,6 +649,93 @@ function ModulesSection() {
   )
 }
 
+// ----------------------------------------------------------------
+// AI-parser
+// ----------------------------------------------------------------
+
+function AiParserSection() {
+  const userPreferences = useEconomyStore((s) => s.userPreferences)
+  const setUserPreferences = useEconomyStore((s) => s.setUserPreferences)
+  const [keyInput, setKeyInput] = useState(userPreferences?.anthropicApiKey ?? '')
+  const [showKey, setShowKey] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  function saveKey() {
+    setUserPreferences({
+      onboardingCompleted: userPreferences?.onboardingCompleted ?? true,
+      enabledTabs: userPreferences?.enabledTabs ?? [],
+      payDay: userPreferences?.payDay,
+      birthYear: userPreferences?.birthYear,
+      housingStatus: userPreferences?.housingStatus,
+      anthropicApiKey: keyInput.trim() || undefined,
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function clearKey() {
+    setKeyInput('')
+    setUserPreferences({
+      onboardingCompleted: userPreferences?.onboardingCompleted ?? true,
+      enabledTabs: userPreferences?.enabledTabs ?? [],
+      payDay: userPreferences?.payDay,
+      birthYear: userPreferences?.birthYear,
+      housingStatus: userPreferences?.housingStatus,
+      anthropicApiKey: undefined,
+    })
+  }
+
+  return (
+    <Section
+      title="AI-lønnsslipp-tolker"
+      description="Legg inn din egen Anthropic API-nøkkel for å tolke lønnsslipper fra alle arbeidsgivere med AI. Nøkkelen lagres kun i din nettleser og sendes direkte til tjeneren din — aldri til tredjepart."
+    >
+      <div className="rounded-md border border-border bg-muted/20 p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <Sparkles className="h-3.5 w-3.5" />
+          Anthropic API-nøkkel
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Hent nøkkelen fra{' '}
+          <span className="font-mono text-foreground/70">console.anthropic.com → API Keys</span>.
+          Du betaler kun for det du bruker (ca. 1–2 øre per lønnsslipp med Claude Haiku).
+        </p>
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <Input
+              type={showKey ? 'text' : 'password'}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="sk-ant-api03-..."
+              className="h-8 text-sm pr-8 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          <Button size="sm" onClick={saveKey} disabled={keyInput === (userPreferences?.anthropicApiKey ?? '')}>
+            {saved ? '✓ Lagret' : 'Lagre'}
+          </Button>
+          {userPreferences?.anthropicApiKey && (
+            <Button size="sm" variant="ghost" onClick={clearKey} className="text-muted-foreground">
+              Fjern
+            </Button>
+          )}
+        </div>
+        {userPreferences?.anthropicApiKey && (
+          <p className="text-xs text-green-500">
+            ✓ AI-parsing aktivert — lønnsslipper som ikke gjenkjennes tolkes automatisk med AI.
+          </p>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 export function EconomySettingsPage() {
   return (
     <div className="h-full overflow-y-auto p-6 space-y-8 max-w-2xl">
@@ -678,6 +765,9 @@ export function EconomySettingsPage() {
       <Section title="Kobling til partner" description="Koble deg til partneren din for å dele økonomidata i sanntid.">
         <PartnerLinkSection />
       </Section>
+
+      <Separator />
+      <AiParserSection />
 
       <Separator />
       <DataSection />
