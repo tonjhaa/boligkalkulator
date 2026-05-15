@@ -345,7 +345,16 @@ function SikkerhetskopiBSection() {
       insurances: store.insurances,
       policyRateHistory: store.policyRateHistory,
     }
-    const backup = { version: '1.0', exportedAt: new Date().toISOString(), data }
+
+    // Inkluder alle relevante localStorage-nøkler (gaveplanner, app-state osv.)
+    const EXTRA_KEYS = ['lommeboka-gaver-v1', 'boligkalkulator-storage']
+    const extraStores: Record<string, string> = {}
+    for (const key of EXTRA_KEYS) {
+      const val = localStorage.getItem(key)
+      if (val) extraStores[key] = val
+    }
+
+    const backup = { version: '2.0', exportedAt: new Date().toISOString(), data, extraStores }
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -385,6 +394,12 @@ function SikkerhetskopiBSection() {
     try {
       const parsed = JSON.parse(pendingData)
       store.importData(JSON.stringify(parsed.data))
+      // Gjenopprett ekstra stores (gaveplanner, app-state) hvis de finnes i backupen
+      if (parsed.extraStores && typeof parsed.extraStores === 'object') {
+        for (const [key, val] of Object.entries(parsed.extraStores)) {
+          if (typeof val === 'string') localStorage.setItem(key, val)
+        }
+      }
       setImportSuccess(true)
       setPendingData(null)
       setPendingMeta(null)
