@@ -1120,7 +1120,7 @@ function DataRow({
   if (row.isCumulative) {
     return (
       <tr className="border-b border-border/20 hover:bg-muted/10">
-        <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px] truncate text-muted-foreground text-xs" title={row.label}>
+        <td className="sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border w-[190px] text-muted-foreground text-xs" title={row.label}>
           {row.label}
         </td>
         {metas.map((meta) => {
@@ -1166,12 +1166,12 @@ function DataRow({
       isHidden && 'opacity-40',
     )}>
       <td className={cn(
-        'sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border max-w-[160px]',
+        'sticky left-0 z-10 bg-background px-3 py-1.5 border-r border-border w-[190px]',
         row.isBold ? 'font-bold bg-muted/20 text-[11px] uppercase tracking-wide' : '',
         isGrunnlag && 'text-muted-foreground italic',
       )}>
-        <span className={cn('flex items-center gap-1 min-w-0', isHidden && 'line-through')}>
-          <span className="truncate" title={row.label}>{row.label}</span>
+        <span className={cn('flex items-center gap-1', isHidden && 'line-through')}>
+          <span title={row.label}>{row.label}</span>
           {isGrunnlag && (
             <span
               className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-muted/40 text-muted-foreground cursor-help leading-none"
