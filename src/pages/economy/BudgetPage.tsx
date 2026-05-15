@@ -495,74 +495,75 @@ export function BudgetPage() {
               }
               const isCollapsible = COLLAPSIBLE_SECTIONS.has(section.key)
               const isCollapsed = collapsedSections.has(section.key)
+              const hideHeader = section.key === 'SKATTEOPPGJOR'
 
               return (
                 <>
                   {/* Seksjonsoverskrift */}
-                  <tr key={`sh-${section.key}`} className="border-t-2 border-border/60 bg-muted/15">
-                    <td
-                      className={cn(
-                        'sticky left-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest border-r border-border bg-muted/20',
-                        section.colorClass,
-                        isCollapsible && 'cursor-pointer select-none hover:bg-muted/30',
-                      )}
-                      onClick={isCollapsible ? () => toggleSection(section.key) : undefined}
-                    >
-                      <span className="flex items-center gap-2">
-                        {isCollapsible && (
-                          isCollapsed
-                            ? <ChevronRight className="h-3 w-3 shrink-0" />
-                            : <ChevronDown className="h-3 w-3 shrink-0" />
+                  {!hideHeader && (
+                    <tr key={`sh-${section.key}`} className="border-t-2 border-border/60 bg-muted/15">
+                      <td
+                        className={cn(
+                          'sticky left-0 z-10 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest border-r border-border bg-muted/20',
+                          section.colorClass,
+                          isCollapsible && 'cursor-pointer select-none hover:bg-muted/30',
                         )}
-                        {!isCollapsible && !isReadOnly && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {}) }}
-                            className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-                            title={`Legg til rad i ${section.label}`}
-                          ><Plus className="h-3 w-3" /></button>
-                        )}
-                        {section.label}
-                        {isCollapsed && (
-                          <span className="ml-1 text-muted-foreground font-normal normal-case tracking-normal">
-                            ({section.rows.length} rader)
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    {/* Vis månedssummer når kollapsert */}
-                    {isCollapsed
-                      ? metas.map((meta) => {
-                          const sum = section.rows.reduce((acc, row) => {
-                            const cell = row.cells[meta.month - 1]
-                            const val = cell?.actual ?? cell?.budget ?? 0
-                            return acc + val
-                          }, 0)
-                          const colSpan = section.dualColumn ? 2 : 2
-                          return (
-                            <td
-                              key={meta.month}
-                              colSpan={colSpan}
-                              className={cn(
-                                'px-2 py-1 text-right text-xs tabular-nums border-r border-border/40',
-                                sum < 0 ? 'text-red-400' : sum > 0 ? 'text-green-400' : 'text-muted-foreground/40',
-                                highlightedMonth === meta.month && 'bg-sky-500/15',
-                              )}
-                            >
-                              {sum !== 0 ? sum.toLocaleString('no-NO') : '—'}
-                            </td>
-                          )
-                        })
-                      : <td colSpan={TOTAL_COLS - 2} />
-                    }
-                    {isCollapsed && (
-                      <td className="px-3 py-1 text-right text-xs tabular-nums border-l border-border/40 text-muted-foreground">
-                        {section.rows.reduce((acc, row) => {
-                          const annual = row.cells.reduce((s, cell) => s + (cell?.actual ?? cell?.budget ?? 0), 0)
-                          return acc + annual
-                        }, 0).toLocaleString('no-NO')}
+                        onClick={isCollapsible ? () => toggleSection(section.key) : undefined}
+                      >
+                        <span className="flex items-center gap-2">
+                          {isCollapsible && (
+                            isCollapsed
+                              ? <ChevronRight className="h-3 w-3 shrink-0" />
+                              : <ChevronDown className="h-3 w-3 shrink-0" />
+                          )}
+                          {!isCollapsible && !isReadOnly && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setAddingLinePrefill(SECTION_ADD_PREFILL[section.key] ?? {}) }}
+                              className="shrink-0 opacity-60 hover:opacity-100 transition-opacity"
+                              title={`Legg til rad i ${section.label}`}
+                            ><Plus className="h-3 w-3" /></button>
+                          )}
+                          {section.label}
+                          {isCollapsed && (
+                            <span className="ml-1 text-muted-foreground font-normal normal-case tracking-normal">
+                              ({section.rows.length} rader)
+                            </span>
+                          )}
+                        </span>
                       </td>
-                    )}
-                  </tr>
+                      {isCollapsed
+                        ? metas.map((meta) => {
+                            const sum = section.rows.reduce((acc, row) => {
+                              const cell = row.cells[meta.month - 1]
+                              const val = cell?.actual ?? cell?.budget ?? 0
+                              return acc + val
+                            }, 0)
+                            return (
+                              <td
+                                key={meta.month}
+                                colSpan={2}
+                                className={cn(
+                                  'px-2 py-1 text-right text-xs tabular-nums border-r border-border/40',
+                                  sum < 0 ? 'text-red-400' : sum > 0 ? 'text-green-400' : 'text-muted-foreground/40',
+                                  highlightedMonth === meta.month && 'bg-sky-500/15',
+                                )}
+                              >
+                                {sum !== 0 ? sum.toLocaleString('no-NO') : '—'}
+                              </td>
+                            )
+                          })
+                        : <td colSpan={TOTAL_COLS - 2} />
+                      }
+                      {isCollapsed && (
+                        <td className="px-3 py-1 text-right text-xs tabular-nums border-l border-border/40 text-muted-foreground">
+                          {section.rows.reduce((acc, row) => {
+                            const annual = row.cells.reduce((s, cell) => s + (cell?.actual ?? cell?.budget ?? 0), 0)
+                            return acc + annual
+                          }, 0).toLocaleString('no-NO')}
+                        </td>
+                      )}
+                    </tr>
+                  )}
 
                   {/* Datarader — skjules når kollapsert */}
                   {!isCollapsed && section.rows.map((row) => (
