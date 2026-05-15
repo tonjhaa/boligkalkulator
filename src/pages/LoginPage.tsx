@@ -38,7 +38,7 @@ const FEATURES = [
   {
     icon: ShieldCheck,
     title: 'Privat og sikker',
-    desc: 'All data synkroniseres kryptert til din private Supabase-konto. Ingen tall i kildekoden.',
+    desc: 'All data lagres kryptert i din private konto. Ingen tall i kildekoden, ingen deling med tredjeparter.',
   },
 ]
 
@@ -136,6 +136,25 @@ function AuthForm() {
           {mode === 'login' ? 'Opprett konto' : 'Logg inn'}
         </button>
       </p>
+
+      <div className="mt-6 pt-5 border-t border-border">
+        <button
+          type="button"
+          className="w-full h-9 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          onClick={() => {
+            setEmail('demo@lommeboka.com')
+            setPassword('Demo1234!')
+            setMode('login')
+            setError(null)
+            setMessage(null)
+          }}
+        >
+          Prøv med demokonto
+        </button>
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          Ferdig utfylt — klikk «Logg inn» for å utforske appen
+        </p>
+      </div>
     </div>
   )
 }
@@ -195,7 +214,7 @@ export function LoginPage() {
 
         {/* Footer */}
         <p className="text-xs text-muted-foreground mt-8 lg:mt-0">
-          Data lagres kryptert i Supabase — ingen tall i kildekoden.
+          Data lagres kryptert og privat — ingen tall i kildekoden.
         </p>
       </div>
 

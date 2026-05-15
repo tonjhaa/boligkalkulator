@@ -62,14 +62,14 @@ export const MODULES: ModuleOption[] = [
   {
     tab: 'atf',
     label: 'ATF',
-    desc: 'Avtalefestet tillegg for Forsvaret',
+    desc: 'Avtalefestet tillegg og variable tillegg',
     icon: Shield,
     defaultFor: ['forsvaret'],
   },
   {
     tab: 'absence',
     label: 'Fravær',
-    desc: 'Sykefravær og 24-dagersregel',
+    desc: 'Sykefravær, permisjon og 24-dagersregel',
     icon: FileText,
     defaultFor: ['forsvaret'],
   },
@@ -126,15 +126,15 @@ function StepEmployer({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Hvem er din arbeidsgiver?</h2>
+        <h2 className="text-xl font-semibold">Hva passer best for deg?</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Vi tilpasser modulene og beregningene etter dette.
+          Vi tilpasser modulene og beregningene etter dette. Du kan endre det senere.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {([
-          { key: 'forsvaret' as Employer, label: 'Forsvaret', desc: 'Inkluderer ATF, fravær og SPK-pensjon', icon: Shield },
-          { key: 'custom' as Employer, label: 'Annen arbeidsgiver', desc: 'Privat eller offentlig sektor', icon: Briefcase },
+          { key: 'forsvaret' as Employer, label: 'Offentlig / spesialstilling', desc: 'Inkluderer ATF, fraværsmodul og offentlig tjenestepensjon', icon: Shield },
+          { key: 'custom' as Employer, label: 'Privat arbeidsgiver', desc: 'Privat sektor, frilanser eller selvstendig næringsdrivende', icon: Briefcase },
         ] as const).map(({ key, label, desc, icon: Icon }) => (
           <button
             key={key}
