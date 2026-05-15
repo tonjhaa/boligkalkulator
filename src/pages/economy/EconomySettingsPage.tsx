@@ -344,6 +344,18 @@ function SikkerhetskopiBSection() {
       subscriptions: store.subscriptions,
       insurances: store.insurances,
       policyRateHistory: store.policyRateHistory,
+      lonnsoppgjor: store.lonnsoppgjor,
+      temporaryPayEntries: store.temporaryPayEntries,
+      ivfTransactions: store.ivfTransactions,
+      ivfSettings: store.ivfSettings,
+      fondPortfolio: store.fondPortfolio,
+      partnerVeikart: store.partnerVeikart,
+      savingsPlanTarget: store.savingsPlanTarget,
+      savingsPlanHorizon: store.savingsPlanHorizon,
+      absenceEvents: store.absenceEvents,
+      absenceHireDate: store.absenceHireDate,
+      budgetOverrides: store.budgetOverrides,
+      userPreferences: store.userPreferences,
     }
 
     // Inkluder alle relevante localStorage-nøkler (gaveplanner, app-state osv.)
